@@ -16,3 +16,5 @@ governor: {idle_after_s: 300, confirm_samples: 2, active_cpu: 0.125, idle_cpu: 0
 lease: {ttl_s: 120, heartbeat_s: 30, cancel_grace_high_s: 30, cancel_grace_default_s: 60}
 poll: {normal_s: 10, fast_s: 2}
 aging: {step1_after_s: 600, step1_to: 5, step2_after_s: 1200, step2_to: 3}
+# 让出熔断上限（单任务切换超K次改走FAILED，Phase1§2.2）
+session_switch_limit: 5
