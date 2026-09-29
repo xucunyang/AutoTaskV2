@@ -159,12 +159,29 @@ def transition(plan_id, task_id, to_s, *, agent, run_id,
 
 ### 6.1 实现与设计的偏差（已落地并说明）
 
-- `Store`额外提供 `list_plans/list_by_status/lease_update/request_cancel/update_verify_progress/integrity_check`，让lease与scheduler保持零裸SQL（评审M6）。
-- 时间参数统一从`Store.time_params`读`config/schedule.yaml`，测试传`tmp_path`时回退设计默认值。
-- `backup()`当日已存在时幂等返回（`VACUUM INTO`要求目标不存在，每日备份被重跑是常态，不应抛异常）。
-- `enqueue`的路径白名单不依赖payload里的`date`字段，直接要求`artifacts/YYYY-MM-DD/`（`ARTIFACT_PATH_RE`）。
-- 速率限制落`events/enqueue_log.jsonl`（跨进程可见），上限100条/小时/实例。
-- `scheduler` CLI新增`--root`，便于多实例与测试隔离。
+- `Store`额外提供 `list_plans/list_plan_tasks/list_by_status/lease_update/request_cancel/update_verify_progress/integrity_check/record_metric/daily_summary/cancel_cascade/unsatisfied_dependencies/alert`，让lease与scheduler保持零裸SQL（评审M6）。
+
+## 6.2 Phase0 补落码后的复查（2026-09-29）
+
+Phase0把设计里只写在文档的规则真正落进`store.transition()`之后，回头复查本阶段，发现5条设计条目未落代码，已全部补齐（`22f47c2`）：
+
+| 设计条目 | 补法 | 测试 |
+|---|---|---|
+| §2.1 DDL新增列对老库无效 | `ADDED_COLUMNS` + `ALTER TABLE`补列，`SCHEMA_VERSION`升2 | `test_migration_adds_missing_column_to_legacy_db` |
+| §2.3b 迁移前备份 | `migrate()`探测旧版本，真迁移才先`VACUUM` | `test_real_migration_takes_backup_first` |
+| §5 锁失败记metrics+告警 | `record_metric` + `db_lock_retry/db_lock_exhausted` + P1 | `test_db_locked_retries_then_succeeds` |
+| §2.2 master单文件覆盖 | `plans/{plan_id}.json` + `master.json`只做索引 | `test_replay_and_rebuild_and_backup` |
+| §4 DST切换记日志 | `_log_timezone_resolution`记下一次触发时刻 | `test_build_scheduler_logs_timezone_resolution` |
+
+第一条是本轮最值得记的：`CREATE TABLE IF NOT EXISTS` **不会给已存在的表补列**。上一版给`tasks`加了`verify_progress_json`，对已有库完全不生效——启动一路绿灯，直到运行期某条查询才 `no such column`。凡是给既有表加字段，都必须同时声明进`ADDED_COLUMNS`。
+
+另新增`tests/test_phase1_recheck.py`验证"上游规则收紧后下游是否被打破"：日报`t1→t2→t3`三级链在新的`depends_on`门禁下确实按序推进。
+
+### 6.2.1 明确划到Phase2的条目
+
+§3 的**心跳线程**（子Agent独立线程每30s续120s）与 **FAILED→DEAD_LETTER升级**（超max_attempts进死信+P0告警）本阶段**未实现**：`lease.renew()`与`recover_expired_leases()`已提供且有测试，但谁来周期调用、以及回收后谁做死信升级，需要主循环和执行器都在场，属Phase2编排层。现状是：任务会因租约过期被正确回收成FAILED，但停在那里等Phase2接手升级。
+
+§2.3的"RETRY指数退避 60*2^attempts"同理——退避由主循环的轮询节奏实现，Phase2。
 
 ## 7. V6→V7 变更清单（2026-09-28，本轮，待评审）
 

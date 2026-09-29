@@ -2,7 +2,9 @@
 
 配套设计：`design/phases/Phase1-storage-scheduler-lease-design.md`
 纲领：`design/plans/IMPLEMENTATION_PLAN_V7.md`
-状态：**已完成**，99 passed，等待 review。
+状态：**已完成并经 Phase0 补落码后复查**（2026-09-29），143 passed。
+> 2026-09-29 复查后本文档已更新：补 §3 的第 15~18 条缺陷、补 §4/§5/§6 的对应变化。
+> 复查详情见 `Phase1-storage-scheduler-lease-design.md` §6.2。
 
 本文件记录"实际怎么做的"，设计文件记录"应该怎么做"。两者不一致的地方都写在这里，不藏。
 
@@ -158,6 +160,21 @@ APScheduler 的职责边界被刻意压到最小：**只把 `templates/*.yaml` �
 
 第 12 条值得单独强调：**测试污染生产数据目录**这类问题不会让测试变红，只会安静地在你机器上留垃圾。已修，并已清理 `orchestrator/state/`。
 
+### 3.1 Phase0 补落码后复查新增的 4 条
+
+复查时发现 Phase1 自己也有"设计写了、代码没写"的问题（详见设计文档 §6.2）：
+
+| # | 现象 | 根因 | 修法 |
+|---|---|---|---|
+| 14 | 老库拿不到 `verify_progress_json` | **`CREATE TABLE IF NOT EXISTS` 不会给已存在的表补列** —— 上一版给 `tasks` 加的列对已有库根本不生效，启动一路绿灯，直到运行期某条查询才 `no such column` | `ADDED_COLUMNS` 声明 + `ALTER TABLE` 补列，`SCHEMA_VERSION` 升 2，补列动作记审计日志 |
+| 15 | 迁移前没有备份 | `backup()` 只能手动调，`migrate()` 直接建表 | `migrate()` 先探测旧 `user_version`，确认是真迁移才先 `VACUUM`；全新库/版本已最新时不备份 |
+| 16 | 锁争用只在日志里 | §5 要求"仍失败记 metrics 并告警"，此前只有 `jlog` | 每次重试记 `db_lock_retry`，耗尽记 `db_lock_exhausted` + P1 告警。**全部重试成功也不该在指标上消失**——锁争用是运维要看的信号 |
+| 17 | 多 plan 时 `master.json` 互相覆盖 | 单文件全局视图 | 细节进 `plans/{plan_id}.json`，`master.json` 只做索引 |
+
+第 14 条是本轮最值得记住的：**给既有表加字段，光改 DDL 是不够的**，必须同时声明进迁移清单。这类 bug 不会让任何测试变红——因为测试用的都是新建的库。
+
+第 17 条是复查时才发现的：`daily` 与 `pipeline` plan 并存时，后 `rebuild_export` 的会覆盖先写的。设计原文只说"单 plan 卡 + 任务计数"，多 plan 是实现时才暴露的场景。
+
 ---
 
 ## 4. DoD 对应关系
@@ -172,6 +189,10 @@ APScheduler 的职责边界被刻意压到最小：**只把 `templates/*.yaml` �
 | FIFO + 高优插队 | `test_priority_override_and_fifo_order` | 通过 |
 | `request_cancel` 置旗 → 60s 内让出落 checkpoint | 置旗与审计行已实现；**让出侧属 Phase2 执行器** | 部分（已标注，不算完成） |
 
+### 4.1 上游规则收紧后是否被打破
+
+Phase0 把 `depends_on` 门禁落进 `store` 后，日报的 `t1→t2→t3` 三级链第一次真正被门禁管住。`tests/test_phase1_recheck.py` 验证：新库展开的日报确实只能按序推进（t2/t3 被 `deps_unsatisfied` 挡住），模板的 `depends_on` 真的进了 shard（否则门禁形同虚设）。这是"上游改动打破下游"的那类回归网，以后每轮上游收紧都该补一条。
+
 ---
 
 ## 5. 与设计的偏差（6 处）
@@ -185,6 +206,18 @@ APScheduler 的职责边界被刻意压到最小：**只把 `templates/*.yaml` �
 
 另有 1 处**补漏**：`tasks.verify_progress_json` 在 V7 已批准但 Phase1 设计与初版 DDL 都漏了，本次补上（含 `update_verify_progress()`）。它是 Phase3 "VERIFYING 只重跑未通过 rule" 的持久化落点，缺列会让语义退回全量重验。
 
+## 5.1 明确划到 Phase2 的三条
+
+复查时逐条确认，以下设计条目**本阶段不做**而不是漏做——它们都需要主循环/执行器在场：
+
+| 条目 | 为什么不属于 Phase1 | 现状 |
+|---|---|---|
+| §3 心跳线程（每 30s 续 120s） | 谁周期调用 `renew()` 是执行器的活 | `lease.renew()` 已实现且有测试，**无调用方** |
+| §3 回收后 `FAILED→DEAD_LETTER` 升级 + P0 告警 | 超 `max_attempts` 判定属于编排策略 | 租约过期会正确回收成 FAILED，**停在那里等 Phase2 接手** |
+| §2.1 `RETRY→READY` 指数退避 `60*2^attempts` | 退避由主循环轮询节奏实现 | 跃迁本身已实现，退避节奏在 Phase2 |
+
+这三条如果不说清，下一个人会当成 bug 去"修"，或者以为已经实现了。
+
 ---
 
 ## 6. 已知遗留（不阻塞 Phase1）
@@ -193,9 +226,9 @@ APScheduler 的职责边界被刻意压到最小：**只把 `templates/*.yaml` �
 |---|---|---|
 | `.gitignore` 未覆盖 `state/ logs/ events/ inbox/ backup/ artifacts/ wakeup.flag` | 跑一次真实调度就会把这些目录带进 `git status` | Phase2 前补一条运行时目录忽略规则（**待你确认后再改**） |
 | `opencode_ctx.py` 在仓库根目录 | 是一次性探查脚本，与系统无关 | 建议删除或移出仓库 |
-| `master.json` 只记单 plan 的全局视图 | 多 plan 并存时后写的覆盖先写的 | Phase2 引入多 plan 前改为按 `plan_id` 分文件 |
-| 执行器未实现 | 让出边、checkpoint、租约续租目前只有写入侧，没有自动持有者 | Phase2 |
-| `metrics` 表已建但只有 `transition_latency` | Phase3 观测指标未接 | Phase3 |
+| `master.json` 只记单 plan 的全局视图 | **已修**（复查轮）：多 plan 并存时后写的覆盖先写的 | 细节进 `plans/{plan_id}.json`，master 只做索引 |
+| 执行器未实现 | 让出边、checkpoint、租约续租目前只有写入侧，没有自动持有者 | Phase2（已列明边界，见 §5.1） |
+| `metrics` 表已建但只有 `transition_latency` | Phase3 观测指标未接 | Phase3（锁争用类指标已补） |
 
 ---
 

@@ -1,6 +1,6 @@
 {
-    "current_phase": "PHASE1_RECHECK_PENDING",
-    "pending_review": "Phase0补落码轮 (2026-09-29): 发现Phase0设计§2.2/§2.3/§3/§4/§5有多条规则只存在于文档未落code(test_transitions只测静态表), PROGRESS此前误标completed。已补: depends_on门禁+权限矩阵role_allowed+让出强制fencing+RETRY/DEAD_LETTER必填+cancel_cascade+SCHEMA_REJECT+P1告警+cmd白名单+task_card渲染器(DoD4)+幂等键含inputs_hash+TaskIdConflict。pytest 132 passed。待办: 复查Phase1(backup-before-migrate/DB锁metrics/DST日志/新规对Phase1调用点的冲击)后再进Phase2",
+    "current_phase": "READY_FOR_PHASE2",
+    "pending_review": "Phase0补落码+Phase1复查轮 (2026-09-29): 发现Phase0设计§2.2/§2.3/§3/§4/§5共10条规则只写在文档未落code(此前误标completed), PROGRESS已如实改正。Phase0已补: depends_on门禁+权限矩阵role_allowed+让出强制fencing+RETRY/DEAD_LETTER必填+cancel_cascade+SCHEMA_REJECT+P1告警+cmd白名单+task_card渲染器(DoD4)+幂等键含inputs_hash+TaskIdConflict。Phase1复查已补5条: 迁移补列(ADDED_COLUMNS+ALTER, CREATE TABLE IF NOT EXISTS不补列是真隐患)+迁移前VACUUM备份+锁争用metrics+per-plan master+DST日志。pytest 143 passed。明确划到Phase2: 心跳线程周期调用/FAILED→DEAD_LETTER升级/RETRY指数退避(都需主循环在场)",
     "v6_master": "design/plans/IMPLEMENTATION_PLAN_V6.md",
     "v7_master": "design/plans/IMPLEMENTATION_PLAN_V7.md",
     "v6_validated": "33/33通过，3bug已修，4项coding清单见V6§11",
@@ -13,7 +13,7 @@
         },
         "Phase1": {
             "desc": "存储SQLite+调度+租约+队列入口（单表/AUTOINCREMENT/Store/备份迁移/让出熔断）",
-            "evidence": "core/store.py: WAL+schema_version幂等migrate, tasks单表seq AUTOINCREMENT, transition()唯一写入口(乐观锁version+fencing仅lease_op+1+让出边四重门reason五值/checkpoint断言/long_running前置/熔断K=5/attempts仅RETRY→READY+1), list_ready_ordered(priority,seq), 原子导出master.json+tasks/*.json, rebuild_export, replay一致性, backup(VACUUM INTO幂等), integrity_check, request_cancel, update_verify_progress(V7局部重入账本); core/lease.py: acquire/renew/release/recover_expired_leases/request_cancel, 零裸SQL(评审M6), TTL集中config/schedule.yaml(评审B2); core/enqueue.py: CLI+inbox扫描(processing→done|error), M9六道硬门(<100KB/task_id正则/路径限artifacts/YYYY-MM-DD/cmd禁shell元字符/business_rule.expr AST白名单禁Call/100条每小时), touch wakeup.flag(M2); core/scheduler.py: APScheduler BackgroundScheduler+SQLAlchemyJobStore, expand_template({date}展开+acceptance rule_id), ensure_plan幂等, catchup_missing(超期skip+告警/当天必补), CLI --date/--catchup/--dry-run/--rerun/--root; tests: test_store(12)+test_lease(8)+test_enqueue(15)+test_scheduler(14)+test_recovery(5)=96 passed, 含kill -9混沌无半写/replay一致/seq不回退/备份可恢复/DB锁退避",
+            "evidence": "core/store.py: WAL+schema_version幂等migrate+ADDED_COLUMNS增量补列(SCHEMA_VERSION=2)+迁移前VACUUM备份, tasks单表seq AUTOINCREMENT, transition()唯一写入口(乐观锁version+fencing仅lease_op+1+让出边五重门reason五值/checkpoint断言/强制回带fencing/long_running前置/熔断K=5/attempts仅RETRY→READY+1+depends_on门禁+权限矩阵role+RETRY必带reason+DEAD_LETTER三必填), cancel_cascade, list_ready_ordered(priority,seq), 原子导出plans/{plan_id}.json+master索引+tasks/*.json, rebuild_export, replay一致性, backup(VACUUM INTO幂等), integrity_check, request_cancel, update_verify_progress(V7局部重入账本), record_metric+db_lock_retry/db_lock_exhausted, daily_summary, alert→events/ALERTS.jsonl, record_schema_reject; core/lease.py: acquire/renew/release/recover_expired_leases/request_cancel, 零裸SQL(评审M6), TTL集中config/schedule.yaml(评审B2); core/enqueue.py: CLI+inbox扫描(processing→done|error), M9六道硬门(<100KB/task_id正则/路径限artifacts/YYYY-MM-DD/cmd禁shell元字符+白名单前缀/business_rule.expr AST白名单禁Call/Attribute/100条每小时), touch wakeup.flag(M2); core/scheduler.py: APScheduler BackgroundScheduler+SQLAlchemyJobStore, expand_template({date}展开+acceptance rule_id), ensure_plan幂等, catchup_missing(超期skip+告警/当天必补), 时区解析记日志, CLI --date/--catchup/--dry-run/--rerun/--root; 明确划到Phase2: 心跳线程周期调用/FAILED→DEAD_LETTER升级/RETRY指数退避。tests: test_store(12)+test_lease(9)+test_enqueue(19)+test_scheduler(15)+test_recovery(5)+test_migration(5)+test_phase1_recheck(4)=143 passed, 含kill -9混沌无半写/replay一致/seq不回退/备份可恢复/DB锁退避/v1老库补列/日报DAG按序推进",
             "status": "completed",
             "updated_at": "2026-09-29T12:00:00Z"
         },
@@ -37,5 +37,5 @@
         }
     },
     "plan_id": "autotask_bootstrap",
-    "updated_at": "2026-09-29T14:30:00Z"
+    "updated_at": "2026-09-29T15:30:00Z"
 }
