@@ -840,12 +840,18 @@ class Store:
                    run_id: str, expect_version: int, expect_fencing: int | None = None,
                    handoff: dict | None = None, payload: dict | None = None,
                    lease_op: str | None = None,
-                   role: str = "orchestrator") -> dict:
+                   role: str = "orchestrator",
+                   expected: bool = False) -> dict:
         """唯一状态跃迁入口。lease_op∈{acquire,renew,revoke}时fencing+1（评审Minor2），
         普通跃迁只+version；RETRY→READY时attempts+1；其余attempts不变。
 
         role∈{orchestrator,subagent,verifier}：权限矩阵在store强制（Phase0§2.2），
-        子Agent/Verifier越权写系统跃迁一律IllegalTransition+REJECTED。"""
+        子Agent/Verifier越权写系统跃迁一律IllegalTransition+REJECTED。
+
+        expected=True表示"这次被拒是预期内的"（比如依赖还没满足、退避没到点）。
+        仍记REJECTED审计行，但**不发P1告警**——否则主循环每轮都会为
+        每个还没解锁的任务喊一次警，那不叫告警，叫噪音。真正该叫人看的
+        （越权写、非法直写终态）不带expected，照常P1。"""
         t0 = time.monotonic()
         payload = dict(payload or {})
 
@@ -949,10 +955,14 @@ class Store:
             self._record_rejected_outside(plan_id, task_id, to_s, agent,
                                           run_id, str(e), payload)
             jlog(self.root, "WARN", "transition_rejected",
-                 plan_id=plan_id, task_id=task_id, to=to_s, error=str(e)[:200])
-            # Phase0§2.2：非法跃迁/越权是P1（有入队方在等这个状态）
-            self.alert("P1", "illegal_transition", plan_id=plan_id,
-                       task_id=task_id, to=to_s, role=role, error=str(e)[:300])
+                 plan_id=plan_id, task_id=task_id, to=to_s, error=str(e)[:200],
+                 expected=expected)
+            # Phase0§2.2：非法跃迁/越权是P1（有入队方在等这个状态）；
+            # 但"依赖还没满足""退避没到点"这类预期内拒绝不该喊人
+            if not expected:
+                self.alert("P1", "illegal_transition", plan_id=plan_id,
+                           task_id=task_id, to=to_s, role=role,
+                           error=str(e)[:300])
             raise
         except StaleOwner as e:
             self._record_rejected_outside(plan_id, task_id, to_s, agent,

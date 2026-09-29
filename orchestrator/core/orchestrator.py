@@ -152,6 +152,7 @@ class Orchestrator:
                 self.store.transition(plan_id, t["task_id"], "READY",
                                       agent=self.owner, run_id=self._run_id(),
                                       expect_version=t["version"],
+                                      expected=True,   # 依赖没满足是常态，不告警
                                       payload={"queue_wait_ms": _wait_ms(t["enqueued_at"])})
                 n += 1
             except (IllegalTransition, Conflict):
@@ -270,6 +271,31 @@ class Orchestrator:
                  task_id=task_id, error=str(e)[:300])
         return running
 
+    def promote_retries(self) -> list[dict]:
+        """RETRY→READY：退避到点才重排（Phase2§2.1 指数退避 60*2^attempts）。
+
+        没有这一步，验收失败的任务会**永久卡在RETRY**——refresh_ready只管
+        PENDING/BLOCKED，没人把RETRY捞回来，整个plan就此停摆。
+        """
+        out = []
+        now = time.time()
+        for t in self.store.list_by_status("RETRY"):
+            waited = now - _epoch(t["updated_at"])
+            delay = lease_mod.backoff_delay_s(t["attempts"])
+            if waited < delay:
+                continue
+            try:
+                out.append(self.store.transition(
+                    t["plan_id"], t["task_id"], "READY", agent=self.owner,
+                    run_id=self._run_id(), expect_version=t["version"],
+                    expected=True,      # 退避没到点是常态，不告警
+                    payload={"retry_after_s": int(delay),
+                              "waited_s": int(waited),
+                              "reason": "backoff_elapsed"}))
+            except (Conflict, IllegalTransition):
+                continue
+        return out
+
     # ---------- 收尾：SUBMITTED→VERIFYING、租约回收、死信 ----------
 
     def promote_submitted(self) -> list[dict]:
@@ -373,7 +399,7 @@ class Orchestrator:
     def tick(self) -> dict:
         """跑一轮主循环。返回本轮各步计数（可观测、可测试）。"""
         stats = {"inbox": None, "dispatched": 0, "refreshed": 0, "aged": 0,
-                 "promoted": 0}
+                 "promoted": 0, "retried": 0}
         if self.check_shutdown():
             return {**stats, "shutdown": True}
         try:
@@ -384,6 +410,7 @@ class Orchestrator:
         for plan_id in self.active_plans():
             self.validate_dag(plan_id)
             stats["refreshed"] += self.refresh_ready(plan_id)
+        stats["retried"] = len(self.promote_retries())
         stats["aged"] = len(self.apply_aging())
         stats["backlog"] = self.backlog_check()
         stats["dispatched"] = len(self.dispatch_split())

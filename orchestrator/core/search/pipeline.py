@@ -73,12 +73,26 @@ def search_and_filter(shard: dict, task: dict | None = None, *,
         for r in provider.search(q, top_k=top_k):
             r.source_id = r.source_id or f"s{i}_{len(results)}"
             results.append(r)
+    raw_count = len(results)
+    # 跨query去重：同一个URL被多个query命中时只留一条。
+    # 不去重的话A类占比/时效统计会被重复条目加权，质量分虚高——
+    # 同一篇官方文件命中三次不等于它是三倍权威。
+    seen_urls, deduped = set(), []
+    for r in results:
+        key = (r.url or "").strip()
+        if key in seen_urls:
+            continue
+        seen_urls.add(key)
+        r.source_id = f"src{len(deduped)}"
+        deduped.append(r)
+    results = deduped
     kept, dropped = filter_freshness(results, freshness)
     tiers = cs.classify_with_cache(root, kept, cfg, llm) if kept else []
     a_ratio = (sum(1 for t in tiers if t["tier"] == "A") / len(tiers)) if tiers else 0.0
     return {
         "queries": queries,
-        "raw_count": len(results),
+        "raw_count": raw_count,          # 去重前，便于观测召回冗余
+        "unique_count": len(results),
         "kept": [r.__dict__ for r in kept],
         "dropped": dropped,
         "tiers": tiers,

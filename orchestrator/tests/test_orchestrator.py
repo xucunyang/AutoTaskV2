@@ -29,8 +29,9 @@ def _root(tmp_path: Path) -> Path:
     for sub in ("templates", "schemas"):
         (tmp_path / sub).mkdir(parents=True, exist_ok=True)
     for f in ("templates/task_card.j2", "templates/daily_plan.yaml",
+              "templates/pipeline_task.json",
               "schemas/acceptance_t1.yaml", "schemas/acceptance_t2.yaml",
-              "schemas/acceptance_t3.yaml"):
+              "schemas/acceptance_t3.yaml", "schemas/summary.schema.json"):
         dst = tmp_path / f
         dst.write_text((ROOT_TPL / f).read_text(encoding="utf-8"), encoding="utf-8")
     return tmp_path
@@ -245,27 +246,27 @@ def test_reserved_slot_gives_low_priority_a_chance(tmp_path):
 
 def test_dispatch_skips_cached_task(tmp_path):
     """DoD：相同输入二次触发命中SKIPPED_CACHED。"""
+    from core import checkpoint as cp
+    from core.utils import atomic_write_json
     seen = []
-    o = _orch(tmp_path, executor_fn=lambda *a: seen.append(a[2]))
+    o = _orch(tmp_path, executor_fn=lambda *a, **k: seen.append(a[2]))
     o.store.ensure_plan("p1")
     out = tmp_path / "artifacts" / "2026-09-29" / "o.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("data", encoding="utf-8")
-    from core.utils import sha256_file
-    digest = sha256_file(out)["sha256"]
+    atomic_write_json(out.parent / "o.manifest.json", cp.build_manifest(tmp_path, out))
+    ih = "spec-hash"
     _add(o.store, "c1", priority=5, outputs=["artifacts/2026-09-29/o.csv"],
-         inputs_hash=digest)
+         inputs_hash=ih)
     s = o.store
-    from core import checkpoint as cp
     t = s.get_task("p1", "c1")
     s.transition("p1", "c1", "READY", agent="o", run_id="r",
                  expect_version=t["version"])
-    cp.record_success(s, "p1", "c1", digest)
+    cp.record_success(s, "p1", "c1", ih)
     o.dispatch_split()
     assert seen == []                          # 没真跑
     assert s.get_task("p1", "c1")["status"] == "SKIPPED_CACHED"
-    metrics = s.daily_summary("p1")
-    assert metrics is not None
+    assert s.metric_stat("cache_hit")["n"] == 1
 
 
 def test_dispatch_respects_max_workers(tmp_path):

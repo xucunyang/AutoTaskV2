@@ -25,6 +25,29 @@ def plan_id_for(date: str) -> str:
     return f"daily_report_{date}"
 
 
+def task_spec_hash(shard: dict, date: str) -> str:
+    """任务规格的规范化全hash（作为inputs_hash）。
+
+    只取"改了就会影响产出"的字段：目标/依赖/产出/验收/预算。
+    不含priority/max_attempts这类不影响结果、只影响调度的字段——
+    调个优先级不该让缓存全部失效。
+    """
+    import hashlib
+    spec = {
+        "objective": shard.get("objective", ""),
+        "depends_on": shard.get("depends_on") or [],
+        "outputs": [str(o).replace("{date}", date)
+                    for o in shard.get("outputs") or []],
+        "acceptance": shard.get("acceptance") or [],
+        "budget": shard.get("budget") or {},
+        "needs_web": bool(shard.get("needs_web")),
+        "freshness": shard.get("freshness", "none"),
+        "complexity": shard.get("complexity", "simple"),
+    }
+    blob = json.dumps(spec, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
 def load_schedule(root: Path) -> dict:
     return yaml.safe_load((root / "config" / "schedule.yaml").read_text(encoding="utf-8"))
 
@@ -68,6 +91,11 @@ def expand_template(root: Path, template_rel: str, date: str) -> dict:
             "freshness": t.get("freshness", "none"),
             "long_running": bool(t.get("long_running", False)),
         }
+        # inputs_hash：任务自身规格的规范化哈希。
+        # 不设它cache_hit永远判False（它第一件事就是要求inputs_hash非空），
+        # 那SKIPPED_CACHED就是死代码——相同输入二次触发省不了任何token。
+        # 规格变了（改了objective/验收/输出）哈希就变，缓存自然失效。
+        shard["inputs_hash"] = task_spec_hash(shard, date)
         shard["inputs"] = [
             {**a, "path": a["path"].replace("{date}", date)}
             if isinstance(a, dict) and isinstance(a.get("path"), str) else a

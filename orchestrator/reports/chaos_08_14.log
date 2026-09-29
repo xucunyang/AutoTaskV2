@@ -1,4 +1,4 @@
-# 混沌 8-14 证据  2026-09-29T13:24:09.114231+00:00
+# 混沌 8-14 证据  2026-09-29T13:38:50.731277+00:00
 
 - [PASS] 混沌8 低优不被饿死: aged=5 预留槽派发low1=['hi1', 'low1']
 - [PASS] 混沌9 session切换全链路: yielded=yielded:context_full attempts=0 gen=2

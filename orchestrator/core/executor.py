@@ -258,7 +258,16 @@ def _fail(store: Store, plan_id: str, task_id: str, owner: str, run_id: str,
 
 def _run_with_provider(store: Store, task: dict, card: str, ckpt, provider,
                        final_window: int, run_id: str, search_fn) -> list[str]:
-    """真实LLM路径（Phase2）。这里只跑一轮：chat → 落产物 → manifest。"""
+    """真实LLM路径：chat → 校验产物是否真的落盘 → 写manifest。
+
+    **不把模型回复当成产物写进outputs**。曾经这么干过，后果是：
+    一个任务声明了 summary.json + report.md 两个产物时，
+    同一坨文本被写进两个文件，json_schema验收永远报 bad_json，
+    而且报错完全指不到真因（模型其实什么都没写错，是执行器写坏了）。
+    产物由模型自己用工具写（任务卡里明确要求），执行器只负责：
+      1. 确认声明的产物真的落盘了（没有就明确报错，不替模型编）
+      2. 给已落盘的产物补manifest（sha/bytes/rows/preview）
+    """
     shard = task.get("shard", {}) or {}
     sources = []
     if shard.get("needs_web"):
@@ -271,17 +280,25 @@ def _run_with_provider(store: Store, task: dict, card: str, ckpt, provider,
                                                   ensure_ascii=False)
     resp = chat_with_yield_check(provider, payload, shard.get("budget") or {},
                                  final_window)
-    content = (resp or {}).get("content", "")
-    written = []
-    for out in shard.get("outputs") or []:
-        p = Path(store.root) / out
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content, encoding="utf-8")
-        written.append(out)
-        manifest = cp.build_manifest(store.root, p)
-        atomic_write_json(p.parent / f"{p.stem}.manifest.json", manifest)
+    declared = [str(o) for o in shard.get("outputs") or []]
+    root = Path(store.root)
+    written, missing = [], []
+    for out in declared:
+        p = root / out
+        if p.exists() and p.stat().st_size > 0:
+            manifest = cp.build_manifest(root, p)
+            atomic_write_json(p.parent / f"{p.stem}.manifest.json", manifest)
+            written.append(out)
+        else:
+            missing.append(out)
+    if missing and not written:
+        # 一个都没落盘：模型没干活，要说清楚，别用self_test的"file_exists失败"
+        # 那种绕远的报错掩盖"它压根没写"
+        raise SelfTestFail(
+            f"no_artifacts_produced: declared={declared} "
+            f"model_reply_len={len((resp or {}).get('content', ''))}")
     if sources:
-        atomic_write_json(Path(store.root) / "artifacts" / f"{task_id}.sources.json",
+        atomic_write_json(root / "artifacts" / f"{task['task_id']}.sources.json",
                           sources)
     return written
 

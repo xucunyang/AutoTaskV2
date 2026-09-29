@@ -1,0 +1,60 @@
+- 单计划三任务 4.77s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 15.7ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 4.66s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 15.1ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 4.71s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 16.2ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 2.96s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 16.2ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 2.99s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 15.3ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 3.00s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 15.6ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 2.96s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 16.5ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 2.96s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 16.2ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 3.04s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 14.8ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 2.99s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 16.1ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 3.05s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 17.3ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 3.41s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 16.1ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 3.40s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 16.8ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 3.38s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 19.1ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 3.36s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 14.3ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次

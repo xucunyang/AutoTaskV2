@@ -19,6 +19,16 @@ def _artifact(root: Path, rel: str, content: str) -> Path:
     return p
 
 
+def _art_with_manifest(root: Path, rel: str, content: str = "hello") -> Path:
+    """产物 + manifest（执行器落盘时是一起写的）。
+    cache_hit第2层要比manifest里的sha，所以只造文件不造manifest不算"上次跑过"。"""
+    p = _artifact(root, rel, content)
+    from core.utils import atomic_write_json
+    m = cp.build_manifest(root, p)
+    atomic_write_json(p.parent / f"{p.stem}.manifest.json", m)
+    return p
+
+
 def test_save_and_load_roundtrip(tmp_path):
     c = Checkpoint(task_id="t1", plan_id="p1", step=3, cursor="row-100",
                    done_steps=[1, 2], generation=1,
@@ -81,51 +91,68 @@ def _task(inputs_hash="", last="", outputs=None):
             "shard": {"outputs": outputs or []}}
 
 
-def test_cache_hit_requires_all_three_conditions(tmp_path):
+def test_cache_hit_requires_inputs_unchanged_and_artifacts_intact(tmp_path):
+    """两层判据：输入没变（inputs_hash==last_success_hash）
+    + 产物还在且sha与manifest一致。
+    注意last_success_hash存的是**inputs_hash**不是产物sha——两者混存
+    会让这个判断永远为假，缓存路径变成死代码。"""
+    out = "artifacts/2026-09-29/o.csv"
+    _art_with_manifest(tmp_path, out)
+    ih = "spec-hash-abc"
+    hit, why = cp.cache_hit(tmp_path, _task(ih, ih, [out]))
+    assert hit is True, why
+    # 输入变了 → 不命中
+    assert cp.cache_hit(tmp_path, _task("other", ih, [out]))[0] is False
+    # 没记last → 不命中
+    assert cp.cache_hit(tmp_path, _task(ih, "", [out]))[0] is False
+    # 没声明outputs → 不命中
+    assert cp.cache_hit(tmp_path, _task(ih, ih, []))[0] is False
+
+
+def test_cache_hit_false_without_manifest(tmp_path):
+    """没有manifest说明上次落盘就没走完流程，不能算命中。"""
     out = "artifacts/2026-09-29/o.csv"
     _artifact(tmp_path, out, "hello")
-    from core.utils import sha256_file
-    digest = sha256_file(tmp_path / out)["sha256"]
-    hit, why = cp.cache_hit(tmp_path, _task(digest, digest, [out]))
-    assert hit is True, why
-    # inputs_hash 与 last 不同 → 不命中
-    assert cp.cache_hit(tmp_path, _task("other", digest, [out]))[0] is False
-    # 没记last → 不命中
-    assert cp.cache_hit(tmp_path, _task(digest, "", [out]))[0] is False
-    # 没声明outputs → 不命中
-    assert cp.cache_hit(tmp_path, _task(digest, digest, []))[0] is False
+    ih = "h"
+    hit, why = cp.cache_hit(tmp_path, _task(ih, ih, [out]))
+    assert hit is False and "no_manifest" in why
 
 
 def test_cache_hit_false_when_artifact_deleted(tmp_path):
     """只比hash会让"文件被人删了"照样命中缓存，下游读到不存在的产物。"""
     out = "artifacts/2026-09-29/o.csv"
-    p = _artifact(tmp_path, out, "hello")
-    from core.utils import sha256_file
-    digest = sha256_file(p)["sha256"]
-    assert cp.cache_hit(tmp_path, _task(digest, digest, [out]))[0] is True
+    p = _art_with_manifest(tmp_path, out)
+    ih = "h"
+    assert cp.cache_hit(tmp_path, _task(ih, ih, [out]))[0] is True
     p.unlink()
-    hit, why = cp.cache_hit(tmp_path, _task(digest, digest, [out]))
+    hit, why = cp.cache_hit(tmp_path, _task(ih, ih, [out]))
     assert hit is False and "missing_artifact" in why
 
 
 def test_cache_hit_false_when_artifact_modified(tmp_path):
     out = "artifacts/2026-09-29/o.csv"
-    p = _artifact(tmp_path, out, "hello")
-    from core.utils import sha256_file
-    digest = sha256_file(p)["sha256"]
+    p = _art_with_manifest(tmp_path, out)
+    ih = "h"
+    assert cp.cache_hit(tmp_path, _task(ih, ih, [out]))[0] is True
     p.write_text("tampered", encoding="utf-8")
-    hit, why = cp.cache_hit(tmp_path, _task(digest, digest, [out]))
+    hit, why = cp.cache_hit(tmp_path, _task(ih, ih, [out]))
     assert hit is False and "sha_mismatch" in why
+
+
+def test_cache_hit_false_when_artifact_emptied(tmp_path):
+    out = "artifacts/2026-09-29/o.csv"
+    p = _art_with_manifest(tmp_path, out)
+    p.write_text("", encoding="utf-8")
+    hit, why = cp.cache_hit(tmp_path, _task("h", "h", [out]))
+    assert hit is False and "empty_artifact" in why
 
 
 def test_cache_hit_checks_every_output(tmp_path):
     a = "artifacts/2026-09-29/a.csv"
     b = "artifacts/2026-09-29/b.csv"
-    _artifact(tmp_path, a, "x")
-    from core.utils import sha256_file
-    da = sha256_file(tmp_path / a)["sha256"]
+    _art_with_manifest(tmp_path, a, "x")
     # 声明了两个产物，第二个根本没生成 → 不能算命中
-    assert cp.cache_hit(tmp_path, _task(da, da, [a, b]))[0] is False
+    assert cp.cache_hit(tmp_path, _task("h", "h", [a, b]))[0] is False
 
 
 def test_record_success_writes_last_success_hash(tmp_path):

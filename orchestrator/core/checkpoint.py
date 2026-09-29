@@ -75,8 +75,15 @@ def build_manifest(root: str | Path, path: str | Path) -> dict:
 def cache_hit(root: str | Path, task: dict) -> tuple[bool, str]:
     """判定能否SKIPPED_CACHED。返回(是否命中, 原因)。
 
-    三项全中才命中：inputs_hash相同 + 上次成功hash已记 + 产物存在且sha匹配。
-    任何一项不满足都算未命中——宁可多跑一次，也不能让下游读到不存在的产物。
+    两个层次，缺一不可：
+    1. **输入没变**：`inputs_hash == last_success_hash`。
+       last_success_hash存的是"上次成功时的inputs_hash"，不是产物sha——
+       两者混用会导致这个判断永远为假，缓存路径变成死代码。
+    2. **产物还在且没被改**：逐个检查声明的outputs存在、非空，
+       且当前sha与落盘时写的manifest里的sha一致。
+
+    产物指纹不另开列：写产物时已经落了 `*.manifest.json`，里面就有sha256，
+    再存一份就是两份可能不一致的事实。
     """
     inputs_hash = task.get("inputs_hash") or ""
     last = task.get("last_success_hash")
@@ -94,11 +101,22 @@ def cache_hit(root: str | Path, task: dict) -> tuple[bool, str]:
         p = root / out
         if not p.exists():
             return False, f"missing_artifact:{out}"
+        if p.stat().st_size == 0:
+            return False, f"empty_artifact:{out}"
+        manifest = p.parent / f"{p.stem}.manifest.json"
+        if not manifest.exists():
+            return False, f"no_manifest:{out}"
+        try:
+            recorded = json.loads(manifest.read_text(encoding="utf-8")).get("sha256")
+        except ValueError:
+            return False, f"bad_manifest:{out}"
+        if not recorded:
+            return False, f"manifest_no_sha:{out}"
         try:
             digest = sha256_file(p)["sha256"]
         except OSError as e:
             return False, f"unreadable:{out}:{e}"
-        if digest != last:
+        if digest != recorded:
             return False, f"artifact_sha_mismatch:{out}"
     return True, "inputs_and_artifacts_match"
 
@@ -106,7 +124,11 @@ def cache_hit(root: str | Path, task: dict) -> tuple[bool, str]:
 def record_success(store, plan_id: str, task_id: str, inputs_hash: str, *,
                    agent: str = "executor", run_id: str = "",
                    extra: dict | None = None) -> dict:
-    """成功后记last_success_hash（cache_hit的数据来源）+saved_tokens指标位。"""
+    """成功后记last_success_hash（cache_hit第1层的依据）。
+
+    传的是**任务自己的inputs_hash**（规格哈希），不是产物sha。
+    产物指纹在各自的manifest里，cache_hit第2层去比那个。
+    两者混存会让"输入没变"这个判断永远为假。"""
     def _fn(con):
         cur = con.execute(
             "SELECT version,status FROM tasks WHERE plan_id=? AND task_id=?",

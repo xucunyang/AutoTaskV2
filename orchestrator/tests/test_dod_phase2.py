@@ -56,14 +56,16 @@ def test_dod3_cache_hit_is_observable(tmp_path):
     out = root / "artifacts" / "2026-09-29" / "o.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("data", encoding="utf-8")
-    from core.utils import sha256_file
-    digest = sha256_file(out)["sha256"]
+    from core.utils import atomic_write_json
+    m = cp.build_manifest(root, out)
+    atomic_write_json(out.parent / "o.manifest.json", m)
+    ih = "spec-hash"
     _add(s, "c1", priority=5, outputs=["artifacts/2026-09-29/o.csv"],
-         inputs_hash=digest)
+         inputs_hash=ih)
     t = s.get_task("p1", "c1")
     s.transition("p1", "c1", "READY", agent="o", run_id="r",
                  expect_version=t["version"])
-    cp.record_success(s, "p1", "c1", digest)
+    cp.record_success(s, "p1", "c1", ih)      # 存的是inputs_hash
     o = Orchestrator(root, executor_fn=lambda *a, **k: pytest.fail("不该真跑"))
     o.dispatch_split()
     assert s.get_task("p1", "c1")["status"] == "SKIPPED_CACHED"
