@@ -24,6 +24,7 @@ from schemas.models import Checkpoint, Handoff
 
 MAX_PROMPT_TOKENS = 8000        # DoD：200MB CSV的prompt仍<8k（preview模式）
 WATERMARK = 0.8                 # §6b：上下文水位线
+DEFAULT_BUDGET = {"max_steps": 20, "timeout_s": 900}
 
 
 class SessionYield(Exception):
@@ -81,15 +82,21 @@ def read_range(path: str | Path, offset: int = 0, limit: int = 200) -> list[str]
 
 
 def build_card(store: Store, task: dict, run_id: str) -> str:
-    """渲染任务卡（Phase0§5白名单）。"""
+    """渲染任务卡（Phase0§5白名单）。
+
+    budget必须有兜底：模板里用了budget.max_steps/timeout_s，任务卡没写budget
+    时传空dict会让StrictUndefined直接抛错，把执行器在渲染阶段就打崩——
+    而"任务没显式写预算"是完全正常的输入，不该是异常路径。
+    """
     shard = task.get("shard", {}) or {}
+    budget = shard.get("budget") or dict(DEFAULT_BUDGET)
     return render_task_card(
         store.root, task_id=task["task_id"], plan_id=task["plan_id"],
         run_id=run_id, objective=shard.get("objective", ""),
         idempotency_key=task["idempotency_key"],
         outputs=shard.get("outputs") or [],
         acceptance=shard.get("acceptance") or [],
-        budget=shard.get("budget") or {},
+        budget=budget,
         inputs=shard.get("inputs") or [],
         needs_web=bool(shard.get("needs_web")),
         freshness=shard.get("freshness", "none"),
