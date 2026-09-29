@@ -188,7 +188,7 @@ def chat_with_yield_check(card, ...):
 - 位置：`executor`内只调`gateway.chat(task_card)`，路由可换不改执行器。
 - 插件两层：`Provider{chat,health}`（`ollama`/`online_openai_compat`）+ `RoutePolicy{decide}`链（`privacy_guard→latency_guard→capability_match→cost_saver`），`config/gateway.yaml`编排顺序。
 - 能力：`3B→simple, 4B→simple, 7B→medium`，complex走在线；隐私默认关（`privacy.enabled=false`：`enqueue`跳扫描、`route`跳`classify`、日志跳脱敏，接口`classify/redact/PrivacyGuard`保留，`test_privacy`默认skip，V7§8）。
-- `Provider.chat()`返回契约（V7）：`{content, usage:{prompt_tokens, completion_tokens}}`；provider配置加`context_window`（3B/7B=32768，online=128000），session切换判定依赖。
+- `Provider.chat()`返回契约（V7）：`{content, usage:{prompt_tokens, completion_tokens}}`；窗口动态计算`final=min(架构上限,档位建议,显存可撑,配置覆盖)`（`core/context.py`），session切换判定依赖。
 - 本地保护：`max_concurrency=2, slo_p50=8s`，队列>4/连续失败3次熔断5min半开恢复；simple本地20s/medium60s超时即切（公开）或checkpoint让出（隐私）；高优公开跳过本地直走在线。
 - 降级：本地挂→公开切在线，隐私只本地重试；日在线额度超全切本地+P1。用量记`metrics(provider,tokens,latency)`。
 - DoD：公开simple 80%本地、隐私100%本地可审计、kill ollama公开自动切在线。

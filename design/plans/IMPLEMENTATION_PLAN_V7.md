@@ -129,7 +129,7 @@ coding清单（剩余）：①`gateway.py`的`chat()`返回契约改usage；②`
 4. S3路由：complexity+needs_web分级路由+Provider usage返回契约。
 5. S4 session切换：RUNNING→READY让出边+熔断+checkpoint扩字段（summary/artifacts_partial/done_steps/generation）。
 6. S5 governor调度+老化+ACTIVE档有意权衡注释。
-7. S6调研质量验收：4新规则handler+三件套产出契约。
+7. S6调研质量验收：4新规则handler+四件套产出契约。
 8. S7完备性：混沌14项+smoke_daily（含调研冒烟）+覆盖率≥80%+飞书IngressProvider接口桩+PROGRESS.json全done。
 
 ## 13. 新会话首读清单（防失忆，按序读）
