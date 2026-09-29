@@ -1,6 +1,6 @@
 # Phase3 校验/可观测设计（V7）
 
-状态：已按V7对齐，待用户评审，前置依赖 Phase2执行冻结。
+状态：主体已实现并落码（2026-09-29）。DoD逐条见§4，实现与设计的偏差见§7。
 对齐基线：`design/plans/IMPLEMENTATION_PLAN_V7.md`；修订见文末§6。
 
 ## 1. 目标
@@ -78,15 +78,54 @@ def verify(plan_id, task_id, run_id) -> VerifyResult:
 
 ## 4. DoD
 
-- [ ] 恶意`cmd: rm -rf`被白名单拒绝 + 安全告警。
-- [ ] flaky测试重试2次后通过不计任务重试。
-- [ ] 全链路`run_id`可从调度grep到日报。
-- [ ] `final_consistency` single-fail用例拦截计划DONE。
-- [ ] 幻觉拒收：claim无source_id或source_id不存在→FAIL。
-- [ ] 时效拒收：source超期比例>30%→FAIL；recent/strict天数分别生效。
-- [ ] 等级拒收：A类占比≤50%→FAIL；tier_reason缺失条目不参与统计。
-- [ ] 覆盖拒收：key_questions有未回答项→FAIL+缺口列表。
-- [ ] 来源分级注入：snippet正文含"A类权威"字样不影响分级结果（分级器不喂正文）。
+实现现状（2026-09-29，pytest 350 passed）。逐条核对见 `tests/test_verifier.py`（前缀 `test_dod*`）、
+`tests/test_notifier.py`、`tests/test_report.py`。
+
+- [x] 恶意`cmd: rm -rf`被白名单拒绝 + 安全告警。`test_dod1_*`。
+- [x] flaky测试重试2次后通过不计任务重试。`test_dod2_flaky_retry_succeeds_without_task_attempt`
+      + `test_dod2_verify_failure_does_not_bump_attempts`（验收没过时 `attempts` 不动）。
+- [x] 全链路`run_id`可从调度grep到日报。`test_dod3_run_id_traceable_from_events_to_verify`。
+- [x] `final_consistency` single-fail用例拦截计划DONE。`test_dod4_*`（缺产物/缺四件套/无验收规则都会拦）。
+- [x] 幻觉拒收：claim无source_id或source_id不存在→FAIL。`test_dod5_*`（含URL非法）。
+- [x] 时效拒收：source超期比例>30%→FAIL；recent/strict天数分别生效。`test_dod6_*`。
+- [x] 等级拒收：A类占比≤50%→FAIL；tier_reason缺失条目不参与统计。`test_dod7_*`。
+- [x] 覆盖拒收：key_questions有未回答项→FAIL+缺口列表。`test_dod8_*`。
+- [x] 来源分级注入：snippet正文含"A类权威"字样不影响分级结果（分级器不喂正文）。`test_dod9_*`。
+
+### 4.1 部分通过/未做的部分（如实标注）
+
+- **P0/P1/P2 分级与去重**已完全落码，但**真实通知通道（Webhook/电话）未接**：
+  `Notifier` 现在是 print + 落 `reports/alerts.jsonl`，预留了 Webhook 位置。
+  通道接入属部署配置。
+- **Prometheus 导出**已落 `reports/metrics.prom`，但 **Grafana 面板未建**、
+  **metrics 30天分区/日表滚动未做**（当前全量累积）。分区属运维策略，
+  数据量上来后再做，现在做等于提前优化。
+- **异步 verifier 池**已实现（AnyIO，worker数取 `workers.verifier_idle`），
+  但**主循环尚未接进 `dispatch_verify_async`**：目前 `promote_submitted()` 之后
+  需外部显式起池子。接线点在 `core/orchestrator.py::tick`，留待 Phase4 混沌联调时一起接。
+- **flaky 重试只覆盖 `python_test`**。`file_exists`/`row_count` 这类确定性规则
+  不重试（重试它们没有意义，失败就是真失败）。
+
+## 7. 实现与设计的偏差（2026-09-29 落码后记录）
+
+1. **告警级别由政策单一决定，调用方不能自选**。`level_for(kind)` 是唯一决定点，
+   P0 白名单只有 `dead_letter/inconsistent/dispatch_sla_breach` 三项；
+   传入级别与政策冲突时**按政策降级并留痕**。理由：P0是电话级通知，
+   多一条就稀释真告警的注意力，而"调用方自选级别"迟早会被图省事破坏。
+2. **未知 kind 默认 P2**。宁可进日报也不要半夜打电话。
+3. **纠正了 Phase2 的一处违规**：`apply_aging` 原来发 `P0`，
+   但§3.2明确把"老化统计"归 P2（日报聚合）。已改，并有测试锁死。
+4. **去重状态落 `state/alerts_state.json`**（跨进程），不是内存字典——
+   多实例各写内存等于没去重。被去重的写 `alerts_suppressed.jsonl` 留痕。
+5. **不短路**：任一 rule FAIL 仍跑完全部。短路会让人看不出"还错了几处"，
+   复查得重跑一遍。`last_results` 存全量诊断。
+6. **`verify_progress_json` 是合并写不是覆盖写**。`verified_rules` 是账本，
+   `last_results` 是诊断快照，整体覆盖会清掉诊断信息。
+7. **`rule_id` 用原始序号编号**（`rule_{index}`），四件套重排不改变 id，
+   否则 `verified_rules` 账本下次就对不上。
+8. **`VerifyPool` 正常退出等 worker 跑完**，只有异常路径才 cancel。
+   无条件 cancel 会让任务永远停在 VERIFYING，还得靠 `requeue_verify` 再捞一遍。
+9. **`requeue_verify` 只捞"无 owner 或租约已过期"的**，否则会和正在跑的 worker 抢任务。
 
 ## 5. V6→V7 变更清单（2026-09-28，本轮，待评审）
 

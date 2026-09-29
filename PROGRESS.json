@@ -1,6 +1,6 @@
 {
-    "current_phase": "PHASE2_COMPLETED_READY_FOR_REVIEW",
-    "pending_review": "Phase2编码轮 (2026-09-29): core/orchestrator.py(主循环+DAG校验+两阶段派发+老化防饿死+唤醒+单实例DB锁), core/executor.py(无状态执行+SessionYield+协作式取消), core/checkpoint.py(检查点+cache_hit三条件), core/planner.py(拆分层幂等+契约校验+质量审计), core/search/(四段式检索+来源分级+注入防护), lease补心跳线程/死信升级/指数退避三条欠账, Store补update_priority(老化唯一合法写口)。pytest 263 passed。待review; Phase3未开始",
+    "current_phase": "PHASE3_COMPLETED_READY_FOR_REVIEW",
+    "pending_review": "Phase3编码轮 (2026-09-29): core/notifier.py(告警分级+去重, P0白名单仅三项且由政策单一决定), core/verifier.py(9个沙箱化handler+调研质量4规则+不短路), core/verify_orchestrator.py(AnyIO异步池+局部重入+final_consistency终检), core/report.py(三层报告+队列看板+Prometheus导出), core/providers.py(真实Ollama/在线provider+熔断半开), gateway补resolve/chat。pytest 350 passed。待review; Phase4未开始",
     "v6_master": "design/plans/IMPLEMENTATION_PLAN_V6.md",
     "v7_master": "design/plans/IMPLEMENTATION_PLAN_V7.md",
     "v6_validated": "33/33通过，3bug已修，4项coding清单见V6§11",
@@ -25,9 +25,9 @@
         },
         "Phase3": {
             "desc": "验证器异步+调研质量4规则+告警去重+汇总报告",
-            "evidence": "",
-            "status": "pending",
-            "updated_at": null
+            "evidence": "core/notifier.py: level_for(kind)为告警级别唯一决定点, P0白名单仅{dead_letter,inconsistent,dispatch_sla_breach}三项(设计§9定版), 传入级别与政策冲突时按政策降级并留痕, 未知kind默认P2(宁可进日报不半夜打电话); AlertPolicy dedup_window=300s+max_per_hour, 去重状态落state/alerts_state.json(跨进程, 多实例各写内存等于没去重), 被去重的写alerts_suppressed.jsonl留痕; 补登3个漏掉的P1 kind(illegal_transition/stale_owner_write/dag_invalid); 改掉Phase2的apply_aging误发P0(设计§3.2把老化归P2)并用测试锁死; core/verifier.py: 9个沙箱化handler(file_exists/row_count流式计数/python_test白名单+shell=False+flaky_retry只重试测试层不计任务attempts/json_schema/business_rule AST白名单禁eval/source_traceable/freshness超期>30%FAIL且无published_at报P2/source_quality A类>50%且tier_reason空不计入/coverage查缺口), 路径必须规范化且不出artifacts/{date}/, 固定四件套校验顺序, 不短路(短路会让人看不出还错了几处); core/verify_orchestrator.py: AnyIO VerifyPool异步不阻塞主循环(评审M7), 局部重入verified_rules跳过已通过rule(不加状态边), requeue_verify只捞无lease的, final_consistency终检(DAG/依赖/验收记录/needs_web四件套/产物存在)不过则P0 INCONSISTENT; core/report.py: 三层报告只链不搬(任务tuning.md自包含/plan summary只做索引含任务分解视图slice_rationale+调研质量A类占比/日报一屏总览+算力画像+质量告警+弱建议), 队列看板(READY按priority/最老等待/是否阻塞/session切换/缓存命中), Prometheus导出reports/metrics.prom(指标名字符白名单清洗), 阈值全读config/report.yaml, 时区按上海自然日切分(DB存UTC展示+8); core/providers.py: 真实Ollama/在线provider, 返回契约统一{content,usage:{prompt_tokens,completion_tokens}}(session切换判定依赖它), 并发闸门+熔断半开(失败路径必须释放信号量否则第一次失败就永久卡死), api_key只存环境变量名, gateway.resolve查不到返回None不造假provider(假provider会让任务'成功'但产物为空, 比报错危险)。DoD九条逐条见tests/test_verifier.py的test_dod*。写测试抓出4个真bug: ①h_file_exists对相对路径直接.exists()等于按进程CWD找文件, 换个启动目录验收结论就变 ②update_verify_progress整体覆盖把诊断用last_results冲掉 ③VerifyPool.__aexit__无条件cancel worker致任务永停VERIFYING还得靠requeue_verify返工 ④test_daily_quality_flags_dead_letter我最初手算version写错(改为每次重读)。tests 350 passed",
+            "status": "completed",
+            "updated_at": "2026-09-29T19:00:00Z"
         },
         "Phase4": {
             "desc": "验证混沌14项+隔离库",
