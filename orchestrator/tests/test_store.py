@@ -254,6 +254,13 @@ def test_replay_and_rebuild_and_backup(tmp_path):
     assert s.rebuild_export("p1") == 1
     assert (s.export_dir / "master.json").exists()
     assert (s.export_dir / "tasks" / "t1.json").exists()
+    # master按plan分文件：多plan并存时后写的不能覆盖先写的
+    assert (s.export_dir / "plans" / "p1.json").exists()
+    import json as _j
+    idx = _j.loads((s.export_dir / "master.json").read_text(encoding="utf-8"))
+    assert idx["index"] == "plans/{plan_id}.json"
+    assert [p["plan_id"] for p in idx["plans"]] == ["p1"]
     b = s.backup()
     assert b.exists() and b.stat().st_size > 0
-    assert s.migrate() == 1  # 幂等
+    from core.store import SCHEMA_VERSION
+    assert s.migrate() == SCHEMA_VERSION  # 幂等

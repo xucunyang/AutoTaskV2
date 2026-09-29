@@ -30,7 +30,14 @@ from schemas.transitions import (
 from core.utils import now_utc_iso, atomic_write_json, append_jsonl, jlog
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+# 增量迁移：CREATE TABLE IF NOT EXISTS 不会给已存在的表补列，
+# 所以新增字段必须显式声明在这里，靠 ALTER TABLE 补上。
+# 漏了一条=老库上直接 "no such column" 崩在运行期，而不是启动期。
+ADDED_COLUMNS: dict[str, str] = {
+    "verify_progress_json": "TEXT",          # v1→v2：V7 VERIFYING局部重入账本
+}
 
 DDL = """
 PRAGMA journal_mode=WAL;
@@ -202,10 +209,32 @@ class Store:
         return con
 
     def migrate(self) -> int:
-        """建表（幂等）+ user_version递增；返回当前版本。"""
+        """建表（幂等）+ 补列 + user_version升级。
+
+        顺序：先探测旧版本 → 若是真迁移则**先备份**（Phase1§2.3b
+        "启动/迁移前 VACUUM INTO backup"）→ 建表 → ALTER补列 → 记版本。
+        老库缺列是最阴的故障：建表语句全带IF NOT EXISTS，一路绿灯，
+        直到运行期某条查询才 "no such column" 炸。"""
+        exists_before = self.db_path.exists()
+        old_version = 0
+        if exists_before:
+            probe = sqlite3.connect(str(self.db_path), timeout=5.0)
+            try:
+                old_version = probe.execute("PRAGMA user_version;").fetchone()[0]
+            finally:
+                probe.close()
+        if exists_before and 0 < old_version < SCHEMA_VERSION:
+            # 真迁移才备份：每次启动都备份没有意义（同日幂等），但迁移前必须留底
+            try:
+                self.backup()
+            except Exception as e:      # 备份失败不能挡住启动，但要喊出来
+                jlog(self.root, "ERROR", "pre_migrate_backup_failed",
+                     from_version=old_version, to_version=SCHEMA_VERSION,
+                     error=str(e)[:300])
         con = self._connect()
         try:
             con.executescript(DDL)
+            added = self._add_missing_columns(con)
             v = con.execute("PRAGMA user_version;").fetchone()[0]
             if v < SCHEMA_VERSION:
                 con.execute(
@@ -215,9 +244,69 @@ class Store:
                 )
                 con.execute(f"PRAGMA user_version={SCHEMA_VERSION};")
                 con.commit()
+            if added:
+                jlog(self.root, "WARN", "schema_columns_added", columns=added,
+                     from_version=old_version, to_version=SCHEMA_VERSION)
             return max(v, SCHEMA_VERSION)
         finally:
             con.close()
+
+    @staticmethod
+    def _add_missing_columns(con: sqlite3.Connection) -> list[str]:
+        """给已存在的tasks表补新增列。返回实际补了哪些（迁移审计）。"""
+        have = {r[1] for r in con.execute("PRAGMA table_info(tasks);").fetchall()}
+        added = []
+        for col, decl in ADDED_COLUMNS.items():
+            if col in have:
+                continue
+            con.execute(f"ALTER TABLE tasks ADD COLUMN {col} {decl};")
+            added.append(col)
+        if added:
+            con.commit()
+        return added
+
+    def record_metric(self, name: str, value: float, *, plan_id: str = "-",
+                      task_id: str = "-", run_id: str = "", span: str = "",
+                      duration_ms: float | None = None) -> None:
+        """独立事务写metrics。给"写不进主表也要留痕"的场景用：
+        DB锁失败、备份失败这类——记录本身也可能失败，失败只记日志不抛。"""
+        try:
+            con = self._connect()
+            try:
+                con.execute(
+                    "INSERT INTO metrics(ts,plan_id,task_id,name,value,run_id,span,"
+                    "duration_ms) VALUES (?,?,?,?,?,?,?,?)",
+                    (now_utc_iso(), plan_id, task_id, name, value, run_id, span,
+                     duration_ms))
+                con.commit()
+            finally:
+                con.close()
+        except Exception as e:
+            jlog(self.root, "WARN", "metric_write_failed", name=name,
+                 error=str(e)[:200])
+
+    def daily_summary(self, plan_id: str, events_limit: int = 50) -> dict:
+        """Phase1§2.3读路径：日报只读 plan摘要+状态计数+最近N条events，
+        不给全量。日报渲染（Phase3）与飞书推送都走这一个聚合口。"""
+        con = self._connect()
+        try:
+            plan = con.execute("SELECT * FROM plans WHERE plan_id=?",
+                               (plan_id,)).fetchone()
+            counts = {r["status"]: r["n"] for r in con.execute(
+                "SELECT status, COUNT(*) AS n FROM tasks WHERE plan_id=?"
+                " GROUP BY status", (plan_id,))}
+            evs = [dict(r) for r in con.execute(
+                "SELECT * FROM events WHERE plan_id=? ORDER BY seq DESC LIMIT ?",
+                (plan_id, events_limit)).fetchall()]
+            total = con.execute("SELECT COUNT(*) FROM tasks WHERE plan_id=?",
+                                (plan_id,)).fetchone()[0]
+        finally:
+            con.close()
+        return {"plan_id": plan_id,
+                "plan": dict(plan) if plan else None,
+                "task_total": total,
+                "status_counts": counts,
+                "recent_events": evs}   # 倒序：最新在前
 
     # ---------- 读路径 ----------
 
@@ -539,12 +628,24 @@ class Store:
                         con.rollback()
                     except Exception:
                         pass
-                    if "locked" in str(e).lower() and attempt < retries - 1:
+                    locked = "locked" in str(e).lower()
+                    if locked:
+                        # 每次重试都留一笔：锁争用是运维要看的信号，
+                        # 全部重试成功也不该在指标上消失（Phase1§5）
+                        self.record_metric("db_lock_retry", 1,
+                                           span=f"attempt{attempt}")
+                    if locked and attempt < retries - 1:
                         time.sleep(delay)
                         delay *= 2
                         continue
                     jlog(self.root, "ERROR", "db_write_failed",
                          error=str(e)[:500])
+                    if locked:
+                        # Phase1§5：重试耗尽要记metrics并告警
+                        self.record_metric("db_lock_exhausted", 1,
+                                           span=f"after{retries}retries")
+                        self.alert("P1", "db_write_failed", error=str(e)[:300],
+                                   retries=retries)
                     raise
                 finally:
                     con.close()
@@ -822,23 +923,34 @@ class Store:
             append_jsonl(path, dict(r))
 
     def rebuild_export(self, plan_id: str) -> int:
-        """从DB全量重建导出（含master.json）；返回任务数。"""
+        """从DB全量重建导出（含master）；返回任务数。
+        master按plan_id分文件：多plan并存时（daily+多管道）后写的不能覆盖先写的。"""
         con = self._connect()
         try:
             tasks = [self._row_to_task(r) for r in con.execute(
                 "SELECT * FROM tasks WHERE plan_id=? ORDER BY seq", (plan_id,))]
             plan = con.execute(
                 "SELECT * FROM plans WHERE plan_id=?", (plan_id,)).fetchone()
+            all_plans = [dict(r) for r in con.execute(
+                "SELECT plan_id,template,status,created_at FROM plans"
+                " ORDER BY plan_id ASC").fetchall()]
         finally:
             con.close()
         for t in tasks:
             self._export_task(t)
-        atomic_write_json(self.export_dir / "master.json", {
+        body = {
             "plan_id": plan_id,
             "plan": dict(plan) if plan else None,
             "tasks": [{"task_id": t["task_id"], "status": t["status"],
                        "priority": t["priority"], "seq": t["seq"]} for t in tasks],
             "rebuilt_at": now_utc_iso(),
+        }
+        atomic_write_json(self.export_dir / "plans" / f"{plan_id}.json", body)
+        # 索引文件：只列有哪些plan，各plan自己的细节在plans/{plan_id}.json
+        atomic_write_json(self.export_dir / "master.json", {
+            "rebuilt_at": body["rebuilt_at"],
+            "plans": all_plans,
+            "index": "plans/{plan_id}.json",
         })
         return len(tasks)
 

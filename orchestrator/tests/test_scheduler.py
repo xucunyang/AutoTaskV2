@@ -144,6 +144,23 @@ def test_build_scheduler_registers_cron_job(tmp_path):
             sched.shutdown(wait=False)   # 未start时shutdown会抛SchedulerNotRunningError
 
 
+def test_build_scheduler_logs_timezone_resolution(tmp_path):
+    """Phase1§4：内部UTC、cron按job.timezone解析，DST切换以APScheduler为准并记日志。
+    记下一次触发时刻，不记偏移量——偏移量每天一样，看不出DST切换发生过。"""
+    _store(tmp_path)
+    cfg = scheduler.load_schedule(tmp_path)
+    sched = scheduler.build_scheduler(tmp_path, cfg)
+    try:
+        pass
+    finally:
+        if sched.running:
+            sched.shutdown(wait=False)
+    logs = (tmp_path / "logs" / "structured.jsonl").read_text(encoding="utf-8")
+    assert "job_timezone_resolved" in logs
+    assert "Asia/Shanghai" in logs
+    assert "cron[" in logs
+
+
 def test_daily_job_expands_today(tmp_path):
     s = _store(tmp_path)
     scheduler._daily_job(str(tmp_path), "daily_report", "0 8 * * *", TPL)

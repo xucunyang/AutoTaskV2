@@ -153,7 +153,21 @@ def build_scheduler(root: Path, cfg: dict) -> BackgroundScheduler:
             max_instances=job.get("max_instances", 1),
             misfire_grace_time=job.get("misfire_grace_time", 3600),
         )
+    _log_timezone_resolution(root, cfg, sched)
     return sched
+
+
+def _log_timezone_resolution(root: Path, cfg: dict, sched: BackgroundScheduler) -> None:
+    """Phase1§4：内部UTC、cron按job.timezone解析，DST切换以APScheduler为准并记日志。
+    记的是"下一次触发时刻"而不是"偏移量"：DST只在切换那天变，
+    每天记偏移量只会每天刷同样的话，看不出切换发生过。"""
+    for job in sched.get_jobs():
+        tz = str(job.trigger.timezone)
+        nxt = getattr(job, "next_run_time", None)
+        sched_tz = str(getattr(job.trigger, "timezone", ""))
+        jlog(root, "INFO", "job_timezone_resolved", job_id=job.id,
+             trigger=str(job.trigger), tz=tz, sched_tz=sched_tz,
+             next_run=str(nxt))
 
 
 def _daily_job(root_str: str, job_id: str, cron: str, template: str | None) -> None:
