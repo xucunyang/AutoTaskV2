@@ -31,7 +31,7 @@
 6. 主文件是汇总视图，DB行+分片是事实源，事件表是WAL（只追加日志）。
 7. 单表队列：只`tasks`为队列；`ORDER BY priority ASC, seq ASC`；`seq`由AUTOINCREMENT（数据库自动发号）分配，禁`max+1`。
 8. 高优排队等待：管道高优（priority 0..4）入队后排在Daily低优（priority 10）前面，但**不打断正在执行的任务**；当前任务完成后，主循环下一轮自然派发队列中优先级最高的READY任务。无PREEMPTED状态、无抢占协作、无preemptible/preempt_count字段。
-9. Session切换规则：80%分母=`provider.context_window`（模型窗口总上下文，非任务预算）；判定用`usage.prompt_tokens`（当前上下文，非累计消耗）；触发→`RUNNING→READY`（子Agent主动让出，attempts不变，带checkpoint断言），单任务切换>5次熔断改走FAILED（防无限让出烧token）。
+9. Session切换规则：80%分母=动态窗口`final_window`=`min(架构上限,档位建议,显存可撑,配置覆盖)`-`context_reserved`(8192)（模型窗口总上下文，非任务预算）；判定用`usage.prompt_tokens`（当前上下文，非累计消耗）；触发→`RUNNING→READY`（子Agent主动让出，attempts不变，带checkpoint断言，long_running=false拒让出）；单任务切换>5次熔断改走FAILED（防无限让出烧token）；撞`context_length_exceeded`→强制让出（`reason=context_overflow`）+水位线自适应下调。
 10. Web搜索规则：`needs_web`是能力开关非路由维度；资讯/政策/消息必须检索（新鲜度recent=730天/strict=180天）；来源分级=域名先验+LLM逐条判定（只喂url+域名+title+发布者，禁喂正文防注入）；A类来源占比>50%。
 11. 网关/搜索插件可插拔，隐私默认关（`privacy.enabled=false`，跳过扫描与脱敏，接口保留）。
 12. 计时阈值与算力配额全部进配置，不改代码调参。
@@ -46,7 +46,8 @@ orchestrator/
   templates/daily_plan.yaml, pipeline_task.json, task_card.j2
   schemas/models.py（含Source/Claim/SourceTier）, transitions.py, acceptance_*.yaml, summary.schema.json
   core/store.py, lease.py, enqueue.py, scheduler.py, orchestrator.py, executor.py
-  core/planner.py（LLM拆分）, core/governor.py（含override三态）, gateway.py
+  core/planner.py（LLM拆分）, core/governor.py（含override三态+Win/Mac双平台空闲检测）, gateway.py（含CapabilityMatch本地窗口门禁）
+  core/context.py（动态窗口计算：探测+分档+显存取min+resolved/effective对账）
   core/providers/{base,ollama,online_stub}.py
   core/routing/{chain,privacy_guard,latency_guard,capability_match}.py
   core/search/{base.py, tavily.py, classify_source.py}（Web搜索插件+来源分级）
@@ -55,7 +56,7 @@ orchestrator/
   tests/test_*.py  scripts/smoke_daily.py scripts/chaos_*.py
 ```
 
-骨架现状：`schemas/transitions.py`（14态简化状态机）、`schemas/models.py`（`schema`已改名`schema_ref`，Budget待改）、`core/{gateway,privacy,timing,governor,utils}.py`✅、`config/{gateway,schedule,report}.yaml`（privacy段+workers/governor段已补）、`requirements.txt`（pydantic/pyyaml/anyio/psutil/pytest✅）。V7新增：`config/search.yaml`、`core/search/*`、`core/ingress/*`、`core/planner.py`。
+骨架现状：`schemas/transitions.py`（14态+让出边+`context_overflow`第五reason✅）、`schemas/models.py`（`schema_ref`改名+`long_running`/`rule_id`/`Source`/`Claim`✅，Budget已删max_tokens）、`core/{gateway(含本地门禁),privacy,timing,governor(双平台),utils,context(动态窗口)}.py`✅、`config/{gateway(分档+reserved+门禁),schedule,report(tuning段),search}.yaml`（privacy段+workers/governor段已补）、`docs/deploy-prereq.md`✅、`requirements.txt`（pydantic/pyyaml/anyio/psutil/pytest✅）。待编码：`core/search/*`、`core/ingress/*`、`core/planner.py`、`Store.transition`。
 
 ## 4. ID与字段规范
 
@@ -63,13 +64,14 @@ orchestrator/
 - `idempotency_key（幂等键）=plan/task/inputs_hash全hash` UNIQUE，禁截断。
 - `run_id=plan_uuid7`透传；`priority 0..10枚举`（0..4管道，5普通，10 Daily）；`last_success_hash`判缓存；`cancel_requested`配`CANCEL_REQUESTED`事件；`privacy/complexity`保留，关闭时填public/simple。
 - `TaskShard.task_id`正则`^[a-z0-9_]{1,64}$`；`AcceptanceRule.schema`改名`schema_ref`（与Pydantic父类属性重名告警，见§11修复③）。
-- `TaskShard.needs_web: bool`（资讯/政策/消息类=true）；`freshness: none|recent|strict`（recent=730天，strict=180天）；`slice_rationale: str`（拆分依据，报告任务分解视图引用）。
+- `TaskShard.needs_web: bool`（资讯/政策/消息类=true）；`freshness: none|recent|strict`（recent=730天，strict=180天）；`slice_rationale: str`（拆分依据，报告任务分解视图引用）；`long_running: bool`（planner判定预期耗时+允许手工覆盖，false拒让出，撞线重试自动置True自学习）。
+- `AcceptanceRule.rule_id`（VERIFYING局部重入定位键，为空时按rule_index自动编号）。
 - `Source{source_id,url,title,snippet,published_at,source_tier(A|B|C),tier_reason}`；`Claim{claim_id,text,source_ids[],verdict}`（结论必须挂来源，无来源=幻觉拒收）。
 - `Budget`删`max_tokens`（语义改为provider级`context_window`），保留`max_steps/timeout_s`为任务级执行限制。
 
 ## 5. 状态机
 
-`PENDING→BLOCKED/READY→RUNNING→SUBMITTED→VERIFYING→DONE/RETRY/FAILED/WAITING_APPROVAL（4h升级P0）；RUNNING→READY（子Agent主动让出，reason=context_full/steps_exhausted/timeout/cancel_requested，attempts不变，须带checkpoint）；终态DONE/DEAD_LETTER/CANCELLED/SKIPPED*`。`DONE`无出边；子Agent仅`RUNNING→SUBMITTED/FAILED/READY(让出)`；非法记REJECTED+P1。让出熔断：`session_switch_total>5`→P1告警+下次让出改走FAILED。
+`PENDING→BLOCKED/READY→RUNNING→SUBMITTED→VERIFYING→DONE/RETRY/FAILED/WAITING_APPROVAL（4h升级P0）；RUNNING→READY（子Agent主动让出，reason=context_full/steps_exhausted/timeout/cancel_requested/context_overflow，attempts不变，须带checkpoint，long_running=false拒让出）；终态DONE/DEAD_LETTER/CANCELLED/SKIPPED*`。`DONE`无出边；子Agent仅`RUNNING→SUBMITTED/FAILED/READY(让出)`；非法记REJECTED+P1。让出熔断：`session_switch_total>5`→P1告警+下次让出改走FAILED。
 
 ## 6. 存储/调度/租约/队列入口
 
@@ -84,7 +86,7 @@ orchestrator/
 - 主循环（跨plan全局，单实例+优雅停机）：`recover→ingest_inbox→planner（LLM拆分：笼统问题→任务卡DAG，含拆分侧session恢复）→refresh_ready→aging（10min→5，20min→3）→dispatch_split（高优N-1槽+低优保1槽）→verify_async（池2）→export→wait_wakeup（wakeup.flag事件+10s/2s）`。
 - 子Agent四段式（仅`needs_web=true`）：`①检索（search provider→raw_sources.json）→②筛选（freshness+来源分级）→③分析（只基于筛后资料，禁止参数内知识）→④产出（report.md+sources.json+claims.json）`；推理逻辑类跳过检索直接分析。
 - 阻塞调用包`to_thread`，防卡事件循环（单线程轮流跑任务的核心）。
-- 算力（本机8逻辑/16GB，已验证切换逻辑V5-1~V5-5✅）：
+- 算力（部署目标32G Mac统一内存；切换逻辑V5-1~V5-5在8逻辑/16GB开发机验证✅）：
 
 | 档位 | 判定 | CPU | 内存 | executor | verifier | 本地 |
 |---|---|---|---|---|---|---|
@@ -98,26 +100,26 @@ orchestrator/
 ## 8. 网关/搜索（隐私默认关）与报告（只链不搬）
 
 - 网关插件链`privacy_guard→latency_guard→capability_match→cost_saver`；能力`3B→simple/4B→simple/7B→medium/complex走在线`；验证结论G1-G5✅（secret强制本地、simple本地、complex在线、过载公开切在线且隐私不切）。
-- `Provider.chat()`返回契约：`{content, usage:{prompt_tokens, completion_tokens}}`（session切换判定依据）；provider配置加`context_window`（3B/7B=32768，online=128000）。
+- `Provider.chat()`返回契约：`{content, usage:{prompt_tokens, completion_tokens}}`（session切换判定依据）；窗口动态计算`final=min(架构上限,档位建议,显存可撑,配置覆盖)`-`context_reserved`(8192)，`usable<min_usable`(16384)→本地不可用→`CapabilityMatch`门禁改走在线（privacy=secret绕过门禁，永不上云）；`resolved` vs `effective`对账（启动自检+每次切档）防Ollama静默截断num_ctx。
 - 搜索插件链（与网关同构可插拔）：`core/search/{base,tavily}.py`（exa/bing预留桩）+`config/search.yaml`（provider/api_key_env/timeout/top_k/日额度）+`classify_source.py`（域名先验+LLM逐条判定，禁喂正文）。
 - 隐私关闭时：`enqueue`跳扫描、`route`跳`classify`、日志跳脱敏；接口`classify/redact/PrivacyGuard`保留，`test_privacy`默认skip。正则已修数字前后瞻（中文旁`\b`漏检，见§11修复②）。
 - 本地保护：并发按§7（ACTIVE0/IDLE1）、`slo_p50_8s`、队列>4/连败3熔断5min半开、simple20s/medium60s超时切换；高优公开直走在线。
-- 汇总`reports/{plan}.summary.md+json`：失败置顶/Top5/阻塞/甘特/网关用量/任务分解视图（分片主题+依赖+slice_rationale，体现拆分质量），全链任务输出报告，缺失标`[缺失]`+P1；日报18:00合集。计时`timing.span()`7处✅（C1-C2）。
+- 汇总`reports/{plan}.summary.md+json`：失败置顶/Top5/阻塞/甘特/网关用量/任务分解视图（分片主题+依赖+slice_rationale，体现拆分质量），只做索引不重复贴模型表；任务级`artifacts/{date}/{task}/tuning.md`自包含诊断（每行带"说明"列）；日报一屏总览+算力画像+弱建议调参，全链任务输出报告，缺失标`[缺失]`+P1；日报18:00合集。计时`timing.span()`7处✅（C1-C2）。
 
 ## 9. 校验/观测/计时
 
 - 验证器AnyIO协程池；白名单+`shell=False（不走系统壳）`+flaky重试不计attempts；`final_consistency`逐plan；`AlertPolicy（去重策略）`5min合并，P0仅死信/不一致/高优SLA超时；`metrics`留30天。
 - 调研质量验收4新规则：`source_traceable`（每条claim的source_id存在于sources.json，URL合法）、`freshness`（published_at距今≤阈值：recent 730天/strict 180天）、`source_quality`（A类来源占比>50%）、`coverage`（预定义key_questions全部有非空回答）。
-- metrics加`session_switch_total`（单任务切换次数，熔断依据）；日报显示"本任务切了几次session"。
+- metrics加`session_switch_total`（单任务切换次数，熔断依据）、`context_window_resolved/effective`（对账，防静默截断）、`route_decision{provider,reason}`（切在线原因分解）、`context_overflow_fallback`（>0即窗口配错）、`local_unavailable`（门禁拦截）；日报显示"本任务切了几次session"。
 
 ## 10. 阈值（定版）
 
-老化10min→5、20min→3；预留1槽；熔断5min；高优SLA p95<60s（排队等待）；cancel宽限30s/60s；lease120s/心跳30s；报告plan终态30s落盘；session切换水位线=context_window的80%、让出熔断K=5；freshness：recent=730天/strict=180天；来源A类占比>50%。
+老化10min→5、20min→3；预留1槽；熔断5min；高优SLA p95<60s（排队等待）；cancel宽限30s/60s；lease120s/心跳30s；报告plan终态30s落盘；session切换水位线=动态窗口`final`的80%、让出熔断K=5；`context_reserved`=8192、`min_usable`=16384、`system_reserved_gb`=5；freshness：recent=730天/strict=180天；来源A类占比>50%；调优阈值见`report.yaml`的`tuning`段。
 
 ## 11. 验证基线与coding前修复（33/33已过，带入coding）
 
-已修并验证：①隐私正则`\b`→数字前后瞻；②`gateway.yaml`的`${ONLINE_BASE_URL}`加引号（YAML流映射解析失败）；③上述两处复测通过；④简化抢占模型（移除PREEMPTED/preemptible/preempt_count，15态→14态）；⑤Budget语义改为provider级context_window。
-coding清单（V7新增）：①`transitions.py`加`RUNNING→READY`让出边+SELF_YIELD+熔断；②`models.py`加`Source/Claim/SourceTier`+`needs_web/freshness/slice_rationale`；③`config/search.yaml`+`core/search/*`；④`gateway.py`的`chat()`返回契约改usage；⑤`Store.transition`为第一块硬骨头。
+已修并验证：①隐私正则`\b`→数字前后瞻；②`gateway.yaml`的`${ONLINE_BASE_URL}`加引号（YAML流映射解析失败）；③上述两处复测通过；④简化抢占模型（移除PREEMPTED/preemptible/preempt_count，15态→14态）；⑤Budget语义改为provider级context_window；⑥动态窗口（分档+reserved+门禁+双平台governor+让出前置+兜底reason），pytest 42 passed。
+coding清单（剩余）：①`gateway.py`的`chat()`返回契约改usage；②`Store.transition`为第一块硬骨头（含让出边`long_running`前置+熔断计数）；③`core/search/*`+来源分级器；④`core/planner.py`（LLM拆分+`long_running`判定）；⑤`requeue_verify()`+`verified_rules`局部重入。
 
 ## 12. 开工顺序（竖切优先，每步有可运行产出，每步更新PROGRESS.json）
 
@@ -132,4 +134,4 @@ coding清单（V7新增）：①`transitions.py`加`RUNNING→READY`让出边+SE
 
 ## 13. 新会话首读清单（防失忆，按序读）
 
-`IMPLEMENTATION_PLAN_V7.md`（本文件）→ `PROGRESS.json` → `design/phases/00-overview.md` → `design/phases/Phase0~4-*.md` → `design/phases/REVIEW-architect.md`（历史评审记录）→ `orchestrator/core/{governor,gateway,privacy}.py` → `orchestrator/schemas/{transitions,models}.py`。
+`IMPLEMENTATION_PLAN_V7.md`（本文件）→ `PROGRESS.json` → `docs/deploy-prereq.md`（部署前置） → `design/phases/00-overview.md` → `design/phases/Phase0~4-*.md` → `design/phases/REVIEW-architect.md`（历史评审记录）→ `orchestrator/core/{governor,gateway,privacy,context}.py` → `orchestrator/schemas/{transitions,models}.py`。
