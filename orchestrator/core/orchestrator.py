@@ -15,6 +15,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import anyio
+
 from core import enqueue as enqueue_mod
 from core import lease as lease_mod
 from core.store import Conflict, IllegalTransition, Store, StaleOwner
@@ -36,7 +38,8 @@ class Orchestrator:
 
     def __init__(self, root: str | Path, executor_fn=None, owner: str = "orchestrator-main",
                  max_workers: int = 4, poll_normal_s: float = 10,
-                 poll_fast_s: float = 2, run_once: bool = False):
+                 poll_fast_s: float = 2, run_once: bool = False,
+                 verify_pool=None):
         self.root = Path(root)
         self.store = Store(self.root)
         self.executor_fn = executor_fn
@@ -47,6 +50,8 @@ class Orchestrator:
         self.run_once = run_once
         self._shutdown = False
         self._lock_held = False
+        self.verify_pool = verify_pool     # 外部注入的VerifyPool（可为None）
+        self._in_flight: set[tuple[str, str]] = set()   # 已丢池、尚未回收的
         cfg = _load_cfg(self.root)
         self.low_slot_reserve = int(cfg.get("workers", {})
                                     .get("reserved_low_slot", RESERVED_LOW_SLOTS))
@@ -279,6 +284,43 @@ class Orchestrator:
                 continue
         return out
 
+    def dispatch_verify_async(self) -> list[tuple[str, str]]:
+        """把VERIFYING任务丢进异步校验池（评审M7），并捞回上次中断的。
+
+        两条约束：
+        - 同一个task不能重复入池，否则两个worker会抢同一个任务双写终态；
+        - 只捞**无lease**的VERIFYING（requeue_verify）：有租约说明worker还活着，
+          抢过来等于自己和自己打架。
+        """
+        from core import verify_orchestrator as vmod
+        if self.verify_pool is None:
+            return []
+        pending = vmod.requeue_verify(self.store, run_id=self._run_id())
+        out = []
+        for t in pending:
+            key = (t["plan_id"], t["task_id"])
+            if key in self._in_flight:
+                continue
+            self._in_flight.add(key)
+            self.verify_pool._tg.start_soon(self._verify_worker, *key,
+                                           self._run_id())
+            out.append(key)
+        return out
+
+    async def _verify_worker(self, plan_id: str, task_id: str,
+                             run_id: str) -> None:
+        """校验是阻塞的（跑pytest/数行数），丢线程池执行，
+        否则一条慢的python_test会把主循环一起卡住。"""
+        from core import verify_orchestrator as vmod
+        try:
+            await anyio.to_thread.run_sync(
+                lambda: vmod.verify(self.store, plan_id, task_id, run_id))
+        except Exception as e:      # noqa: BLE001 单个校验炸了不能带崩主循环
+            jlog(self.root, "ERROR", "verify_dispatch_failed", plan_id=plan_id,
+                 task_id=task_id, error=str(e)[:300])
+        finally:
+            self._in_flight.discard((plan_id, task_id))
+
     def housekeeping(self) -> dict:
         """一轮的收尾工作：租约回收→死信升级→取消收尾。"""
         rec = lease_mod.recover_expired_leases(self.store, run_id=self._run_id(),
@@ -346,6 +388,7 @@ class Orchestrator:
         stats["backlog"] = self.backlog_check()
         stats["dispatched"] = len(self.dispatch_split())
         stats["promoted"] = len(self.promote_submitted())
+        stats["verify_dispatched"] = len(self.dispatch_verify_async())
         for p in self.active_plans():
             try:
                 self.store.rebuild_export(p)
@@ -361,13 +404,28 @@ class Orchestrator:
         jlog(self.root, "INFO", "orchestrator_started", pid=os.getpid(),
              owner=self.owner)
         n = 0
+        async def _drive():
+            """有池子时在async上下文里跑tick，池子退出时会等所有worker收尾
+            （不cancel——中途cancel会让任务永远停在VERIFYING）。"""
+            n = 0
+            async with self.verify_pool:
+                while not self.check_shutdown():
+                    self.tick()
+                    n += 1
+                    if self.run_once or (max_ticks is not None and n >= max_ticks):
+                        break
+                    self.wait_wakeup(self.poll_normal_s)
+            return n
         try:
-            while not self.check_shutdown():
-                self.tick()
-                n += 1
-                if self.run_once or (max_ticks is not None and n >= max_ticks):
-                    break
-                self.wait_wakeup(self.poll_normal_s)
+            if self.verify_pool is not None:
+                n = anyio.run(_drive)
+            else:
+                while not self.check_shutdown():
+                    self.tick()
+                    n += 1
+                    if self.run_once or (max_ticks is not None and n >= max_ticks):
+                        break
+                    self.wait_wakeup(self.poll_normal_s)
         finally:
             self.release_lock()
             jlog(self.root, "INFO", "orchestrator_stopped", ticks=n)
@@ -405,11 +463,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--once", action="store_true", help="只跑一轮")
     ap.add_argument("--max-ticks", type=int, default=None)
     ap.add_argument("--no-lock", action="store_true")
+    ap.add_argument("--no-verify-pool", action="store_true",
+                    help="不起异步校验池（同步跑，用于单测/排障）")
     args = ap.parse_args(argv)
     root = Path(args.root) if args.root else Path(__file__).resolve().parent.parent
     from core import executor
+    from core.verify_orchestrator import VerifyPool
+    store = Store(root)
+    pool = None if args.no_verify_pool else VerifyPool(store)
     orch = Orchestrator(root, executor_fn=executor.run_task,
-                        run_once=args.once)
+                        run_once=args.once, verify_pool=pool)
     if args.no_lock:
         orch._lock_held = True
     orch.run_forever(max_ticks=args.max_ticks)
