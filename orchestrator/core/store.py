@@ -270,6 +270,14 @@ class Store:
 
         return self._row_to_task(self._write_txn(_fn))
 
+    def list_plans(self) -> list[dict]:
+        con = self._connect()
+        try:
+            rows = con.execute("SELECT * FROM plans ORDER BY plan_id ASC").fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            con.close()
+
     def list_by_status(self, status: str) -> list[dict]:
         """按状态列候选（供lease回收扫描用；排序固定seq保证可重放）。"""
         con = self._connect()
