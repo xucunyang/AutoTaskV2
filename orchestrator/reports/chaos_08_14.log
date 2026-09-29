@@ -1,0 +1,9 @@
+# 混沌 8-14 证据  2026-09-29T13:24:09.114231+00:00
+
+- [PASS] 混沌8 低优不被饿死: aged=5 预留槽派发low1=['hi1', 'low1']
+- [PASS] 混沌9 session切换全链路: yielded=yielded:context_full attempts=0 gen=2
+- [PASS] 混沌10 让出熔断: K=2 exceeded outcome=yield_rejected:context_full status=FAILED
+- [PASS] 混沌11 幻觉拒收: outcome=retry detail=hallucination:['c2']
+- [PASS] 混沌12 拆分幂等: plan=adhoc_c62d430302fe3903 second_created=False
+- [PASS] 混沌13 静默截断检测: resolved=65536 effective=16384 verdict=truncated usable=8192
+- [PASS] 混沌14 Mac空闲检测: 非负秒数 + 缺失保安全0.0

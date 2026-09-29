@@ -1,0 +1,9 @@
+# 混沌 1-7 证据  2026-09-29T13:24:08.197383+00:00
+
+- [PASS] 混沌1 kill-9无半写+租约回收: recovered=1 replay_ok=True cursor=row-3000
+- [PASS] 混沌2 双调度只建一次: first=('created', 3) second=('skipped', 0)
+- [PASS] 混沌3 旧fencing写回被拒: old=1 new=2 status仍RUNNING
+- [PASS] 混沌4 READY->DONE直写被拒: status仍READY + P1 illegal_transition
+- [PASS] 混沌5 大文件prompt+校验和: file=5.4MB tokens=284 rows=200000
+- [PASS] 混沌6 FIFO十任务: order=['t0', 't1', 't2']... seq递增
+- [PASS] 混沌7 高优排队p95: p95=38.4ms 阈值=60s 样本=12
