@@ -184,6 +184,40 @@ def test_scan_inbox_survives_corrupt_json(tmp_path):
     assert (tmp_path / "inbox" / "error" / "corrupt.json").exists()
 
 
+def test_defaults_status_and_idempotency_key(tmp_path):
+    """调用方不必写status/idempotency_key：入队通道补齐（与scheduler同派生规则）。"""
+    s = Store(tmp_path)
+    minimal = {"task_id": "min1", "objective": "o"}   # 只有这两个必填
+    f = _write(tmp_path, "min.json", minimal)
+    status, row = enqueue.enqueue_file(s, f)
+    assert status == "inserted"
+    assert row["status"] == "PENDING"
+    assert row["idempotency_key"] == "pipeline:min1"
+    # 再投同一个 → 幂等命中
+    assert enqueue.enqueue_file(s, f)[0] == "already_exists"
+    # 显式给了idempotency_key就按给的算
+    f2 = _write(tmp_path, "min2.json",
+                {"task_id": "min2", "objective": "o", "idempotency_key": "custom"})
+    _s2, row2 = enqueue.enqueue_file(s, f2)
+    assert row2["idempotency_key"] == "custom"
+
+
+def test_shipped_pipeline_template_is_enqueueable(tmp_path):
+    """回归：仓库自带的 templates/pipeline_task.json 必须真的能入队。
+    历史问题：模板缺status/idempotency_key，CLI直接REJECTED。"""
+    tpl = Path(__file__).resolve().parent.parent / "templates" / "pipeline_task.json"
+    data = json.loads(tpl.read_text(encoding="utf-8"))
+    data["task_id"] = "tpl_check"
+    f = _write(tmp_path, "tpl.json", data)
+    s = Store(tmp_path)
+    status, row = enqueue.enqueue_file(s, f)
+    assert status == "inserted"
+    assert row["task_id"] == "tpl_check"
+    # 管道模板必须自称pipeline：否则priority=0的管道任务会被当Daily统计
+    assert row["source"] == "pipeline"
+    assert row["priority"] == 0
+
+
 def test_cli_rejects_bad_file_exit_code(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr("core.enqueue.Store",
                         lambda *a, **k: Store(tmp_path))

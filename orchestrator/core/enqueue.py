@@ -63,6 +63,14 @@ def validate(raw: bytes, *, root: Path, now: float | None = None) -> dict:
     if not isinstance(data, dict):
         raise EnqueueError("not_an_object")
 
+    # 0) 补齐入队通道的固定字段：status由入队决定（PENDING），
+    #    idempotency_key 缺省按 {plan_id}:{task_id} 派生（与 scheduler.expand_template 同规则），
+    #    否则调用方不写这两个字段就永远过不了Pydantic，模板也不必重复写。
+    data.setdefault("status", "PENDING")
+    data.setdefault("plan_id", "pipeline")
+    if not data.get("idempotency_key"):
+        data["idempotency_key"] = f"{data['plan_id']}:{data.get('task_id', '')}"
+
     # 1) task_id 形态（M9）
     tid = data.get("task_id", "")
     if not TASK_ID_RE.match(str(tid)):
@@ -155,15 +163,16 @@ def enqueue_file(store: Store, path: str | Path, *, priority: int | None = None,
     p = Path(path)
     raw = p.read_bytes()
     data = json.loads(raw.decode("utf-8")) if raw else {}
+    if not isinstance(data, dict):
+        raise EnqueueError("not_an_object")
     if priority is not None:
         data["priority"] = priority
     if plan_id is not None:
         data["plan_id"] = plan_id
-    if "plan_id" not in data:
-        data["plan_id"] = "pipeline"
-    # 重新序列化再过一次校验（priority/plan_id可能被CLI覆盖）
+    data.setdefault("plan_id", "pipeline")
+    # 重新序列化再过一次校验（priority/plan_id可能被CLI覆盖；status/idempotency_key
+    # 由validate()统一补齐，调用方不必重复写）
     shard = validate(json.dumps(data, ensure_ascii=False).encode("utf-8"), root=root)
-    shard["status"] = "PENDING"
     try:
         status, row = store.insert_task(shard)
     except AlreadyExists as e:
