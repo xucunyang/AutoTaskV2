@@ -44,6 +44,10 @@ class CapabilityMatch(RoutePolicy):
         if task.privacy == "secret":
             return {"provider": "local-ollama", "reason": "privacy_local_only"}
         if need <= self.LOCAL_MAX and ctx.get("prefer_local", True):
+            # V7本地门禁：usable低于min_usable→本地实际不可用，改走在线；
+            # 缺省（ctx无local_usable键）保持旧行为，避免调用方未传参时全切在线
+            if ctx.get("local_usable") is False:
+                return {"provider": "online", "reason": "local_window_insufficient"}
             return {"provider": "local-ollama", "reason": f"capability_{task.complexity}"}
         return {"provider": "online", "reason": f"capability_{task.complexity}_online"}
 
