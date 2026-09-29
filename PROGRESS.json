@@ -1,15 +1,15 @@
 {
     "current_phase": "READY_FOR_PHASE1",
-    "pending_review": "V7 design docs created 2026-09-28 (IMPLEMENTATION_PLAN_V7.md + 00-overview + Phase0-4 rewritten, see revision appendix in each file), awaiting user review sign-off; no Phase1+ business code started",
+    "pending_review": "动态窗口+双平台+三层报告轮 (2026-09-29): gateway分档/context.py/门禁/governor双平台/兜底reason/long_running/rule_id/四件套/docs+15 commits, pytest 42 passed; awaiting user review sign-off; no Phase1+ business code started",
     "v6_master": "design/plans/IMPLEMENTATION_PLAN_V6.md",
     "v7_master": "design/plans/IMPLEMENTATION_PLAN_V7.md",
     "v6_validated": "33/33通过，3bug已修，4项coding清单见V6§11",
     "phases": {
         "Phase0": {
             "desc": "契约schemas与状态机（V7：14态+让出边+调研三件套模型）",
-            "evidence": "V7定稿: transitions.py加RUNNING->READY让出边(SELF_YIELD+reason四值+熔断K=5); models.py Budget删max_tokens/TaskShard加needs_web/freshness/slice_rationale/key_questions/session_switch_total/新增Source+Claim/Checkpoint扩4字段; config/search.yaml新建+gateway.yaml加context_window+session_yield; tests 21 passed",
+            "evidence": "动态窗口轮: transitions让出reason五值(+context_overflow); models加long_running/rule_id+needs_web×freshness交叉校验; 新建core/context.py(9单测)+test_gateway(6用例)+test_governor(4用例); gateway.yaml分档+reserved16384门槛+context_window=null; report.yaml tuning段+sla60; 新建docs/deploy-prereq.md; tests 42 passed",
             "status": "completed",
-            "updated_at": "2026-09-28T15:50:21Z"
+            "updated_at": "2026-09-29T07:34:13Z"
         },
         "Phase1": {
             "desc": "存储SQLite+调度+租约+队列入口（单表/AUTOINCREMENT/Store/备份迁移/让出熔断）",
@@ -30,12 +30,12 @@
             "updated_at": null
         },
         "Phase4": {
-            "desc": "验证混沌12项+隔离库",
+            "desc": "验证混沌14项+隔离库",
             "evidence": "",
             "status": "pending",
             "updated_at": null
         }
     },
     "plan_id": "autotask_bootstrap",
-    "updated_at": "2026-09-28T15:50:21Z"
+    "updated_at": "2026-09-29T07:34:13Z"
 }

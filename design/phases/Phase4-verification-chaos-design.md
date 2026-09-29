@@ -10,14 +10,15 @@
 
 ## 2. 单元测试（`pytest`）
 
-- `tests/test_transitions.py`：ALLOWED正例全覆盖 + 非法`READY->DONE/RUNNING->DONE/DONE->*`反例；**V7新增：`RUNNING->READY`让出正例（带reason+checkpoint）、无checkpoint让出拒、熔断超限拒、attempts不变断言**。
-- `tests/test_models.py`：非法handoff（超长summary/缺字段）、manifest缺sha被拒；**V7新增：Source缺tier_reason拒、Claim空source_ids拒、needs_web=true时freshness=none拒**。
+- `tests/test_transitions.py`：ALLOWED正例全覆盖 + 非法`READY->DONE/RUNNING->DONE/DONE->*`反例；**V7新增：`RUNNING->READY`让出正例（reason五值+checkpoint+long_running前置）、无checkpoint让出拒、熔断超限拒、attempts不变断言**。
+- `tests/test_models.py`：非法handoff（超长summary/缺字段）、manifest缺sha被拒；**V7新增：Source缺tier_reason拒、Claim空source_ids拒、needs_web=true时freshness=none拒、long_running/rule_id字段**。
 - `tests/test_store.py`：`transition`乐观锁冲突、fencing旧owner被拒、非法跃迁REJECTED、AUTOINCREMENT seq不重、**让出边熔断计数（session_switch_total递增到K后拒）**。
 - `tests/test_lease.py`：acquire/renew/expire/recover全周期、**主动让出与租约过期区分（前者attempts不变后者计）**。
 - `tests/test_verifier.py`：路径越界拒绝、白名单外cmd拒绝、flaky重试、business_rule注入拒绝、**source_traceable/freshness/source_quality/coverage四handler正反例**。
 - `tests/test_planner.py`（新增）：拆分输出JSON校验、key_questions/slice_rationale齐全、同一问题二次拆分幂等、拆分侧session恢复（超80%→checkpoint→续拆）。
 - `tests/test_search.py`（新增）：域名先验（官方域名直接A不调LLM）、平台域名逐条判（蓝V判A案例）、未知域名LLM判、**注入防护（snippet正文不影响分级）**、分级结果落盘复用。
 - 新增：`test_queue_order/test_reserved_slot/test_gateway_route/test_privacy_guard/test_timing_spans`（`test_privacy*`在`privacy.enabled=false`下默认skip，接口保留，V7§8）。
+- 已落地：`test_context.py`（动态窗口纯计算9用例）、`test_gateway.py`（本地门禁6用例）、`test_governor.py`（双平台分派4用例）。
 - 要求覆盖率：`store+lease+verifier+gateway+planner+search` ≥80%（V7§12.8硬线）。测试用隔离库`state_test.db`，禁污染生产库；备份`VACUUM INTO`+`v1→v2`迁移演练必过。
 
 ## 3. 混沌测试（`scripts/chaos_*.py`，人工一键）
@@ -34,6 +35,8 @@
 10. **让出熔断（V7新增）**：构造连续让出>K次→观测P1告警+后续改走FAILED+计attempts。
 11. **幻觉拒收（V7新增）**：产物claims.json含无source_id结论→验收FAIL+INCONSISTENT候选。
 12. **拆分幂等（V7新增）**：同一问题投两次planner→只拆一次，第二次already_exists。
+13. **静默截断检测**：mock服务端返回小effective→观测`check_effective`=truncated+P1告警+水位线下调。
+14. **Mac空闲检测**：Mac上`_idle_mac()`返回非负秒数；ioreg缺失时保安全0.0（判ACTIVE）。
 
 ## 4. 端到端冒烟（`scripts/smoke_daily.py`）
 
@@ -42,7 +45,7 @@
 - 断言：三任务`DONE`、产物+manifest存在、`events`可重放、`reports/today.md`生成。
 - 二次同输入触发：命中`SKIPPED_CACHED`至少1个。
 - 混合冒烟：Daily跑一半时经`enqueue`注入管道高优，验证高优排队等待+当前任务完成后自然衔接+最终双链路DONE；另覆盖网关熔断（kill ollama公开自动切在线）与verify慢rule标验收阻塞。
-- **调研冒烟（V7新增）**：笼统问题→planner拆分→needs_web=true任务走四段式（检索→筛选→分析→产出三件套）→4条调研验收全过→report.md含任务分解视图。
+- **调研冒烟（V7新增）**：笼统问题→planner拆分→needs_web=true任务走四段式（检索→筛选→分析→产出四件套）→4条调研验收全过→report.md含任务分解视图。
 - 全程日志含同一`run_id`（跨来源任务run_id独立但queue seq可关联）。
 
 ## 5. 性能与成本基线
@@ -55,7 +58,7 @@
 ## 6. DoD（全项目放行标准）
 
 - [ ] 上述单元全绿，覆盖率≥80%。
-- [ ] 混沌12项全过（含FIFO/高优排队p95/防饿死/网关熔断/verify慢标阻塞/session切换/让出熔断/幻觉拒收/拆分幂等），证据写入`reports/chaos_*.log`，时间断言用p95/p99非wall-clock硬线。
+- [ ] 混沌14项全过（含FIFO/高优排队p95/防饿死/网关熔断/verify慢标阻塞/session切换/让出熔断/幻觉拒收/拆分幂等/静默截断/Mac空闲检测），证据写入`reports/chaos_*.log`，时间断言用p95/p99非wall-clock硬线。
 - [ ] 冒烟连续2次全绿（含调研冒烟），`{plan}.summary.md`含失败置顶+Top5+阻塞+任务分解视图+调研质量章节可审计。
 - [ ] `PROGRESS.json`全Phase `done` + evidence可追溯，`design/phases/*.md`评审签字通过。
 
@@ -66,4 +69,5 @@
 - §4：混合冒烟加调研冒烟（planner→四段式→4验收→任务分解视图）。
 - §5：基线加来源分级调用成本。
 - §6：DoD混沌8→12项。
+- 本轮（动态窗口+双平台+四件套）：§2补已落地的test_context/test_gateway/test_governor；§3混沌12→14项（加静默截断检测/Mac空闲检测）；§4调研冒烟三件套→四件套；§6 DoD同步14项。
 - 前轮（V6）保留：隔离库、VACUUM INTO+迁移演练、p95/p99断言、test_privacy默认skip。
