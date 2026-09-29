@@ -1,6 +1,7 @@
 """动态算力总督V5：ACTIVE(人在,~1/8共享1槽) / IDLE(空闲,85%) + 手动override三态。"""
 from __future__ import annotations
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -12,7 +13,15 @@ def cpu_total() -> int:
     return os.cpu_count() or 8
 
 def idle_seconds() -> float:
-    """Windows最后输入距今秒数；非Windows/失败默认0（保安全判ACTIVE）。"""
+    """最后输入距今秒数（双平台分派）；未知平台/失败默认0（保安全判ACTIVE）。"""
+    if sys.platform == "win32":
+        return _idle_win()
+    if sys.platform == "darwin":
+        return _idle_mac()
+    return 0.0
+
+def _idle_win() -> float:
+    """Windows：GetLastInputInfo；失败默认0。"""
     try:
         import ctypes
         class LASTINPUTINFO(ctypes.Structure):
@@ -22,6 +31,23 @@ def idle_seconds() -> float:
         if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
             ms = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
             return max(0.0, ms / 1000.0)
+    except Exception:
+        pass
+    return 0.0
+
+def _idle_mac(timeout_s: float = 2.0) -> float:
+    """Mac：ioreg读HIDIdleTime（纳秒→秒），无额外依赖；
+    失败/超时返回0.0（保安全判ACTIVE，提示用--mode idle手动指定）。"""
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["ioreg", "-c", "IOHIDSystem"],
+            capture_output=True, text=True, timeout=timeout_s, check=False,
+        ).stdout
+        for line in out.splitlines():
+            if "HIDIdleTime" in line:
+                ns = int(line.split("=")[-1].strip())
+                return max(0.0, ns / 1e9)
     except Exception:
         pass
     return 0.0
