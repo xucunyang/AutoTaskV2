@@ -1,6 +1,6 @@
 {
-    "current_phase": "READY_FOR_PHASE1",
-    "pending_review": "动态窗口+双平台+三层报告轮 (2026-09-29): gateway分档/context.py/门禁/governor双平台/兜底reason/long_running/rule_id/四件套/docs+15 commits, pytest 42 passed; awaiting user review sign-off; no Phase1+ business code started",
+    "current_phase": "PHASE1_COMPLETED_READY_FOR_REVIEW",
+    "pending_review": "Phase1编码轮 (2026-09-29): core/store.py(DDL+transition唯一写入口+让出四重门+export/replay/migrate/backup/integrity+verify_progress_json), core/lease.py(acquire/renew/release/recover_expired/request_cancel+fencing), core/enqueue.py(CLI+inbox六道硬校验+wakeup.flag), core/scheduler.py(APScheduler cron展开+补跑+手动CLI), tests 96 passed; 5 commits; awaiting user review sign-off; Phase2+未开始",
     "v6_master": "design/plans/IMPLEMENTATION_PLAN_V6.md",
     "v7_master": "design/plans/IMPLEMENTATION_PLAN_V7.md",
     "v6_validated": "33/33通过，3bug已修，4项coding清单见V6§11",
@@ -13,9 +13,9 @@
         },
         "Phase1": {
             "desc": "存储SQLite+调度+租约+队列入口（单表/AUTOINCREMENT/Store/备份迁移/让出熔断）",
-            "evidence": "",
-            "status": "pending",
-            "updated_at": null
+            "evidence": "core/store.py: WAL+schema_version幂等migrate, tasks单表seq AUTOINCREMENT, transition()唯一写入口(乐观锁version+fencing仅lease_op+1+让出边四重门reason五值/checkpoint断言/long_running前置/熔断K=5/attempts仅RETRY→READY+1), list_ready_ordered(priority,seq), 原子导出master.json+tasks/*.json, rebuild_export, replay一致性, backup(VACUUM INTO幂等), integrity_check, request_cancel, update_verify_progress(V7局部重入账本); core/lease.py: acquire/renew/release/recover_expired_leases/request_cancel, 零裸SQL(评审M6), TTL集中config/schedule.yaml(评审B2); core/enqueue.py: CLI+inbox扫描(processing→done|error), M9六道硬门(<100KB/task_id正则/路径限artifacts/YYYY-MM-DD/cmd禁shell元字符/business_rule.expr AST白名单禁Call/100条每小时), touch wakeup.flag(M2); core/scheduler.py: APScheduler BackgroundScheduler+SQLAlchemyJobStore, expand_template({date}展开+acceptance rule_id), ensure_plan幂等, catchup_missing(超期skip+告警/当天必补), CLI --date/--catchup/--dry-run/--rerun/--root; tests: test_store(12)+test_lease(8)+test_enqueue(15)+test_scheduler(14)+test_recovery(5)=96 passed, 含kill -9混沌无半写/replay一致/seq不回退/备份可恢复/DB锁退避",
+            "status": "completed",
+            "updated_at": "2026-09-29T12:00:00Z"
         },
         "Phase2": {
             "desc": "编排+执行+planner拆分+四段式检索+session切换+网关/搜索插件",
@@ -37,5 +37,5 @@
         }
     },
     "plan_id": "autotask_bootstrap",
-    "updated_at": "2026-09-29T07:34:13Z"
+    "updated_at": "2026-09-29T12:00:00Z"
 }

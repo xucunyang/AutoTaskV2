@@ -103,11 +103,25 @@ def test_request_cancel_sets_flag_and_audit_row(tmp_path):
 
 
 def test_time_params_from_config(tmp_path):
-    """测试用tmp_path无config/回退默认值；生产root读schedule.yaml。"""
+    """时间参数集中schedule.yaml（评审B2）。用tmp_path的config构造，
+    避免在生产root建库（测试不得污染真实state.db）。"""
+    import yaml
+    (tmp_path / "config").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "config" / "schedule.yaml").write_text(
+        yaml.safe_dump({"lease": {"ttl_s": 90, "heartbeat_s": 20,
+                                  "cancel_grace_high_s": 15,
+                                  "cancel_grace_default_s": 45},
+                        "session_switch_limit": 3}, allow_unicode=True),
+        encoding="utf-8")
     s = Store(tmp_path)
-    assert s.time_params["lease_ttl_s"] == 120
+    assert s.time_params["lease_ttl_s"] == 90
+    assert s.time_params["heartbeat_s"] == 20
+    assert s.time_params["session_switch_limit"] == 3
+    assert s.session_switch_limit == 3   # 熔断K随配置走，不是硬编码5
+
+
+def test_time_params_fallback_when_no_config(tmp_path):
+    s = Store(tmp_path)
+    assert s.time_params["lease_ttl_s"] == 120     # 设计默认值
     assert s.time_params["heartbeat_s"] == 30
     assert s.time_params["session_switch_limit"] == 5
-    prod = Store(__file__.rsplit("orchestrator", 1)[0] + "orchestrator")
-    assert prod.time_params["lease_ttl_s"] == 120
-    assert prod.session_switch_limit == 5

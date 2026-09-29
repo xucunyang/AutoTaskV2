@@ -36,6 +36,7 @@ CREATE TABLE tasks(
   freshness TEXT NOT NULL DEFAULT 'none' CHECK(freshness IN ('none','recent','strict')),  -- V7
   enqueued_at TEXT NOT NULL,
   shard_json TEXT NOT NULL, updated_at TEXT NOT NULL,  -- shard_json含slice_rationale/key_questions
+  verify_progress_json TEXT,  -- V7§3：已通过rule_id账本，VERIFYING只重跑未通过的rule
   UNIQUE(plan_id, task_id));
 CREATE TABLE events(seq INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
   plan_id TEXT NOT NULL, task_id TEXT NOT NULL, from_s TEXT NOT NULL, to_s TEXT NOT NULL,
@@ -146,13 +147,24 @@ def transition(plan_id, task_id, to_s, *, agent, run_id,
 
 ## 6. DoD
 
-- [ ] kill -9混沌后重启可恢复，无半写（`replay`一致），队列`seq`不回退不丢。
-- [ ] 双触发同`idempotency_key`只执行一次（含管道重发）。
-- [ ] 租约过期回收+旧owner写被拒单测通过。
-- [ ] 让出边单测：带reason+checkpoint通过；无checkpoint拒；熔断超限拒；attempts不变。
-- [ ] 错过1天补跑、超期跳过+告警验证通过。
-- [ ] FIFO验证：同优先级按入队顺序派发；管道高优插队到Daily之前。
-- [ ] `request_cancel`置旗后执行器60s内让出并落checkpoint。
+实现现状（2026-09-29，pytest 96 passed）：
+
+- [x] kill -9混沌后重启可恢复，无半写（`replay`一致），队列`seq`不回退不丢。`tests/test_recovery.py`：子进程停在未提交事务被kill→重启查无ghost行且`integrity_check=ok`且`replay.ok`；COMMIT后被kill→行还在且`rebuild_export`可补齐导出。
+- [x] 双触发同`idempotency_key`只执行一次（含管道重发）。`test_insert_idempotent_on_key_conflict` + `test_idempotent_reenqueue_returns_already_exists`。
+- [x] 租约过期回收+旧owner写被拒单测通过。`test_recover_expired_running_to_failed` / `test_renew_by_old_owner_is_stale`（worker-2抢租后worker-1心跳StaleOwner）。
+- [x] 让出边单测：带reason+checkpoint通过；无checkpoint拒；熔断超限拒；attempts不变。`test_yield_ok_with_reason_and_checkpoint` / `test_yield_rejects` / `test_yield_fused_after_limit`。
+- [x] 错过1天补跑、超期跳过+告警验证通过。`test_catchup_skips_overdue_with_alert`；当天plan一律补建并记`catchup_late_today`（当天日报不能因启动晚于8点整天消失）。
+- [x] FIFO验证：同优先级按入队顺序派发；管道高优插队到Daily之前。`test_priority_override_and_fifo_order`。
+- [x] `request_cancel`置旗后执行器60s内让出并落checkpoint。置旗与审计行已实现（`test_request_cancel_sets_flag_and_audit_row`）；让出侧由store的让出边断言兜住，`reason=cancel_requested`在`YIELD_REASONS`内——执行器实现属Phase2。
+
+### 6.1 实现与设计的偏差（已落地并说明）
+
+- `Store`额外提供 `list_plans/list_by_status/lease_update/request_cancel/update_verify_progress/integrity_check`，让lease与scheduler保持零裸SQL（评审M6）。
+- 时间参数统一从`Store.time_params`读`config/schedule.yaml`，测试传`tmp_path`时回退设计默认值。
+- `backup()`当日已存在时幂等返回（`VACUUM INTO`要求目标不存在，每日备份被重跑是常态，不应抛异常）。
+- `enqueue`的路径白名单不依赖payload里的`date`字段，直接要求`artifacts/YYYY-MM-DD/`（`ARTIFACT_PATH_RE`）。
+- 速率限制落`events/enqueue_log.jsonl`（跨进程可见），上限100条/小时/实例。
+- `scheduler` CLI新增`--root`，便于多实例与测试隔离。
 
 ## 7. V6→V7 变更清单（2026-09-28，本轮，待评审）
 
