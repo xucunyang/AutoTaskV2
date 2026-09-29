@@ -29,7 +29,7 @@ FAILED → RETRY / DEAD_LETTER (超max_attempts=3进死信)
 
 > 抢占说明：高优任务（priority 0..4）入队后排在Daily低优（priority 10）前面，但**不打断正在执行的任务**；当前任务完成后，主循环下一轮自然派发队列中优先级最高的READY任务。无PREEMPTED状态、无抢占协作、无preemptible/preempt_count字段（V7§2原则8）。
 
-> 让出说明（`RUNNING→READY`）：子Agent在模型上下文超`context_window`的80%、steps超限、timeout超时、或收到`cancel_requested`时，保存checkpoint后主动让出。attempts不变（不算失败）；**必须带checkpoint**（无checkpoint让出=丢失现场，非法拒绝）；`reason ∈ {context_full, steps_exhausted, timeout, cancel_requested}`；`session_switch_total`超K（默认5，可配）→P1告警+下次让出改走FAILED（防无限让出烧token）。
+> 让出说明（`RUNNING→READY`）：子Agent在模型上下文超动态窗口`final`的80%、steps超限、timeout超时、收到`cancel_requested`、或撞`context_length_exceeded`硬错时，保存checkpoint后主动让出。attempts不变（不算失败）；**必须带checkpoint**（无checkpoint让出=丢失现场，非法拒绝）；`reason ∈ {context_full, steps_exhausted, timeout, cancel_requested, context_overflow}`；`long_running=false`拒让出（短任务走失败重试+自动置True自学习）；`session_switch_total`超K（默认5，可配）→P1告警+下次让出改走FAILED（防无限让出烧token）。
 
 ### 2.2 跃迁表（代码唯一来源 `schemas/transitions.py::ALLOWED`）
 
@@ -49,15 +49,16 @@ FAILED → RETRY / DEAD_LETTER (超max_attempts=3进死信)
 
 - `Budget{max_steps=20, timeout_s=900}` — 任务级执行限制（步数+时长上限）。**已删`max_tokens`**：上下文上限改为provider级`context_window`（模型窗口），80%水位线判定在`Provider.chat()`返回的`usage.prompt_tokens`上做（见Phase2 §6b）。
 - `ArtifactRef{path, sha256, bytes, rows}` — 输入声明。
-- `AcceptanceRule{type: file_exists|row_count|python_test|json_schema|business_rule|source_traceable|freshness|source_quality|coverage, path/cmd/min/schema_ref/expr/freshness_days/source_tier_min_ratio/key_questions, timeout_s}`（`schema`已改名`schema_ref`，避Pydantic父类属性重名告警，V7§11修复③）。
+- `AcceptanceRule{type: file_exists|row_count|python_test|json_schema|business_rule|source_traceable|freshness|source_quality|coverage, path/cmd/min/schema_ref/expr/freshness_days/source_tier_min_ratio/key_questions/rule_id, timeout_s}`（`schema`已改名`schema_ref`，避Pydantic父类属性重名告警，V7§11修复③；`rule_id`为空时verifier按rule_index自动编号）。
 - `Handoff{done, summary≤2000字, artifact_refs, tests_passed, tokens_used, open_issues}` — 不合格打回RETRY且不计业务重试外另计`handoff_reject`。
-- `TaskShard{task_id, plan_id, status, version, fencing_token, owner, lease_until, idempotency_key, inputs_hash, attempts/max_attempts, objective, inputs/outputs/depends_on, acceptance, handoff, budget, priority, source, seq, last_success_hash, cancel_requested, enqueued_at, privacy, complexity, needs_web, freshness, slice_rationale, key_questions}`。
+- `TaskShard{task_id, plan_id, status, version, fencing_token, owner, lease_until, idempotency_key, inputs_hash, attempts/max_attempts, objective, inputs/outputs/depends_on, acceptance, handoff, budget, priority, source, seq, last_success_hash, cancel_requested, enqueued_at, privacy, complexity, needs_web, freshness, slice_rationale, key_questions, long_running}`。
   - `priority: int 0..10` 越小越优先，枚举校验，`0..4=管道高优，5=普通，10=Daily低优`。
   - `source: daily|pipeline`；`seq: int` 由DB AUTOINCREMENT分配（禁`max+1`），同优先级按seq先入先出。
   - `needs_web: bool` 能力开关（非路由维度）：资讯/政策/消息类=true（必须Web search取最新，禁用参数内知识），推理/方法步骤/逻辑类=false。
   - `freshness: none|recent|strict`（recent=730天，strict=180天，V7§10定版）；仅needs_web=true时生效。
   - `slice_rationale: str` 拆分依据（planner写，报告任务分解视图引用，判断拆分质量）。
   - `key_questions: List[str]` 预定义关键问题（coverage验收依据）。
+  - `long_running: bool` 预期耗时长短（planner判定+允许任务卡手工覆盖）；false拒让出，撞线重试自动置True自学习。
   - `last_success_hash` 缓存命中比对用；`cancel_requested: bool` 协作中断旗标（配`CANCEL_REQUESTED`事件审计，评审B2）。
   - `privacy: public|internal|secret` + `complexity: simple|medium|complex` 网关路由输入。
   - `idempotency_key={plan}/{task}/{inputs_hash全hash}`（禁截断8位，防碰撞，评审Minor1）。
@@ -104,7 +105,7 @@ FAILED → RETRY / DEAD_LETTER (超max_attempts=3进死信)
   key_questions: ["要点1", "要点2"]
 ```
 
-- 三件套产出契约（needs_web=true必出）：`report.md`（给人看）+`sources.json`（机器可验）+`claims.json`（结论-证据映射）。
+- 四件套产出契约（needs_web=true必出）：`report.md`（给人看）+`sources.json`（机器可验）+`claims.json`（结论-证据映射）+`tuning.md`（任务级调优诊断，自包含，每行带说明列）。
 - 原则：**MD是给人看的，json是给机器验的**——只有MD就只能靠LLM主观判断，失去验收意义。
 
 ## 5. 任务卡契约（`templates/task_card.j2`）
@@ -132,10 +133,11 @@ FAILED → RETRY / DEAD_LETTER (超max_attempts=3进死信)
 
 ## 8. V6→V7 变更清单（2026-09-28，本轮，待评审）
 
-- §2.1：状态机加`RUNNING→READY`让出边（reason四值+checkpoint断言+熔断K=5）；14态不变（让出是边不是新状态）。
+- §2.1：状态机加`RUNNING→READY`让出边（reason五值+checkpoint断言+long_running前置+熔断K=5）；14态不变（让出是边不是新状态）。
 - §2.2：权限矩阵加`SELF_YIELD={(RUNNING,READY)}`。
-- §3：`Budget`删`max_tokens`（语义改为provider级`context_window`）；`TaskShard`加`needs_web/freshness/slice_rationale/key_questions`；新增`Source/Claim`模型；`Checkpoint`加`summary/artifacts_partial/done_steps/generation`。
-- §4：验收DSL加4规则（source_traceable/freshness/source_quality/coverage）+三件套产出契约。
+- §3：`Budget`删`max_tokens`（语义改为provider级`context_window`）；`TaskShard`加`needs_web/freshness/slice_rationale/key_questions/long_running`；`AcceptanceRule`加`rule_id`；新增`Source/Claim`模型；`Checkpoint`加`summary/artifacts_partial/done_steps/generation`。
+- §4：验收DSL加4规则（source_traceable/freshness/source_quality/coverage）+四件套产出契约（含tuning.md）。
 - §5：任务卡加`needs_web/freshness/key_questions`+禁参数内知识注。
 - §6：加`config/search.yaml`+报告任务分解视图契约。
+- 本轮（动态窗口+兜底reason）：§2.1让出reason四值→五值（+context_overflow）+long_running前置；§3补long_running/rule_id字段说明；§4产出三件套→四件套（+tuning.md）。
 - 前轮（V6）保留：简化抢占模型、schema_ref改名、AST四节点白名单、14态状态机。
