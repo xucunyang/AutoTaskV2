@@ -1,6 +1,6 @@
 {
-    "current_phase": "PHASE3_COMPLETED_READY_FOR_REVIEW",
-    "pending_review": "Phase3编码轮 (2026-09-29): core/notifier.py(告警分级+去重, P0白名单仅三项且由政策单一决定), core/verifier.py(9个沙箱化handler+调研质量4规则+不短路), core/verify_orchestrator.py(AnyIO异步池+局部重入+final_consistency终检), core/report.py(三层报告+队列看板+Prometheus导出), core/providers.py(真实Ollama/在线provider+熔断半开), gateway补resolve/chat。pytest 350 passed。待review; Phase4未开始",
+    "current_phase": "ALL_PHASES_IMPLEMENTED_AWAITING_REVIEW",
+    "pending_review": "Phase4收口轮 (2026-09-29): 补三个沙箱关键handler测试(json_schema/business_rule/eval_expr, verifier 68%→91%)+覆盖率门禁scripts/check_coverage.py(六模块91.0%); 异步verify池接进主循环(还Phase3欠账); 混沌14项全过(证据reports/chaos_01_07.log+chaos_08_14.log); 端到端冒烟8例+§5性能成本基线(reports/smoke_baseline.log)。pytest 398 passed。冒烟途中修掉3个真bug: ①执行器把模型回复同一坨文本写进所有声明产物(summary.json里塞markdown致json_schema永远bad_json且报错指不到真因) ②cache_hit把产物sha拿去比inputs_hash, 两者天然不同, SKIPPED_CACHED是死代码 ③RETRY任务永久卡住(主循环只处理PENDING/BLOCKED, 没人做RETRY→READY退避重排)。另: 预期内的拒绝(deps未满足/退避未到点)不再发P1(新增transition(expected=True)), scheduler补inputs_hash(否则缓存第1层永不成立), 检索补跨query URL去重(重复条目加权A类占比虚高质量分)。Phase0-4全部completed, 待用户评审签字",
     "v6_master": "design/plans/IMPLEMENTATION_PLAN_V6.md",
     "v7_master": "design/plans/IMPLEMENTATION_PLAN_V7.md",
     "v6_validated": "33/33通过，3bug已修，4项coding清单见V6§11",
@@ -30,10 +30,10 @@
             "updated_at": "2026-09-29T19:00:00Z"
         },
         "Phase4": {
-            "desc": "验证混沌14项+隔离库",
-            "evidence": "",
-            "status": "pending",
-            "updated_at": null
+            "desc": "混沌14项+端到端冒烟+覆盖率硬线+性能成本基线",
+            "evidence": "覆盖率: 补三个沙箱关键handler测试(json_schema/business_rule/eval_expr, 此前9个handler只测了6个, verifier 68%→91%), 门禁做成scripts/check_coverage.py(不做成pytest用例: 那会在测试进程里再跑全量测试而全量测试包含它自己=无限递归), 六模块平均91.0%九项全≥80%; 门禁自身修两个会'假通过'的洞(正则不允许路径第二个分隔符致core/search/*子模块被静默丢掉——search覆盖率哪怕0%也显示通过; --cov参数insert(-3)错位)。异步verify池接线(还Phase3欠账): tick里promote→dispatch_verify_async一气呵成, _in_flight去重防双写终态, 只捞无lease的VERIFYING, 校验走anyio.to_thread免得慢python_test卡住主循环, run_forever有池子时走async路径退出时等worker收尾。混沌14项(证据reports/chaos_01_07.log+chaos_08_14.log): 1 kill-9租约回收+无半写+checkpoint可续跑 2 双调度只建一次 3 旧fencing写回StaleOwner拒 4 READY->DONE直写被拒+P1 5 大文件20万行prompt=284tokens+sha真实 6 FIFO十任务顺序一致 7 高优排队p95=38.4ms 8 防饿死AGED+预留槽 9 session切换attempts=0+done_steps不重复 10 让出熔断K=2改走FAILED 11 幻觉拒收INCONSISTENT P0 12 拆分幂等 13 静默截断truncated+水位线按实际下调 14 Mac空闲检测保安全0.0。端到端冒烟8例(A daily三任务链全DONE+产物+replay+报告 B 二次同输入命中SKIPPED_CACHED C 混合注入不抢占+自然衔接+双链路DONE D 调研链planner→四段式→4验收全过→分解视图+调研质量章节)+§5基线(单计划<5min/state.db<10MB/任务卡<2k/rebuild<5s/官方域名0次LLM)。冒烟抓3个真bug: ①执行器把模型回复同一坨文本写进所有声明产物(summary.json里塞markdown致json_schema永远bad_json且报错指不到真因; 设计§5本就是llm_analyze_and_write=模型写) ②cache_hit把产物sha拿去比inputs_hash两者天然不同致SKIPPED_CACHED是死代码(改两层: inputs_hash相等+逐个产物比manifest里的sha) ③RETRY任务永久卡住(新增promote_retries按60*2^attempts退避重排)。另修告警骚扰: deps未满足/退避未到点属预期内拒绝, 新增transition(expected=True)仍记REJECTED但不发P1。scheduler补inputs_hash(任务规格规范化哈希, 不设则缓存第1层永不成立; 只取影响产出的字段不含priority)。检索补跨query URL去重(重复条目加权A类占比虚高质量分)。pytest 398 passed, 覆盖率91.0%",
+            "status": "completed",
+            "updated_at": "2026-09-29T21:00:00Z"
         }
     },
     "plan_id": "autotask_bootstrap",

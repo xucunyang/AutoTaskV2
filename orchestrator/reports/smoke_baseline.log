@@ -58,3 +58,11 @@
 - 任务卡 327 tokens（门槛2000）
 - rebuild_export 14.3ms/次（门槛5s）
 - 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 3.43s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 17.6ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
+- 单计划三任务 3.44s，state.db 0.07MB
+- 任务卡 327 tokens（门槛2000）
+- rebuild_export 15.0ms/次（门槛5s）
+- 来源分级成本：官方0次LLM，平台每来源1次
