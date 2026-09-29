@@ -383,9 +383,14 @@ class Store:
 
     def update_verify_progress(self, plan_id: str, task_id: str,
                                verified_rules: list[str], *,
-                               expect_version: int) -> dict:
+                               expect_version: int,
+                               extra: dict | None = None) -> dict:
         """V7§3：VERIFYING中记录已通过的rule_id（局部重入的进度账本）。
-        与status解耦，写回带expect_version防并发覆盖。"""
+        与status解耦，写回带expect_version防并发覆盖。
+
+        extra是**合并**进去而不是覆盖：verified_rules是账本，
+        last_results是诊断快照，两者都要留。整体覆盖会把诊断信息清掉，
+        出现"账本说r0过了但看不出为什么其它没过"的局面。"""
         def _fn(con):
             cur = con.execute(
                 "SELECT version,verify_progress_json FROM tasks"
@@ -402,6 +407,7 @@ class Store:
             except ValueError:
                 progress = {}
             progress["verified_rules"] = sorted(set(verified_rules))
+            progress.update(extra or {})
             progress["updated_at"] = now_utc_iso()
             blob = json.dumps(progress, ensure_ascii=False)
             con.execute(

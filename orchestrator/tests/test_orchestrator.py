@@ -42,12 +42,14 @@ def _orch(tmp_path, executor_fn=None, **kw):
 
 
 def _add(store, tid, plan_id="p1", deps=None, priority=10, outputs=None,
-         inputs_hash="h1", source="daily"):
+         inputs_hash="h1", source="daily", **over):
+    """建任务。**over透传进shard（acceptance/needs_web/freshness等）。"""
     _, t = store.insert_task({
         "task_id": tid, "plan_id": plan_id, "status": "PENDING",
         "idempotency_key": f"{plan_id}/{tid}/x", "inputs_hash": inputs_hash,
         "objective": f"do {tid}", "depends_on": deps or [],
-        "priority": priority, "source": source, "outputs": outputs or []})
+        "priority": priority, "source": source, "outputs": outputs or [],
+        **over})
     return t
 
 
