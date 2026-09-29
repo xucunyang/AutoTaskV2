@@ -265,6 +265,51 @@ class Store:
             con.commit()
         return added
 
+    def update_priority(self, plan_id: str, task_id: str, new_priority: int,
+                        *, expect_version: int, reason: str = "aging",
+                        waited_s: int = 0) -> dict:
+        """老化提升优先级的**唯一**合法写口（Phase2§4）。
+
+        只允许调高紧急度（数值变小），不允许把任务"降级"变慢——
+        降级会让等待中的任务被无限推后，正好和防饿死的目标相反。
+        每次提升记AGED审计行，便于复盘"这个任务等了多久被提了几次"。
+        """
+        if not isinstance(new_priority, int) or not 0 <= new_priority <= 10:
+            raise IllegalTransition(f"bad_priority:{new_priority}")
+
+        def _fn(con):
+            cur = con.execute(
+                "SELECT status,version,priority FROM tasks"
+                " WHERE plan_id=? AND task_id=?",
+                (plan_id, task_id),
+            ).fetchone()
+            if cur is None:
+                raise StoreError(f"task_not_found:{plan_id}/{task_id}")
+            s, v, p = cur
+            if v != expect_version:
+                raise Conflict(f"version expect={expect_version} actual={v}")
+            if new_priority > p:
+                raise IllegalTransition(f"priority_downgrade_forbidden:{p}->{new_priority}")
+            if s != "READY":
+                raise IllegalTransition(f"aging_only_when_ready:{s}")
+            now = now_utc_iso()
+            con.execute(
+                "UPDATE tasks SET priority=?, version=?, updated_at=?"
+                " WHERE plan_id=? AND task_id=?",
+                (new_priority, v + 1, now, plan_id, task_id))
+            con.execute(
+                "INSERT INTO events(ts,plan_id,task_id,from_s,to_s,run_id,agent,payload)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                (now, plan_id, task_id, s, s, "aging", "orchestrator",
+                 json.dumps({"event": "AGED", "reason": reason,
+                             "from_priority": p, "to_priority": new_priority,
+                             "waited_s": waited_s}, ensure_ascii=False)))
+            return con.execute(
+                "SELECT * FROM tasks WHERE plan_id=? AND task_id=?",
+                (plan_id, task_id)).fetchone()
+
+        return self._row_to_task(self._write_txn(_fn))
+
     def record_metric(self, name: str, value: float, *, plan_id: str = "-",
                       task_id: str = "-", run_id: str = "", span: str = "",
                       duration_ms: float | None = None) -> None:
