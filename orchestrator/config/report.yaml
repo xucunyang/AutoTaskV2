@@ -4,5 +4,13 @@ queue_block_p95_s: 60
 dispatch_starve_s: 30
 verify_rule_slow_s: 60
 export_slow_ms: 500
-high_prio_sla_s: 30
+high_prio_sla_s: 60
 timezone_display: Asia/Shanghai
+# V7调优阈值：报告"调优指标"章节的判定线，全部可配不改代码
+tuning:
+  execute_s_warn: 120       # 单任务执行超120s标慢
+  llm_share_warn: 0.80      # LLM耗时占比超80%标模型慢
+  ctx_switch_warn: 3        # 单任务session切换超3次告警（任务拆太粗或窗口太小）
+  ctx_overflow_warn: 0      # 撞context_length_exceeded兜底>0即告警（窗口配错或被静默截断）
+  local_share_warn: 0.5     # 本地任务占比低于50%提示（路由偏保守，在线额度白烧）
+  source_tier_warn: 0.50    # A类来源占比低于50%告警（调研质量不达标）
