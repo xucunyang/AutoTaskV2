@@ -108,14 +108,75 @@ class Store:
         self.migrate()
 
     def _load_switch_limit(self) -> int:
-        try:
-            import yaml
-            cfg = yaml.safe_load(
-                (self.root / "config" / "schedule.yaml").read_text(encoding="utf-8")
+        return int(self.time_params.get("session_switch_limit", SESSION_SWITCH_LIMIT))
+
+    @property
+    def time_params(self) -> dict:
+        """时间参数集中config/schedule.yaml（评审B2）；缺配置回退设计默认值。"""
+        if not hasattr(self, "_time_params"):
+            defaults = {"lease_ttl_s": 120, "heartbeat_s": 30,
+                        "cancel_grace_high_s": 30, "cancel_grace_default_s": 60,
+                        "session_switch_limit": SESSION_SWITCH_LIMIT}
+            try:
+                import yaml
+                cfg = yaml.safe_load(
+                    (self.root / "config" / "schedule.yaml").read_text(encoding="utf-8")
+                )
+                lease = cfg.get("lease", {}) or {}
+                params = dict(defaults)
+                params["lease_ttl_s"] = int(lease.get("ttl_s", 120))
+                params["heartbeat_s"] = int(lease.get("heartbeat_s", 30))
+                params["cancel_grace_high_s"] = int(lease.get("cancel_grace_high_s", 30))
+                params["cancel_grace_default_s"] = int(
+                    lease.get("cancel_grace_default_s", 60))
+                params["session_switch_limit"] = int(
+                    cfg.get("session_switch_limit", SESSION_SWITCH_LIMIT))
+                self._time_params = params
+            except Exception:
+                self._time_params = defaults
+        return self._time_params
+
+    def lease_update(self, plan_id: str, task_id: str, *, owner: str | None,
+                     lease_until: str | None, bump_fencing: bool,
+                     expect_version: int | None = None,
+                     expect_fencing: int | None = None,
+                     audit_event: dict | None = None) -> dict:
+        """租约写专用通道（lease.py唯一调用方）：owner/lease_until更新+fencing控制。
+        audit_event非空时记同状态审计行（from==to，replay跳过）。"""
+        def _fn(con):
+            cur = con.execute(
+                "SELECT status,version,fencing_token,owner FROM tasks"
+                " WHERE plan_id=? AND task_id=?",
+                (plan_id, task_id),
+            ).fetchone()
+            if cur is None:
+                raise StoreError(f"task_not_found:{plan_id}/{task_id}")
+            s, v, f, _owner = cur
+            if expect_version is not None and v != expect_version:
+                raise Conflict(f"version expect={expect_version} actual={v}")
+            if expect_fencing is not None and f != expect_fencing:
+                raise StaleOwner(f"fencing expect={expect_fencing} actual={f}")
+            now = now_utc_iso()
+            con.execute(
+                "UPDATE tasks SET owner=?, lease_until=?, fencing_token=?,"
+                " version=?, updated_at=? WHERE plan_id=? AND task_id=?",
+                (owner, lease_until, f + (1 if bump_fencing else 0), v + 1,
+                 now, plan_id, task_id),
             )
-            return int(cfg.get("session_switch_limit", SESSION_SWITCH_LIMIT))
-        except Exception:
-            return SESSION_SWITCH_LIMIT
+            if audit_event is not None:
+                con.execute(
+                    "INSERT INTO events(ts,plan_id,task_id,from_s,to_s,run_id,"
+                    "agent,payload) VALUES (?,?,?,?,?,?,?,?)",
+                    (now, plan_id, task_id, s, s,
+                     audit_event.get("run_id", ""), audit_event.get("agent", ""),
+                     json.dumps(audit_event.get("payload", {}), ensure_ascii=False)),
+                )
+            return con.execute(
+                "SELECT * FROM tasks WHERE plan_id=? AND task_id=?",
+                (plan_id, task_id),
+            ).fetchone()
+
+        return self._row_to_task(self._write_txn(_fn))
 
     def _connect(self) -> sqlite3.Connection:
         con = sqlite3.connect(str(self.db_path), timeout=30.0)
@@ -166,6 +227,59 @@ class Store:
         except ValueError:
             d["shard"] = {}
         return d
+
+    def request_cancel(self, plan_id: str, task_id: str, reason: str,
+                       expect_version: int, by: str = "orchestrator",
+                       run_id: str = "") -> dict:
+        """置cancel_requested=1（version比对）+记同状态CANCEL_REQUESTED审计行。
+        执行器步间检查该旗标后存checkpoint主动让出（RUNNING→READY）。"""
+        def _fn(con):
+            cur = con.execute(
+                "SELECT status,version,shard_json FROM tasks"
+                " WHERE plan_id=? AND task_id=?",
+                (plan_id, task_id),
+            ).fetchone()
+            if cur is None:
+                raise StoreError(f"task_not_found:{plan_id}/{task_id}")
+            s, v, shard_json = cur
+            if v != expect_version:
+                raise Conflict(f"version expect={expect_version} actual={v}")
+            try:
+                shard = json.loads(shard_json or "{}")
+            except ValueError:
+                shard = {}
+            shard["cancel_requested"] = True
+            now = now_utc_iso()
+            con.execute(
+                "UPDATE tasks SET cancel_requested=1, shard_json=?, version=?,"
+                " updated_at=? WHERE plan_id=? AND task_id=?",
+                (json.dumps(shard, ensure_ascii=False), v + 1, now,
+                 plan_id, task_id),
+            )
+            con.execute(
+                "INSERT INTO events(ts,plan_id,task_id,from_s,to_s,run_id,agent,payload)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                (now, plan_id, task_id, s, s, run_id, by,
+                 json.dumps({"event": "CANCEL_REQUESTED", "reason": reason},
+                            ensure_ascii=False)),
+            )
+            return con.execute(
+                "SELECT * FROM tasks WHERE plan_id=? AND task_id=?",
+                (plan_id, task_id),
+            ).fetchone()
+
+        return self._row_to_task(self._write_txn(_fn))
+
+    def list_by_status(self, status: str) -> list[dict]:
+        """按状态列候选（供lease回收扫描用；排序固定seq保证可重放）。"""
+        con = self._connect()
+        try:
+            rows = con.execute(
+                "SELECT * FROM tasks WHERE status=? ORDER BY seq ASC", (status,)
+            ).fetchall()
+            return [self._row_to_task(r) for r in rows]
+        finally:
+            con.close()
 
     def list_ready_ordered(self, limit: int = 10, priority_min: int | None = None,
                            priority_max: int | None = None) -> list[dict]:
