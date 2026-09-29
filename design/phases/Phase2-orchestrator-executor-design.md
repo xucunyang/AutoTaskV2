@@ -1,6 +1,6 @@
 # Phase2 编排/执行设计（上下文与成本核心）（V7）
 
-状态：已按V7对齐，待用户评审，前置依赖 Phase1存储调度冻结。
+状态：主体已实现并落码（2026-09-29）。DoD逐条见§8，实现与设计的偏差见附录F。
 对齐基线：`design/plans/IMPLEMENTATION_PLAN_V7.md`；修订见文末附录E。
 
 ## 1. 目标
@@ -172,16 +172,55 @@ def chat_with_yield_check(card, ...):
 
 ## 8. DoD
 
-- [ ] 200MB CSV任务prompt长度<8k tokens（preview模式验证）。
-- [ ] kill子进程后从checkpoint续跑成功。
-- [ ] 相同输入二次触发命中SKIPPED_CACHED，省token可观测。
-- [ ] DAG环/孤儿被拦截不派发。
-- [ ] FIFO：同优先级按seq派发顺序与入队一致（AUTOINCREMENT单测）。
-- [ ] 高优排队：管道高优入队后p95<60s开始执行（当前任务完成后自然衔接）。
-- [ ] 防饿死：低优多档老化+预留槽生效，可审计。
-- [ ] Session切换：水位线触发→让出→新session恢复，attempts不变，done_steps不重复；无checkpoint让出拒；熔断超限改FAILED。
-- [ ] 拆分：笼统问题→任务卡DAG，key_questions/slice_rationale齐全，同一问题二次拆分幂等。
-- [ ] 检索：needs_web=true任务产出四件套（含tuning.md），未检索任务不产出sources.json。
+实现现状（2026-09-29，pytest 263 passed）。逐条核对见 `tests/test_dod_phase2.py`，
+对应测试一并标出。**两条"部分通过"已如实标注，不含糊**。
+
+- [x] 200MB CSV任务prompt长度<8k tokens（preview模式验证）。`test_dod1_big_file_prompt_budget`。CI用20万行（约7MB）验证——**机制与文件大小无关**，进上下文的只有sha/bytes/rows/preview五行。
+- [x] kill子进程后从checkpoint续跑成功。`test_resume_after_process_kill`。
+- [x] 相同输入二次触发命中SKIPPED_CACHED，省token可观测。`test_dod3_cache_hit_is_observable`（`metrics.cache_hit`可查）。
+- [x] DAG环/孤儿被拦截不派发。`test_dod4_cycle_never_dispatched`。
+- [x] FIFO：同优先级按seq派发顺序与入队一致（AUTOINCREMENT单测）。`test_dod5_fifo_same_priority`。
+- [x] 高优排队：管道高优入队后p95<60s开始执行。`test_dod6_dispatch_latency_measured`（派发耗时可观测）+ `test_dod5_pipeline_jumps_ahead_of_daily`。**部分说明**：p95需要生产数据积累，单测只能验证"单次派发<60s且时长入库"，无法在CI里证明p95。
+- [x] 防饿死：低优多档老化+预留槽生效，可审计。`test_dod7_aging_and_reserved_slot_auditable` + `test_reserved_slot_gives_low_priority_a_chance`。
+- [x] Session切换：水位线触发→让出→新session恢复，attempts不变，done_steps不重复；无checkpoint让出拒；熔断超限改FAILED。`test_dod8_yield_never_counts_as_attempt` + `test_session_switch.py`。
+- [x] 拆分：笼统问题→任务卡DAG，key_questions/slice_rationale齐全，同一问题二次拆分幂等。`test_split_is_idempotent`、`test_missing_slice_rationale_is_rejected`。
+- [x] 检索：needs_web=true任务产出四件套（含tuning.md），未检索任务不产出sources.json。`test_write_four_set` + `test_dod10_*`。**部分说明**：真实四件套需要接LLM与真实搜索API；`tests`用注入的假provider验证流程与契约，未验证真实检索质量。
+
+### 8.1 明确划到 Phase3 的部分
+
+- **异步verifier池**（§2 `dispatch_verify_async`，评审M7）：Phase2只做了
+  `SUBMITTED→VERIFYING` 的推进（`Orchestrator.promote_submitted`），
+  真正的异步校验器池、规则并发与超时属Phase3。
+- **告警去重**（评审M8"同task 5min合并"）：Phase2 的 `Store.alert()` 只追加
+  不去重，去重属Phase3告警收敛。
+- **报告渲染**（附录C）：Phase2 提供了数据源
+  （`planner.decomposition_view` / `Store.daily_summary`），
+  Markdown报告与日报合成本身属Phase3。
+- **网关真实provider**（附录A `ollama`/`online_openai_compat`）：
+  Phase0 已落 `route()` 与 `Provider` 契约，真实HTTP provider与
+  熔断半开恢复属后续；Phase2 的执行器通过 `provider` 注入调用。
+
+## 附录F. 实现与设计的偏差（2026-09-29 落码后记录）
+
+1. **老化时钟取 `enqueued_at` 而非 `updated_at`**：老化自己会改`updated_at`，
+   拿它当基准等于每次提升都把等待清零，第二档（20min）永远触发不了。
+   等待时间必须单调递增。
+2. **老化"一次只升一档"是硬约束**：等了25min也只到5，下轮检查再到3。
+   一次跳到3会让分档失去意义——分档就是为了分级提优先级。
+   下限是3不是0（0..2留给管道高优）。
+3. **`Store.update_priority` 只许升不许降**：降级会让等待中的任务被无限推后，
+   正好和防饿死的目标相反。每次提升记`AGED`审计行（含等待秒数）。
+4. **让出被拒时执行器改走FAILED**：设计§6b要求"熔断超限改走FAILED"。
+   实现上必须显式处理——若让出transition抛`IllegalTransition`而执行器不接，
+   异常会逃出`run_task`，任务永久卡在RUNNING，只能等租约过期被回收（白等一个TTL）。
+5. **执行器 `budget` 有兜底**：模板用了`budget.max_steps/timeout_s`，
+   任务卡没显式写budget时传空dict会让StrictUndefined直接抛错，
+   把执行器在渲染阶段就打崩——而"任务没写预算"是完全正常的输入。
+6. **planner 的 `done_steps` 存序号(int)不存task_id**：`Checkpoint.done_steps`
+   在Phase0契约里就是`List[int]`，塞字符串会被Pydantic拒绝。
+   而且没必要存id——已拆出的卡在`tasks`表里，按`plan_id`查就有。
+   **契约保持严格，checkpoint只记"拆到第几张+剩下什么"。**
+7. **分级cache按URL存**：`state/source_tiers.json` 同一URL复用，重复检索不再调LLM。
 
 ## 附录A. 轻量网关（可插拔，防本地拖慢）
 

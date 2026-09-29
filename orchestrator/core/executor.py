@@ -212,20 +212,22 @@ def run_task(store: Store, plan_id: str, task_id: str, run_id: str,
                              expect_fencing=_fencing(store, plan_id, task_id),
                              payload={"reason": y.reason, "detail": y.detail[:200]},
                              role="subagent")
-        except (Conflict, StaleOwner):
+            return f"yielded:{y.reason}"
+        except StaleOwner:
             return "lost"
-        return f"yielded:{y.reason}"
+        except Conflict:
+            return "lost"
+        except IllegalTransition as e:
+            # 让出被Store拒（短任务不让出/熔断超限/无checkpoint）→ 改走FAILED。
+            # 这里绝不能让异常逃出去：逃出去任务就永久卡在RUNNING，
+            # 只能等租约过期被回收，白等一个TTL。设计§6b也要求"熔断改走FAILED"。
+            _fail(store, plan_id, task_id, owner, run_id, task,
+                  f"yield_rejected:{e}; original_yield={y.reason}")
+            return f"yield_rejected:{y.reason}"
     except LostOwnership as e:
         return "lost"
     except Exception as e:  # noqa: BLE001 — 任何异常都要落到FAILED，不能吞
-        try:
-            store.transition(plan_id, task_id, "FAILED", agent=owner,
-                             run_id=run_id, expect_version=task["version"],
-                             expect_fencing=_fencing(store, plan_id, task_id),
-                             payload={"error": str(e)[:2000]},
-                             role="subagent")
-        except (Conflict, StaleOwner):
-            return "lost"
+        _fail(store, plan_id, task_id, owner, run_id, task, str(e))
         jlog(store.root, "ERROR", "task_failed", plan_id=plan_id,
              task_id=task_id, error=str(e)[:300])
         return f"failed:{str(e)[:60]}"
@@ -239,6 +241,19 @@ def run_task(store: Store, plan_id: str, task_id: str, run_id: str,
 def _fencing(store: Store, plan_id: str, task_id: str) -> int:
     t = store.get_task(plan_id, task_id)
     return t["fencing_token"] if t else 0
+
+
+def _fail(store: Store, plan_id: str, task_id: str, owner: str, run_id: str,
+          task: dict, error: str) -> None:
+    """落FAILED。失败也要处理失败：写不进去时只记日志，不二次抛。"""
+    try:
+        store.transition(plan_id, task_id, "FAILED", agent=owner,
+                         run_id=run_id, expect_version=task["version"],
+                         expect_fencing=_fencing(store, plan_id, task_id),
+                         payload={"error": str(error)[:2000]}, role="subagent")
+    except Exception as e:  # noqa: BLE001
+        jlog(store.root, "ERROR", "fail_transition_failed", plan_id=plan_id,
+             task_id=task_id, error=str(e)[:200])
 
 
 def _run_with_provider(store: Store, task: dict, card: str, ckpt, provider,

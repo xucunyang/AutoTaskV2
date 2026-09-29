@@ -206,6 +206,27 @@ def test_executor_yield_outcome_and_checkpoint(tmp_path):
     assert any("context_full" in x for x in ck.summary)
 
 
+def test_executor_yield_rejected_falls_back_to_failed(tmp_path):
+    """让出被Store拒（短任务不让出/熔断）→ 改走FAILED，不能让异常逃出去。
+
+    逃出去的后果：任务永久卡在RUNNING，只能等租约过期被回收，
+    白等一个TTL，而且没人知道它为什么停在那。
+    """
+    s = Store(_root(tmp_path))
+    s.ensure_plan("p1")
+    t = _running(s)          # 注意：**没有**标long_running → 短任务
+
+    class P:
+        def chat(self, prompt, budget):
+            return {"content": "x", "usage": {"prompt_tokens": 99999}}
+    got = executor.run_task(s, "p1", "t1", "run-1", owner="sub-x",
+                            provider=P(), final_window=1000)
+    assert got == "yield_rejected:context_full"
+    assert s.get_task("p1", "t1")["status"] == "FAILED"
+    payloads = [json.loads(e["payload"]) for e in s.recent_events("p1")]
+    assert any("yield_rejected" in str(p.get("error", "")) for p in payloads)
+
+
 def test_executor_failure_maps_to_failed(tmp_path):
     s = Store(_root(tmp_path))
     s.ensure_plan("p1")

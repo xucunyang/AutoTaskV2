@@ -1,6 +1,6 @@
 {
-    "current_phase": "READY_FOR_PHASE2",
-    "pending_review": "Phase0补落码+Phase1复查轮 (2026-09-29): 发现Phase0设计§2.2/§2.3/§3/§4/§5共10条规则只写在文档未落code(此前误标completed), PROGRESS已如实改正。Phase0已补: depends_on门禁+权限矩阵role_allowed+让出强制fencing+RETRY/DEAD_LETTER必填+cancel_cascade+SCHEMA_REJECT+P1告警+cmd白名单+task_card渲染器(DoD4)+幂等键含inputs_hash+TaskIdConflict。Phase1复查已补5条: 迁移补列(ADDED_COLUMNS+ALTER, CREATE TABLE IF NOT EXISTS不补列是真隐患)+迁移前VACUUM备份+锁争用metrics+per-plan master+DST日志。pytest 143 passed。明确划到Phase2: 心跳线程周期调用/FAILED→DEAD_LETTER升级/RETRY指数退避(都需主循环在场)",
+    "current_phase": "PHASE2_COMPLETED_READY_FOR_REVIEW",
+    "pending_review": "Phase2编码轮 (2026-09-29): core/orchestrator.py(主循环+DAG校验+两阶段派发+老化防饿死+唤醒+单实例DB锁), core/executor.py(无状态执行+SessionYield+协作式取消), core/checkpoint.py(检查点+cache_hit三条件), core/planner.py(拆分层幂等+契约校验+质量审计), core/search/(四段式检索+来源分级+注入防护), lease补心跳线程/死信升级/指数退避三条欠账, Store补update_priority(老化唯一合法写口)。pytest 263 passed。待review; Phase3未开始",
     "v6_master": "design/plans/IMPLEMENTATION_PLAN_V6.md",
     "v7_master": "design/plans/IMPLEMENTATION_PLAN_V7.md",
     "v6_validated": "33/33通过，3bug已修，4项coding清单见V6§11",
@@ -19,9 +19,9 @@
         },
         "Phase2": {
             "desc": "编排+执行+planner拆分+四段式检索+session切换+网关/搜索插件",
-            "evidence": "",
-            "status": "pending",
-            "updated_at": null
+            "evidence": "core/orchestrator.py: 主循环tick(ingest_inbox→housekeeping→validate_dag→refresh_ready→apply_aging→backlog_check→dispatch_split→promote_submitted→export)+单实例DB锁(plans表占行, 锁行不进active_plans)+wait_wakeup消费wakeup.flag+STOP文件优雅停机; dispatch_split两阶段(高优N-1槽+低优预留1槽); validate_dag DFS三色判环+自依赖+孤儿; core/executor.py: 无状态执行(渲染任务卡→检索→chat→原子落产物+manifest→轻量自检→SUBMITTED带handoff)+SessionYield分支(先存checkpoint再让出)+协作式取消+不重试/不判终态/不吞异常; core/checkpoint.py: Checkpoint落盘+resume_payload(事实与summary_hint分离)+cache_hit三条件(inputs_hash+产物存在+sha匹配)+record_success+prune; core/planner.py: plan_id=问题hash(同题不重拆)+契约校验不做尽力修复(slice_rationale/needs_web×freshness/重id/自依赖/无key_questions)+planner_run_id/model/prompt_version落state/planner_runs+拆分侧session checkpoint+inbox/planner入口; core/search/: base(SearchProvider契约+tavily实现+exa/bing桩+DailyQuota)+classify_source(官方域名先验直接A不调LLM/平台域名强制LLM逐条判/tier_reason必填/解析失败落C不猜/按URL落盘复用)+pipeline(四段式, 先按published_at过滤再判级, 无published_at丢弃, 分析包声明数据非指令, 四件套产出+claims→sources悬空自检); lease补: Heartbeat线程(续租带fencing/StaleOwner即停并置lost/daemon可join)+escalate_dead_letters(attempts>=max升死信+P0, last_error从历史事件翻出而非现造)+backoff_delay_s(60*2^attempts封顶1h); Store补update_priority(老化唯一合法写口, 只许升不许降, 记AGED审计行)。DoD 10条逐条核对见tests/test_dod_phase2.py; 明确划到Phase3: 异步verifier池/告警去重/报告渲染/网关真实provider。写测试时抓出3个真bug: ①让出被Store拒时异常逃出run_task致任务卡死RUNNING(改为落FAILED) ②老化时钟用updated_at会被自己重置致第二档永不触发(改enqueued_at) ③老化min(target,3)把中间档5也压成3(改一次只升一档+下限3)。tests 263 passed",
+            "status": "completed",
+            "updated_at": "2026-09-29T17:00:00Z"
         },
         "Phase3": {
             "desc": "验证器异步+调研质量4规则+告警去重+汇总报告",
