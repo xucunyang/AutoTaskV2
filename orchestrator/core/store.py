@@ -464,6 +464,34 @@ class Store:
 
         return self._row_to_task(self._write_txn(_fn))
 
+    def list_plan_tasks_all(self) -> list[dict]:
+        """全部任务（跨plan）。看板统计用；量级大时别在热路径调。"""
+        con = self._connect()
+        try:
+            rows = con.execute("SELECT * FROM tasks ORDER BY seq").fetchall()
+            return [self._row_to_task(r) for r in rows]
+        finally:
+            con.close()
+
+    def metric_stat(self, name: str, plan_id: str | None = None) -> dict:
+        """单个指标名聚合。报告/看板用，避免各处自己写SQL。"""
+        con = self._connect()
+        try:
+            if plan_id:
+                r = con.execute(
+                    "SELECT COUNT(*) AS n, COALESCE(SUM(value),0) AS total,"
+                    " AVG(value) AS avg, MAX(value) AS max FROM metrics"
+                    " WHERE name=? AND plan_id=?", (name, plan_id)).fetchone()
+            else:
+                r = con.execute(
+                    "SELECT COUNT(*) AS n, COALESCE(SUM(value),0) AS total,"
+                    " AVG(value) AS avg, MAX(value) AS max FROM metrics"
+                    " WHERE name=?", (name,)).fetchone()
+        finally:
+            con.close()
+        return {"n": r["n"], "total": r["total"], "avg": r["avg"],
+                "max": r["max"]}
+
     def list_plans(self) -> list[dict]:
         con = self._connect()
         try:
