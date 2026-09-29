@@ -119,7 +119,7 @@ def test_failed_split_alerts_p1(tmp_path):
     with pytest.raises(SplitError):
         plan_question(s, QUESTION, splitter_fn=lambda p: "垃圾输出",
                       date="2026-09-29")
-    alerts = (tmp_path / "events" / "ALERTS.jsonl").read_text(encoding="utf-8")
+    alerts = (tmp_path / "reports" / "alerts.jsonl").read_text(encoding="utf-8")
     assert "planner_split_failed" in alerts
 
 

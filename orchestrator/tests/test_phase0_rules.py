@@ -324,6 +324,6 @@ def test_alert_writes_alerts_file(tmp_path):
     with pytest.raises(IllegalTransition):
         s.transition("p1", "t1", "DONE", agent="o", run_id="r",
                      expect_version=t["version"])
-    alerts = (tmp_path / "events" / "ALERTS.jsonl").read_text(encoding="utf-8")
+    alerts = (tmp_path / "reports" / "alerts.jsonl").read_text(encoding="utf-8")
     assert '"priority": "P1"' in alerts
     assert "illegal_transition" in alerts

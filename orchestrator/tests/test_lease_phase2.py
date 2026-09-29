@@ -73,7 +73,7 @@ def test_heartbeat_stops_when_lease_stolen(tmp_path):
     finally:
         hb.stop()
     assert hb.beats == 1   # 丢了之后没有再续
-    alerts = (tmp_path / "events" / "ALERTS.jsonl").read_text(encoding="utf-8")
+    alerts = (tmp_path / "reports" / "alerts.jsonl").read_text(encoding="utf-8")
     assert "heartbeat_lost" in alerts
 
 
@@ -143,7 +143,7 @@ def test_dead_letter_at_max_attempts_with_p0(tmp_path):
     assert payload["reason"] == "max_attempts_exceeded"
     assert payload["last_error"]              # 从历史事件里翻出来的
     assert payload["sop_ref"]                 # 死信必带SOP链接（Phase0§2.3）
-    alerts = (tmp_path / "events" / "ALERTS.jsonl").read_text(encoding="utf-8")
+    alerts = (tmp_path / "reports" / "alerts.jsonl").read_text(encoding="utf-8")
     assert '"priority": "P0"' in alerts and "dead_letter" in alerts
 
 

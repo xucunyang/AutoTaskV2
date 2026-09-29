@@ -156,7 +156,7 @@ def test_dod6_sla_breach_raises_alert(tmp_path):
     finally:
         con.close()
     o.dispatch_split()
-    alerts = (tmp_path / "events" / "ALERTS.jsonl").read_text(encoding="utf-8")
+    alerts = (tmp_path / "reports" / "alerts.jsonl").read_text(encoding="utf-8")
     assert "dispatch_sla_breach" in alerts
 
 

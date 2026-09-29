@@ -606,13 +606,23 @@ class Store:
         jlog(self.root, "WARN", "schema_reject", plan_id=plan_id,
              task_id=task_id, where=where, error=error[:200])
 
-    def alert(self, priority: str, kind: str, **fields) -> None:
-        """Phase0§2.2 的P1告警通道：写events/ALERTS.jsonl（追加、不去重，
-        去重属Phase3告警收敛），同时落结构化日志。"""
-        row = {"ts": now_utc_iso(), "priority": priority, "kind": kind, **fields}
-        append_jsonl(self.events_dir / "ALERTS.jsonl", row)
-        jlog(self.root, "ERROR" if priority in ("P0", "P1") else "WARN",
-             f"alert_{priority}", kind=kind, **{k: v for k, v in fields.items()})
+    def alert(self, priority: str, kind: str, **fields) -> dict:
+        """发告警。**级别由政策决定，不看传入的priority**（Phase3§3.2）。
+
+        P0严格只认三种kind（DEAD_LETTER/INCONSISTENT/高优SLA超时）——
+        P0是电话级通知，多一条就稀释真告警的注意力。传入的priority只作
+        "请求"记录，被纠正时留痕。老化这类属P2（日报聚合），不再半夜叫人。
+        去重在Notifier里做（跨进程），这里只负责转发。
+        """
+        from core.notifier import Notifier
+        notifier = getattr(self, "_notifier", None) or Notifier(self.root)
+        self._notifier = notifier
+        plan_id = fields.pop("plan_id", "-")
+        task_id = fields.pop("task_id", "-")
+        run_id = fields.pop("run_id", "")
+        body = fields.pop("body", "") or json.dumps(fields, ensure_ascii=False)
+        return notifier.send(priority, kind, plan_id=plan_id, task_id=task_id,
+                             run_id=run_id, body=body)
 
     def list_by_status(self, status: str) -> list[dict]:
         """按状态列候选（供lease回收扫描用；排序固定seq保证可重放）。"""

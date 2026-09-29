@@ -82,7 +82,7 @@ def test_validate_dag_detects_cycle(tmp_path):
     _add(o.store, "c", deps=["b"])
     bad = o.validate_dag("p1")
     assert any(b["problem"] == "cycle" for b in bad)
-    alerts = (tmp_path / "events" / "ALERTS.jsonl").read_text(encoding="utf-8")
+    alerts = (tmp_path / "reports" / "alerts.jsonl").read_text(encoding="utf-8")
     assert "dag_invalid" in alerts
 
 
