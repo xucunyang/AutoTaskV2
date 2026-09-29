@@ -29,6 +29,8 @@ class AcceptanceRule(BaseModel):
     freshness_days: Optional[int] = None
     source_tier_min_ratio: Optional[dict] = None
     key_questions: Optional[List[str]] = None
+    # V7局部重入定位键：verified_rules 存已通过的rule_id；为空时verifier按rule_{index}自动编号
+    rule_id: Optional[str] = None
 
 class Handoff(BaseModel):
     done: bool
@@ -69,6 +71,9 @@ class TaskShard(BaseModel):
     freshness: Literal["none", "recent", "strict"] = "none"
     slice_rationale: str = ""
     key_questions: List[str] = []
+    # V7让出前置：planner判定预期耗时长短（+允许任务卡手工覆盖）；
+    # long_running=false拒让出（短任务撞线走失败重试+自动置True自学习，见Phase1§2.2）
+    long_running: bool = False
 
     @model_validator(mode="after")
     def _needs_web_requires_freshness(self):

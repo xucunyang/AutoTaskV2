@@ -107,6 +107,16 @@ def test_needs_web_requires_freshness():
     _minimal_shard()  # 默认needs_web=False+freshness=none合法
 
 
+def test_long_running_and_rule_id():
+    """V7：long_running默认False（planner判+手工覆盖）；rule_id为空合法（verifier按index自动编号）"""
+    assert _minimal_shard().long_running is False
+    assert _minimal_shard(long_running=True).long_running is True
+    r = AcceptanceRule(type="file_exists", path="a.csv")
+    assert r.rule_id is None
+    r2 = AcceptanceRule(type="row_count", path="a.csv", rule_id="r2")
+    assert r2.rule_id == "r2"
+
+
 def test_source_requires_tier_reason():
     """V7：Source缺tier_reason拒（分级理由必落盘可复核）"""
     with pytest.raises(ValidationError):
