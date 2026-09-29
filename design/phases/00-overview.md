@@ -36,7 +36,7 @@
 6. 主文件是汇总视图，任务分片+DB行是事实源，事件表是WAL。
 7. 队列是唯一派发来源：持久化FIFO，同优先级按`seq`先入先出；优先级越小越优先（0=管道高优，10=Daily低优）；高优排队等待，当前任务完成后自然衔接执行。单表制：只以`tasks`为队列，`inbox`文件即ingress凭据，不另设可变状态队列表（评审B1）。
 8. 网关可插拔：Provider（本地Ollama/在线API）与RoutePolicy（隐私守卫/延迟守卫/能力匹配）均为插件，配置链式编排；本地有限并发+熔断，公开任务溢出走在线，隐私永不上云。隐私默认关（`privacy.enabled=false`，跳过扫描与脱敏，接口保留，V7§2.11）。
-9. Session切换：80%分母=模型窗口（provider级`context_window`），判定用`usage.prompt_tokens`（当前上下文非累计消耗）；触发→`RUNNING→READY`（子Agent主动让出，attempts不变，带checkpoint断言），单任务切换>5次熔断改走FAILED（V7§2.9）。
+9. Session切换：80%分母=动态窗口`final`=`min(架构上限,档位建议,显存可撑,配置覆盖)`-`context_reserved`(8192)，判定用`usage.prompt_tokens`；触发→`RUNNING→READY`（reason五值：context_full/steps_exhausted/timeout/cancel_requested/context_overflow，attempts不变，带checkpoint断言，long_running=false拒让出），单任务切换>5次熔断改走FAILED（V7§2.9）。
 10. Web搜索：`needs_web`是能力开关非路由维度；资讯/政策/消息必须检索（freshness：recent=730天/strict=180天）；来源分级=域名先验+LLM逐条判定（只喂url+域名+title+发布者，禁喂正文防注入）；A类来源占比>50%（V7§2.10）。
 11. 全环节计时：queue_wait/dispatch/execute/verify/export全埋点，plan终态30s内出`reports/{plan}.summary.md`（失败置顶/耗时Top5/阻塞点/甘特/网关用量/任务分解视图），阈值进`config/report.yaml`。
 12. 计时阈值与算力配额全部进配置，不改代码调参（V7§2.12）。
@@ -45,7 +45,7 @@
 
 ```
 SQLite state.db (WAL)  ← 唯一写事实源
-  ├─ plans / tasks(含priority/source/seqAUTOINCREMENT/last_success_hash/cancel_requested/needs_web/freshness/slice_rationale/session_switch_total) / events / metrics / schema_version
+  ├─ plans / tasks(含priority/source/seqAUTOINCREMENT/last_success_hash/cancel_requested/needs_web/freshness/slice_rationale/long_running/session_switch_total) / events / metrics / schema_version
   ├─ 单表队列（评审B1）：只tasks为队列，inbox/done|error文件即ingress凭据，不设queue_items可变表
   └─ 提交后原子导出 ↓
 state/export/master.json + tasks/*.json  ← Agent只读视图（坏了可重建）
@@ -56,6 +56,7 @@ state/checkpoints/{task}.json ← 断点续跑（含summary/artifacts_partial/do
 artifacts/{date}/{task}.* + manifest.json ← 内容寻址产物
 artifacts/{date}/{task}/sources.json ← 结构化来源（机器可验）
 artifacts/{date}/{task}/claims.json ← 结论-证据映射（无幻觉验收）
+artifacts/{date}/{task}/tuning.md ← 任务级调优诊断（自包含，每行带说明列）
 ```
 
 重启恢复顺序：读PROGRESS.json定位Phase → 连state.db查plan/task/events → 读checkpoint → 重建派发。
@@ -69,7 +70,7 @@ artifacts/{date}/{task}/claims.json ← 结论-证据映射（无幻觉验收）
 - `cancel_requested`配`CANCEL_REQUESTED`事件审计（评审B2）；DB全UTC ISO，cron按Asia/Shanghai解析，日分区/日报按上海自然日切分（评审Minor4）。
 - `inputs_hash = sha256(sorted(inputs manifest sha))`，命中+产物不变可SKIPPED_CACHED。
 - `source_id`：`{run_id}_{n}`唯一，来源分级结果与source_id绑定落盘可复核。
-- `context_window`：provider级模型窗口大小（3B/7B=32768，online=128000），session切换80%判定分母。
+- `context_window`：动态计算`final=min(架构上限,档位建议,显存可撑,配置覆盖)`，session切换80%判定分母；`usable=final-8192`，低于`min_usable`(16384)→本地不可用→走在线。
 
 ## 5. Phase依赖图
 
@@ -98,6 +99,8 @@ PROGRESS.json + design/phases/*.md 全程伴随                      ↑
 | SQLite单写者打爆（多线程database is locked） | Store单写串行+BEGIN IMMEDIATE重试3次+export移出事务（评审M6） | P1 |
 | 管道突发压垮 workers | 最大并发+队列积压告警 | P2 |
 | 模型失忆（上下文超80%） | session切换+checkpoint恢复+让出熔断K=5 | P2 |
+| Ollama静默截断num_ctx（配64K实际4K跑） | resolved/effective对账（启动自检+切档复查）+撞错兜底自愈 | P2 |
+| Mac空闲检测失效（Win32 API不存在） | governor双平台分派（Win+ioreg），失败保安全判ACTIVE | P2 |
 | 子Agent无限让出烧token | session_switch_total熔断，超限改FAILED | P2 |
 | 来源分级注入（内容自证清白） | 分级器禁喂正文，只喂url+域名+title+发布者 | P2 |
 | 报告幻觉（无来源结论） | claims.json机器验收，无source_id拒收 | P3 |
@@ -121,7 +124,7 @@ PROGRESS.json + design/phases/*.md 全程伴随                      ↑
 | 2 | 上下文占满→切session→恢复现场 | §2原则9；Phase2 §6b Session切换与恢复；Phase0 §2.1让出边 | ✅设计完成 |
 | 3 | LLM拆分+分级路由+子Agent无状态 | Phase2 §2主循环planner；Phase2 附录A网关；V7§7拆分层 | ✅设计完成 |
 | 4 | 分片执行完需测试检验 | Phase3 §2验证器；§2.2调研质量4新规则 | ✅设计完成 |
-| 5 | 模型参数量/地址/key可配置 | config/gateway.yaml（provider级+context_window）；config/search.yaml | ✅设计完成 |
+| 5 | 模型参数量/地址/key可配置 | config/gateway.yaml（provider级+context_profiles分档+reserved/门禁）；config/search.yaml | ✅设计完成 |
 | 6 | 兼顾电脑使用 | Phase2 §2 governor两档；ACTIVE档local=0有意权衡（优先响应速度） | ✅设计完成 |
 | 7 | 隐私安全接口可插拔可配置 | §2原则8；Phase2 附录A privacy_guard；V7§8 | ✅设计完成 |
 
@@ -133,4 +136,5 @@ PROGRESS.json + design/phases/*.md 全程伴随                      ↑
 - §4：`plan_id`加`adhoc_{uuid7}`；新增`source_id/context_window`术语。
 - §6：风险表新增5行（模型失忆/无限让出/来源分级注入/报告幻觉/拆分质量）。
 - §8：新增需求追溯表（7条原始需求→设计位置→状态）。
+- 本轮（动态窗口+双平台+三层报告）：§2原则9改动态窗口final+reason五值+long_running前置；§3 tasks列加long_running、产物加tuning.md；§4 context_window术语改动态计算；§6风险表加静默截断/Mac空闲检测2行；§8追溯表需求5更新分档配置。
 - 前轮（V6）保留：简化抢占模型、隐私默认关、schema_ref改名、14态状态机、排队等待模型。
