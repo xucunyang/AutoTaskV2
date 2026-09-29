@@ -42,6 +42,7 @@ def dispatch_split():
 - `refresh_ready`：`strict=true`要求依赖全`DONE`，`false`允许`SKIPPED*`视同满足（模板开关）。
 - 并发：workers按`schedule.yaml`的V5两档（ACTIVE执行与验证共享1槽约1/8，IDLE executor4/verifier2/local1约85%，`governor`阈值见V7§7），全局单编排实例（DB行锁`orchestrator_lock`）；`headroom 2GB`不足停派，高优ACTIVE可+1破格（内存红线不破）。
 - ACTIVE档`local=0`是**有意权衡**：优先响应速度，不省token（用户决策2026-09-28，设计写明防误改）。
+- IDLE档`local_concurrency=1`是14B@64K的前提（权重8.4G+KV12G=20.4G/32G，单并发刚好；开2并发KV翻倍直接爆）。**改并发前必须重算`resolve_window()`**，窗口计算跟着并发走，不写死。
 - 幂等派发：`READY + 无lease + version未变`才派，派发即`READY->RUNNING`占位防重派。
 - 排序：派发查询强制`ORDER BY priority ASC, seq ASC`，禁止内存二次排序，保证FIFO语义单一来源。
 
@@ -136,10 +137,11 @@ def run_task(plan_id, task_id, run_id):
 ## 6b. Session 切换与恢复（V7正式化）
 
 ### 触发条件（任一）
-- 模型上下文超水位线：`usage.prompt_tokens / provider.context_window >= 0.8`（分母=模型窗口，非任务预算；prompt_tokens=当前上下文，非累计消耗）
+- 模型上下文超水位线：`usage.prompt_tokens / final_window >= 0.8`（分母=动态窗口`final`=`core/context.py:resolve_window()`算出，非任务预算；prompt_tokens=当前上下文，非累计消耗）
 - `steps` 超过 `max_steps`（默认20）
 - `timeout_s` 超时（默认900s）
 - `cancel_requested` 命中
+- 撞`context_length_exceeded`硬错（`reason=context_overflow`，强制让出+水位线自适应下调）
 
 ### 判定时机
 - 每次`gateway.chat()`返回后检查`usage.prompt_tokens`（Ollama的`prompt_eval_count`/OpenAI的`usage.prompt_tokens`现成字段）
@@ -149,7 +151,8 @@ def run_task(plan_id, task_id, run_id):
 ```python
 def chat_with_yield_check(card, ...):
     resp = gateway.chat(...)
-    ctx_ratio = resp.usage.prompt_tokens / provider.context_window
+    final = resolve_window(...)  # core/context.py：min(架构/档位/显存/配置)-reserved
+    ctx_ratio = resp.usage.prompt_tokens / final
     if ctx_ratio >= 0.8:
         raise SessionYield(reason="context_full")   # 上层save_checkpoint+RUNNING→READY
     return resp
@@ -178,7 +181,7 @@ def chat_with_yield_check(card, ...):
 - [ ] 防饿死：低优多档老化+预留槽生效，可审计。
 - [ ] Session切换：水位线触发→让出→新session恢复，attempts不变，done_steps不重复；无checkpoint让出拒；熔断超限改FAILED。
 - [ ] 拆分：笼统问题→任务卡DAG，key_questions/slice_rationale齐全，同一问题二次拆分幂等。
-- [ ] 检索：needs_web=true任务产出三件套，未检索任务不产出sources.json。
+- [ ] 检索：needs_web=true任务产出四件套（含tuning.md），未检索任务不产出sources.json。
 
 ## 附录A. 轻量网关（可插拔，防本地拖慢）
 
@@ -216,10 +219,11 @@ def chat_with_yield_check(card, ...):
 - §2b（新增）：拆分层planner——LLM拆分契约/拆分侧session恢复/幂等/质量审计/不人工确认。
 - §5：子执行加`SessionYield`分支（让出走RUNNING→READY）；四段式检索流程（§5b新增）。
 - §6：Checkpoint扩字段（summary/artifacts_partial/done_steps/generation）；恢复精度不依赖LLM自我总结原则。
-- §6b：正式化——80%分母=provider.context_window、判定=usage.prompt_tokens、chat()返回契约、熔断K=5、恢复协议注入内容明确。
+- §6b：正式化——80%分母=动态窗口final（`core/context.py:resolve_window()`四层min）、判定=usage.prompt_tokens、chat()返回契约、熔断K=5、恢复协议注入内容明确、撞错兜底（context_overflow+自适应下调）。
 - §7：metrics加session_switch_total/search_cost。
 - §8：DoD加Session切换/拆分/检索三条。
 - 附录A：chat()返回契约+context_window配置。
 - 附录C（新增）：报告任务分解视图。
 - 附录D（新增）：搜索插件层+来源分级器+注入防护。
+- 本轮（动态窗口+单并发+四件套）：§6b触发条件改动态final+加context_overflow兜底；§2补IDLE档local_concurrency=1前提注释（14B@64K物理必须）；§8 DoD检索项三件套→四件套。
 - 前轮（V6）保留：排队等待模型、两档老化、ttl=120、隐私默认关三跳过、简化抢占模型。
