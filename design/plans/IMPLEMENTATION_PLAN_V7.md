@@ -11,7 +11,7 @@
 - 笼统问题经LLM拆分成任务卡DAG（拆分层：`planner`），Daily定时调研 + 管道高优（飞书仅预留接口）两种入口。
 - 任务列表是持久化FIFO队列（先入先出、落盘的排队结构）：同优先级按入队顺序，Daily低优（priority=10），管道高优（priority=0..4），高优排队等待，当前任务完成后自然衔接执行。
 - 主从Agent结构（1主编排器+N子执行器）：主全局唯一防脑裂（双主同时写坏数据），并发在子Agent层用协程（轻量并发，单线程轮流跑任务）实现。
-- Session切换：模型上下文使用超模型窗口80%（`context_window`的80%，非任务预算）→ 保存checkpoint → 切新session恢复现场继续执行，防失忆。
+- Session切换：模型上下文使用超动态窗口`final`的80%（`min(架构上限,档位建议,显存可撑,配置覆盖)`-`context_reserved`，非任务预算）→ 保存checkpoint → 切新session恢复现场继续执行，防失忆。
 - Web搜索一等能力：资讯/政策/消息类任务必须检索最新资料（`needs_web=true`），不得使用模型参数内知识；推理/逻辑类任务不检索。
 - 分级路由：本地Ollama（本机小模型服务）/在线API（OpenAI兼容即统一HTTP接口规范）按复杂度（simple/medium/complex）可插拔路由；隐私判断默认关闭只留扩展接口。
 - 调研质量验收：来源可追溯（逐条判定来源等级A/B/C，A类超半数）、时效性（recent=2年/strict=6个月）、覆盖度（预定义问题全回答）、无幻觉（结论必须挂来源）。
@@ -43,7 +43,7 @@ state.db(WAL)：plans/tasks/events/metrics/schema_version（版本号表）
   → 原子导出state/export/（tmp+fsync刷盘+rename改名）→ events日分区（上海自然日）/logs/PROGRESS.json/checkpoints/artifacts+manifest/inbox投递箱/reports汇总+日报/backup每日拷贝
 orchestrator/
   config/schedule.yaml（含workers+governor，见§7）, gateway.yaml（含privacy.enabled=false+context_window）, search.yaml（检索provider）, report.yaml
-  templates/daily_plan.yaml, pipeline_task.json, task_card.j2
+  templates/daily_plan.yaml, pipeline_task.json, daily_report.md.j2, task_card.j2
   schemas/models.py（含Source/Claim/SourceTier）, transitions.py, acceptance_*.yaml, summary.schema.json
   core/store.py, lease.py, enqueue.py, scheduler.py, orchestrator.py, executor.py
   core/planner.py（LLM拆分）, core/governor.py（含override三态+Win/Mac双平台空闲检测）, gateway.py（含CapabilityMatch本地窗口门禁）
@@ -64,7 +64,7 @@ orchestrator/
 - `idempotency_key（幂等键）=plan/task/inputs_hash全hash` UNIQUE，禁截断。
 - `run_id=plan_uuid7`透传；`priority 0..10枚举`（0..4管道，5普通，10 Daily）；`last_success_hash`判缓存；`cancel_requested`配`CANCEL_REQUESTED`事件；`privacy/complexity`保留，关闭时填public/simple。
 - `TaskShard.task_id`正则`^[a-z0-9_]{1,64}$`；`AcceptanceRule.schema`改名`schema_ref`（与Pydantic父类属性重名告警，见§11修复③）。
-- `TaskShard.needs_web: bool`（资讯/政策/消息类=true）；`freshness: none|recent|strict`（recent=730天，strict=180天）；`slice_rationale: str`（拆分依据，报告任务分解视图引用）；`long_running: bool`（planner判定预期耗时+允许手工覆盖，false拒让出，撞线重试自动置True自学习）。
+- `TaskShard.needs_web: bool`（资讯/政策/消息类=true）；`freshness: none|recent|strict`（recent=730天，strict=180天）；`slice_rationale: str`（拆分依据，报告任务分解视图引用）；`long_running: bool`（planner判定预期耗时+允许手工覆盖，false拒让出，撞线重试自动置True自学习）；`AcceptanceRule.rule_id`（局部重入定位键，为空按rule_index自动编号）。
 - `AcceptanceRule.rule_id`（VERIFYING局部重入定位键，为空时按rule_index自动编号）。
 - `Source{source_id,url,title,snippet,published_at,source_tier(A|B|C),tier_reason}`；`Claim{claim_id,text,source_ids[],verdict}`（结论必须挂来源，无来源=幻觉拒收）。
 - `Budget`删`max_tokens`（语义改为provider级`context_window`），保留`max_steps/timeout_s`为任务级执行限制。
@@ -84,18 +84,19 @@ orchestrator/
 ## 7. 编排/执行/动态算力（AnyIO + V5两档三源 + V7拆分层）
 
 - 主循环（跨plan全局，单实例+优雅停机）：`recover→ingest_inbox→planner（LLM拆分：笼统问题→任务卡DAG，含拆分侧session恢复）→refresh_ready→aging（10min→5，20min→3）→dispatch_split（高优N-1槽+低优保1槽）→verify_async（池2）→export→wait_wakeup（wakeup.flag事件+10s/2s）`。
-- 子Agent四段式（仅`needs_web=true`）：`①检索（search provider→raw_sources.json）→②筛选（freshness+来源分级）→③分析（只基于筛后资料，禁止参数内知识）→④产出（report.md+sources.json+claims.json）`；推理逻辑类跳过检索直接分析。
+- 子Agent四段式（仅`needs_web=true`）：`①检索（search provider→raw_sources.json）→②筛选（freshness+来源分级）→③分析（只基于筛后资料，禁止参数内知识）→④产出（report.md+sources.json+claims.json+tuning.md）`；推理逻辑类跳过检索直接分析。
 - 阻塞调用包`to_thread`，防卡事件循环（单线程轮流跑任务的核心）。
-- 算力（部署目标32G Mac统一内存；切换逻辑V5-1~V5-5在8逻辑/16GB开发机验证✅）：
+- 算力（动态获取：CPU/内存按占比配额，机器相关数值见`config/schedule.yaml`+`docs/deploy-prereq.md`；切换逻辑V5-1~V5-5✅）：
 
 | 档位 | 判定 | CPU | 内存 | executor | verifier | 本地 |
 |---|---|---|---|---|---|---|
-| ACTIVE | 有输入/idle<5min/手动active | ~1/8（共享1槽，执行优先） | ≤2GB | 1（共享） | 0（排队） | 0（公开走在线） |
-| IDLE | idle≥5min两确认/手动idle | ~85%（7核） | min(12GB，可用-2GB) | 4 | 2 | 1 |
+| ACTIVE | 有输入/idle<5min/手动active | ≤12.5%（共享1槽，执行优先） | 框架≤12.5%总量 | 与验证共享1槽 | 排队等执行槽 | 0（公开走在线） |
+| IDLE | idle≥5min两确认/手动idle | ≤85% | 可用=总量-headroom | 高优占N-1槽 | 2槽 | 1槽 |
 
+- N=executor池大小；headroom/槽位数/判定阈值全进`config/schedule.yaml`（32G Mac当前值见`docs/deploy-prereq.md`§预期配额）。
 - ACTIVE档`local=0`是**有意权衡**：优先响应速度，不省token（用户决策2026-09-28，设计写明防误改）。
-- 手动：`python -m core.governor --mode idle|active|auto`写`state/governor.override`，手动优先于侦测，重启有效，切档记`GOVERNOR_SWITCH{by}`；`headroom（余量）2GB`不足停派；高优ACTIVE可+1破格（内存红线不破）。
-- 配置：`governor: {idle_after_s:300, confirm_samples:2, active_cpu:0.125, idle_cpu:0.85, mem_headroom_gb:2, high_burst:1}`。
+- 手动：`python -m core.governor --mode idle|active|auto`写`state/governor.override`，手动优先于侦测，重启有效，切档记`GOVERNOR_SWITCH{by}`；headroom（余量）不足停派；高优ACTIVE可+1破格（内存红线不破）。
+- 配置键：`governor{idle_after_s, confirm_samples, active_cpu, idle_cpu, mem_headroom, high_burst}`（数值见config，不在纲领写死）。
 
 ## 8. 网关/搜索（隐私默认关）与报告（只链不搬）
 

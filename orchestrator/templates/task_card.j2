@@ -5,7 +5,7 @@
 验收标准：
 {{ acceptance_yaml }}
 幂等键：{{ idempotency_key }}（若本任务已DONE直接退出，不要重复副作用）
-上下文水位线：总体上下文使用超{{ budget.max_tokens }}*0.8或steps超{{ budget.max_steps }}时，先写 state/checkpoints/{{ task_id }}.json 再退出，下轮从断点续跑。
+上下文水位线：总体上下文使用超模型窗口80%（动态计算）或steps超{{ budget.max_steps }}时，先写 state/checkpoints/{{ task_id }}.json 再退出，下轮从断点续跑。
 检查点续跑：若存在checkpoint，从 cursor 继续。
 输出要求：
 1. 原子写产物到 {{ outputs }}（tmp+fsync+rename）
