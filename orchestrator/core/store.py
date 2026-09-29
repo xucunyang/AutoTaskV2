@@ -94,6 +94,11 @@ class AlreadyExists(StoreError):
         self.task = task
 
 
+class TaskIdConflict(StoreError):
+    """同一(plan_id,task_id)已存在但inputs_hash不同：不是重复投递，是输入变了。
+    与AlreadyExists严格区分——前者可静默幂等，后者必须让人看见。"""
+
+
 def shanghai_date() -> str:
     return datetime.now(SHANGHAI).strftime("%Y-%m-%d")
 
@@ -560,8 +565,10 @@ class Store:
         return self._write_txn(_fn)
 
     def insert_task(self, shard: dict) -> tuple[str, dict]:
-        """INSERT tasks(PENDING…)；idempotency_key冲突返回("already_exists", 旧行)。"""
+        """INSERT tasks(PENDING…)；idempotency_key冲突返回("already_exists", 旧行)；
+        同(plan_id,task_id)但inputs_hash不同抛TaskIdConflict（输入变了，不是重投）。"""
         now = now_utc_iso()
+        inputs_hash = shard.get("inputs_hash") or ""
         row = {
             "plan_id": shard["plan_id"],
             "task_id": shard["task_id"],
@@ -606,6 +613,17 @@ class Store:
                 ).fetchone()
                 if old is not None:
                     raise AlreadyExists(self._row_to_task(old))
+                # 幂等键没命中但(plan_id,task_id)撞了：输入变了，不是重复投递。
+                # 静默当already_exists会让"换了输入还跑旧任务"这种bug永远看不见。
+                twin = con.execute(
+                    "SELECT * FROM tasks WHERE plan_id=? AND task_id=?",
+                    (row["plan_id"], row["task_id"]),
+                ).fetchone()
+                if twin is not None:
+                    raise TaskIdConflict(
+                        f"inputs_changed:{row['plan_id']}/{row['task_id']} "
+                        f"old_inputs_hash={twin['inputs_hash']} "
+                        f"new_inputs_hash={row['inputs_hash']}")
                 raise
             con.execute(
                 "INSERT INTO events(ts,plan_id,task_id,from_s,to_s,run_id,agent,payload)"

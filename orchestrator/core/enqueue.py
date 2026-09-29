@@ -9,13 +9,14 @@
 from __future__ import annotations
 import argparse
 import ast
+import hashlib
 import json
 import re
 import shutil
 import time
 from pathlib import Path
 
-from core.store import Store, AlreadyExists
+from core.store import Store, AlreadyExists, TaskIdConflict
 from core.utils import jlog
 from schemas.models import TaskShard
 
@@ -23,6 +24,8 @@ MAX_FILE_BYTES = 100 * 1024          # M9：单任务JSON <100KB
 TASK_ID_RE = re.compile(r"^[a-z0-9_]{1,64}$")
 RATE_LIMIT_PER_HOUR = 100             # M9：单实例入队速率上限
 SHELL_METACHARS = set(";|&`$><\n\r")  # 禁shell元字符（防注入）
+# Phase0§4：cmd只允许白名单前缀，禁任意命令（执行时另需shell=False，见Phase3沙箱）
+ALLOWED_CMD_PREFIXES = ("pytest tests/", "python tests/", "python -m pytest tests/")
 # business_rule.expr 允许的AST节点（M9：表达式注入防护，白名单而非黑名单）
 # 刻意不含 ast.Call/ast.Attribute/ast.Lambda：任何调用或属性链都可能是代码执行
 ALLOWED_EXPR_NODES = (ast.Expression, ast.Compare, ast.BoolOp, ast.Name,
@@ -69,7 +72,17 @@ def validate(raw: bytes, *, root: Path, now: float | None = None) -> dict:
     data.setdefault("status", "PENDING")
     data.setdefault("plan_id", "pipeline")
     if not data.get("idempotency_key"):
-        data["idempotency_key"] = f"{data['plan_id']}:{data.get('task_id', '')}"
+        # Phase0§3：idempotency_key={plan_id}/{task_id}/{inputs_hash全hash}
+        # （禁截断8位，防碰撞）。有inputs就带上内容哈希：
+        # 同样内容重复投递→同键→幂等命中；内容变了→不同键→触发TaskIdConflict
+        # 而不是静默复用旧任务（有inputs_hash但键里不含它=换了输入还跑旧数据）。
+        ih = data.get("inputs_hash") or ""
+        if not ih and data.get("inputs"):
+            ih = hashlib.sha256(json.dumps(data["inputs"], sort_keys=True,
+                                            ensure_ascii=False).encode("utf-8")).hexdigest()
+        data["idempotency_key"] = (f"{data['plan_id']}/{data.get('task_id', '')}"
+                                   f"/{ih}" if ih
+                                   else f"{data['plan_id']}/{data.get('task_id', '')}")
 
     # 1) task_id 形态（M9）
     tid = data.get("task_id", "")
@@ -86,8 +99,11 @@ def validate(raw: bytes, *, root: Path, now: float | None = None) -> dict:
         if cmd is not None:
             if SHELL_METACHARS & set(str(cmd)):
                 raise EnqueueError(f"shell_metachar_in_cmd:{cmd[:60]}")
-            if str(cmd).strip().startswith("-"):
+            stripped = str(cmd).strip()
+            if stripped.startswith("-"):
                 raise EnqueueError("cmd_option_injection")
+            if not stripped.startswith(ALLOWED_CMD_PREFIXES):
+                raise EnqueueError(f"cmd_not_whitelisted:{stripped[:60]}")
         schema_ref = rule.get("schema_ref")
         if schema_ref is not None:
             _check_path(str(schema_ref))
@@ -172,11 +188,22 @@ def enqueue_file(store: Store, path: str | Path, *, priority: int | None = None,
     data.setdefault("plan_id", "pipeline")
     # 重新序列化再过一次校验（priority/plan_id可能被CLI覆盖；status/idempotency_key
     # 由validate()统一补齐，调用方不必重复写）
-    shard = validate(json.dumps(data, ensure_ascii=False).encode("utf-8"), root=root)
+    try:
+        shard = validate(json.dumps(data, ensure_ascii=False).encode("utf-8"),
+                         root=root)
+    except EnqueueError as e:
+        # Phase0§3：校验失败记SCHEMA_REJECT（where=ingress），不派发
+        store.record_schema_reject(str(data.get("plan_id", "?")),
+                                   str(data.get("task_id", "?")), "ingress", str(e))
+        raise
     try:
         status, row = store.insert_task(shard)
     except AlreadyExists as e:
         return "already_exists", e.task
+    except TaskIdConflict as e:
+        store.record_schema_reject(shard["plan_id"], shard["task_id"],
+                                   "ingress", str(e))
+        raise EnqueueError(str(e)) from e
     if status == "created":
         _append_rate_log(root, shard["plan_id"], shard["task_id"])
         touch_wakeup(root)

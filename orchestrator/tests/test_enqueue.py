@@ -192,7 +192,7 @@ def test_defaults_status_and_idempotency_key(tmp_path):
     status, row = enqueue.enqueue_file(s, f)
     assert status == "inserted"
     assert row["status"] == "PENDING"
-    assert row["idempotency_key"] == "pipeline:min1"
+    assert row["idempotency_key"] == "pipeline/min1"   # Phase0§3：{plan}/{task}
     # 再投同一个 → 幂等命中
     assert enqueue.enqueue_file(s, f)[0] == "already_exists"
     # 显式给了idempotency_key就按给的算
@@ -200,6 +200,25 @@ def test_defaults_status_and_idempotency_key(tmp_path):
                 {"task_id": "min2", "objective": "o", "idempotency_key": "custom"})
     _s2, row2 = enqueue.enqueue_file(s, f2)
     assert row2["idempotency_key"] == "custom"
+
+
+def test_idempotency_key_includes_inputs_hash(tmp_path):
+    """Phase0§3：键含inputs_hash全量哈希。同内容重投幂等；内容变了必须报冲突，
+    不能静默复用旧任务（否则"换了输入还跑旧数据"永远查不出来）。"""
+    s = Store(tmp_path)
+    a = {"task_id": "dup", "objective": "o",
+         "inputs": [{"path": "artifacts/2026-09-29/a.csv", "sha256": "s1"}]}
+    f1 = _write(tmp_path, "i1.json", a)
+    assert enqueue.enqueue_file(s, f1)[0] == "inserted"
+    _st, row = enqueue.enqueue_file(s, f1)
+    assert row["idempotency_key"].startswith("pipeline/dup/")
+    assert len(row["idempotency_key"].split("/")[-1]) == 64   # 全hash不截断
+    assert enqueue.enqueue_file(s, f1)[0] == "already_exists"
+    # 同task_id不同inputs → 冲突
+    b = dict(a, inputs=[{"path": "artifacts/2026-09-29/b.csv", "sha256": "s2"}])
+    f2 = _write(tmp_path, "i2.json", b)
+    with pytest.raises(EnqueueError, match="inputs_changed"):
+        enqueue.enqueue_file(s, f2)
 
 
 def test_shipped_pipeline_template_is_enqueueable(tmp_path):
