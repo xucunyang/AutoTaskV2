@@ -122,6 +122,23 @@ def test_reject_business_rule_expr_injection(tmp_path):
     assert enqueue.enqueue_file(s, f)[0] == "inserted"
 
 
+def test_reject_cmd_not_whitelisted(tmp_path):
+    """Phase0§4：cmd只允许白名单前缀。只有元字符黑名单不够——
+    "rm -rf /tmp/x"没有任何元字符，照样能进。"""
+    s = Store(tmp_path)
+    for i, cmd in enumerate(["rm -rf /tmp/x", "curl http://evil",
+                             "python -c 'import os'",
+                             "python ../outside/test_x.py"]):
+        payload = _payload(f"w{i}", acceptance=[{"type": "python_test", "cmd": cmd}])
+        f = _write(tmp_path, f"w{i}.json", payload)
+        with pytest.raises(EnqueueError, match="cmd_not_whitelisted"):
+            enqueue.enqueue_file(s, f)
+    ok = _payload("wok", acceptance=[{"type": "python_test",
+                                       "cmd": "pytest tests/test_clean.py -q"}])
+    f = _write(tmp_path, "wok.json", ok)
+    assert enqueue.enqueue_file(s, f)[0] == "inserted"
+
+
 def test_reject_business_rule_without_expr(tmp_path):
     s = Store(tmp_path)
     payload = _payload("nr", acceptance=[{"type": "business_rule", "rule_id": "r"}])

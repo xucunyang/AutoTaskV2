@@ -1,15 +1,15 @@
 {
-    "current_phase": "PHASE1_COMPLETED_READY_FOR_REVIEW",
-    "pending_review": "Phase1编码轮 (2026-09-29): core/store.py(DDL+transition唯一写入口+让出四重门+export/replay/migrate/backup/integrity+verify_progress_json), core/lease.py(acquire/renew/release/recover_expired/request_cancel+fencing), core/enqueue.py(CLI+inbox六道硬校验+wakeup.flag), core/scheduler.py(APScheduler cron展开+补跑+手动CLI), tests 96 passed; 5 commits; awaiting user review sign-off; Phase2+未开始",
+    "current_phase": "PHASE1_RECHECK_PENDING",
+    "pending_review": "Phase0补落码轮 (2026-09-29): 发现Phase0设计§2.2/§2.3/§3/§4/§5有多条规则只存在于文档未落code(test_transitions只测静态表), PROGRESS此前误标completed。已补: depends_on门禁+权限矩阵role_allowed+让出强制fencing+RETRY/DEAD_LETTER必填+cancel_cascade+SCHEMA_REJECT+P1告警+cmd白名单+task_card渲染器(DoD4)+幂等键含inputs_hash+TaskIdConflict。pytest 132 passed。待办: 复查Phase1(backup-before-migrate/DB锁metrics/DST日志/新规对Phase1调用点的冲击)后再进Phase2",
     "v6_master": "design/plans/IMPLEMENTATION_PLAN_V6.md",
     "v7_master": "design/plans/IMPLEMENTATION_PLAN_V7.md",
     "v6_validated": "33/33通过，3bug已修，4项coding清单见V6§11",
     "phases": {
         "Phase0": {
             "desc": "契约schemas与状态机（V7：14态+让出边+调研三件套模型）",
-            "evidence": "动态窗口轮: transitions让出reason五值(+context_overflow); models加long_running/rule_id+needs_web×freshness交叉校验; 新建core/context.py(9单测)+test_gateway(6用例)+test_governor(4用例); gateway.yaml分档+reserved16384门槛+context_window=null; report.yaml tuning段+sla60; 新建docs/deploy-prereq.md; tests 42 passed",
+            "evidence": "动态窗口轮: transitions让出reason五值(+context_overflow); models加long_running/rule_id+needs_web×freshness交叉校验; 新建core/context.py(9单测)+test_gateway(6用例)+test_governor(4用例); gateway.yaml分档+reserved16384门槛+context_window=null; report.yaml tuning段+sla60; 新建docs/deploy-prereq.md。2026-09-29补落码轮: 发现§2.2/§2.3/§3/§4/§5共10条规则只写在文档未落code(store.transition未强制, test_transitions只测静态表is_allowed常量, 属'测试全绿但规则是空的')。补: ①depends_on门禁(PENDING/BLOCKED→READY查兄弟状态, 默认视SKIPPED/SKIPPED_CACHED满足, strict_depends开关) ②权限矩阵role_allowed+transition(role=orchestrator/subagent/verifier), SYSTEM_ONLY/ORCH_ONLY/SELF_YIELD此前定义却从未被调用 ③让出边强制回带expect_fencing(脑裂防护另一半) ④RETRY必带reason/DEAD_LETTER必带reason+last_error+sop_ref ⑤Store.cancel_cascade(只级联未启动下游) ⑥Store.record_schema_reject+enqueue接入 ⑦Store.alert写events/ALERTS.jsonl ⑧cmd白名单前缀 ⑨core/task_card.py渲染器+token<2k真门禁(DoD第4项, 此前完全缺失) ⑩幂等键含inputs_hash全hash+TaskIdConflict(换输入不再静默复用旧任务)。新增tests/test_phase0_rules.py(21例)+test_task_card.py(10例); 3个被新规推翻的旧断言按设计改正。tests 132 passed",
             "status": "completed",
-            "updated_at": "2026-09-29T07:34:13Z"
+            "updated_at": "2026-09-29T14:30:00Z"
         },
         "Phase1": {
             "desc": "存储SQLite+调度+租约+队列入口（单表/AUTOINCREMENT/Store/备份迁移/让出熔断）",
@@ -37,5 +37,5 @@
         }
     },
     "plan_id": "autotask_bootstrap",
-    "updated_at": "2026-09-29T12:00:00Z"
+    "updated_at": "2026-09-29T14:30:00Z"
 }

@@ -1,6 +1,6 @@
 # Phase0 契约设计：状态机 + 数据模型 + 验收DSL（V7）
 
-状态：已按V7对齐，待用户评审（评审通过后才可进入Phase1编码）。
+状态：已实现并落码（2026-09-29）。DoD逐条见§7，实现与设计的偏差见§9。
 对齐基线：`design/plans/IMPLEMENTATION_PLAN_V7.md`；修订见文末§9。
 
 ## 1. 目标
@@ -125,11 +125,38 @@ FAILED → RETRY / DEAD_LETTER (超max_attempts=3进死信)
 
 ## 7. DoD（完成标准）
 
-- [ ] `pytest tests/test_transitions.py` 全跃迁正反例通过（含`RUNNING->READY`让出正例、无checkpoint让出拒、熔断超限拒，`READY->DONE`/`DONE->*`反例）。
-- [ ] `pytest tests/test_queue_order.py` 同优先级FIFO、跨优先级高优先行通过。
-- [ ] `pytest tests/test_models.py` 非法handoff/manifest被拒；Source缺tier_reason拒；Claim空source_ids拒。
-- [ ] 任务卡渲染后token估算<2k且不含敏感字段（人工抽查3例）。
-- [ ] 设计评审通过（本文件签字：通过/打回）。
+实现现状（2026-09-29，pytest 132 passed）：
+
+- [x] `pytest tests/test_transitions.py` 全跃迁正反例通过（含`RUNNING->READY`让出正例、无checkpoint让出拒、熔断超限拒，`READY->DONE`/`DONE->*`反例）。**注意**：该文件只验静态表（`is_allowed`常量），实际拦截由`tests/test_phase0_rules.py`验——两者都需要，因为表对了不代表store强制了。
+- [x] `pytest tests/test_queue_order.py` 同优先级FIFO、跨优先级高优先行通过。
+- [x] `pytest tests/test_models.py` 非法handoff/manifest被拒；Source缺tier_reason拒；Claim空source_ids拒。
+- [x] 任务卡渲染后token估算<2k且不含敏感字段。`core/task_card.py` + `tests/test_task_card.py`（10例）把token<2k做成真门禁，不再是"人工抽查"。
+- [x] 设计评审通过。本文件的强制规则已从文档落进`store.transition()`，见§9。
+
+### 7.1 §2.2/§2.3 强制规则的落码位置
+
+此前这些规则**只存在于本文档**，`store.transition()`并未强制，`test_transitions.py`测的又是静态表而非实际拦截——测试全绿但规则是空的。2026-09-29 补齐：
+
+| 规则 | 落码 | 测试 |
+|---|---|---|
+| §2.3 `depends_on` 门禁 | `store._unsatisfied_deps_on` / `unsatisfied_dependencies` | `test_depends_gate_*` |
+| §2.2 权限矩阵 | `transitions.role_allowed` + `transition(role=...)` | `test_subagent_cannot_*` / `test_verifier_*` |
+| §2.2 让出须回带fencing | `transition` 让出分支 | `test_yield_requires_matching_fencing` |
+| §2.3 RETRY必带reason / DEAD_LETTER三必填 | `transition` | `test_retry_requires_reason` / `test_dead_letter_requires_*` |
+| §2.3 CANCELLED级联 | `Store.cancel_cascade` | `test_cancel_cascade_*` |
+| §3 SCHEMA_REJECT | `Store.record_schema_reject` + enqueue接入 | `test_record_schema_reject_writes_audit_row` |
+| §4 `cmd`白名单前缀 | `core/enqueue.py` | `test_reject_cmd_not_whitelisted` |
+| §5 任务卡白名单 | `core/task_card.py` | `tests/test_task_card.py` |
+
+新增 `transition(role=...)`：`{orchestrator, subagent, verifier}`。`SYSTEM_ONLY`/`ORCH_ONLY`/`SELF_YIELD`此前定义了却从未被调用——`is_self_yield`在store.py里导入后一次没用过。
+
+## 9. 实现与设计的偏差（2026-09-29 落码后记录）
+
+1. **`cancel_cascade` 的级联边界**：§2.3写"取消上游自动取消未启动下游"。落地为：目标本身按跃迁表语义取消（`RUNNING→CANCELLED`是合法边），级联**只继续走未启动的**（PENDING/BLOCKED/READY）。已开跑的不强改——强改会丢现场，留给`request_cancel`协作中断。
+2. **`depends_on` 视同满足集合**：§2.3提到"SKIPPED/SKIPPED_CACHED视同满足，按模板strict开关"。落地为默认满足，`payload.strict_depends=True`时只认DONE。
+3. **幂等键派生规则**：`{plan_id}/{task_id}/{inputs_hash全hash}`。无inputs时不带第三段。有inputs时按内容算全hash进键——同内容重投幂等命中，同task_id不同inputs抛`TaskIdConflict`（与`AlreadyExists`严格区分：前者可静默幂等，后者必须让人看见）。
+4. **让出边强制fencing**：§2.2写"仅持有正确fencing的owner可写"。落地为让出时**必须**传`expect_fencing`（不给直接拒），因为"给了就比对"的写法在脑裂下等于放行。
+5. **P1告警通道**：`Store.alert()`写`events/ALERTS.jsonl`（追加不去重，去重属Phase3告警收敛）。
 
 ## 8. V6→V7 变更清单（2026-09-28，本轮，待评审）
 
