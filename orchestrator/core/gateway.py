@@ -1,10 +1,19 @@
-"""轻量网关：Provider + RoutePolicy 双插件，配置链编排。"""
+"""轻量网关：Provider + RoutePolicy 双插件，配置链编排。
+
+Provider实现在core/providers.py（Phase3补齐）；本文件只管"选谁"。
+路由可换不改执行器——执行器永远只调 gateway.chat(task_card)。
+"""
 from __future__ import annotations
+
 
 class Provider:
     name: str
+
     def chat(self, prompt: str, budget: dict) -> dict:
+        """返回契约固定：{content, usage:{prompt_tokens, completion_tokens}}。
+        session切换判定依赖usage.prompt_tokens，字段名不能各provider自定。"""
         raise NotImplementedError
+
     def health(self) -> dict:
         return {"ok": True, "queue_depth": 0, "p50_ms": 0}
 
@@ -58,3 +67,20 @@ def route(task, ctx: dict | None = None, policies: list[RoutePolicy] | None = No
         if r:
             return r
     return {"provider": "online", "reason": "default"}
+
+
+def resolve(route_result: dict, providers: dict):
+    """路由结果 → 具体provider实例。
+
+    查不到就返回None而不是造一个空provider：静默拿一个不会真调模型的
+    假provider，任务会"成功"但产物是空的，比直接报错危险得多。
+    """
+    return providers.get(route_result.get("provider", ""))
+
+
+def chat(route_result: dict, providers: dict, prompt: str, budget: dict) -> dict:
+    """按路由结果真调一次。契约与Provider.chat一致。"""
+    p = resolve(route_result, providers)
+    if p is None:
+        raise KeyError(f"provider_not_found:{route_result.get('provider')}")
+    return p.chat(prompt, budget)
