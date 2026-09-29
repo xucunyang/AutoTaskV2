@@ -42,18 +42,18 @@ def test_no_preempted_state():
 
 
 def test_yield_edge_positive():
-    """V7让出边正例：RUNNING->READY（session切换），reason四值，attempts不变（Store层断言）"""
+    """V7让出边正例：RUNNING->READY（session切换），reason五值，attempts不变（Store层断言）"""
     assert is_allowed("RUNNING", "READY")
     assert is_self_yield("RUNNING", "READY")
     assert SELF_YIELD_TRANSITIONS == {("RUNNING", "READY")}
-    for reason in ("context_full", "steps_exhausted", "timeout", "cancel_requested"):
+    for reason in ("context_full", "steps_exhausted", "timeout", "cancel_requested", "context_overflow"):
         assert reason in YIELD_REASONS
     assert SESSION_SWITCH_LIMIT == 5
 
 
 def test_yield_edge_constraints():
     """让出约束：非法reason拒、熔断超限拒、无checkpoint拒（Store层落码断言，此处理由集完备性）"""
-    assert YIELD_REASONS == {"context_full", "steps_exhausted", "timeout", "cancel_requested"}
+    assert YIELD_REASONS == {"context_full", "steps_exhausted", "timeout", "cancel_requested", "context_overflow"}
     assert "preempted_by" not in YIELD_REASONS  # 抢占reason已随简化抢占模型移除
 
 

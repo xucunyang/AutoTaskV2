@@ -17,7 +17,8 @@ SYSTEM_ONLY = {"VERIFYING"}
 ORCH_ONLY_TRANSITIONS = {("SUBMITTED", "VERIFYING")}
 # V7让出边：仅持有正确fencing的owner可写，须带reason+checkpoint断言，受session_switch_total熔断
 SELF_YIELD_TRANSITIONS = {("RUNNING", "READY")}
-YIELD_REASONS = {"context_full", "steps_exhausted", "timeout", "cancel_requested"}
+YIELD_REASONS = {"context_full", "steps_exhausted", "timeout", "cancel_requested", "context_overflow"}
+# context_overflow：撞context_length_exceeded硬错（窗口配错或被静默截断）→ 强制让出 + 水位线自适应下调
 SESSION_SWITCH_LIMIT = 5
 
 def is_allowed(fr: str, to: str) -> bool:
