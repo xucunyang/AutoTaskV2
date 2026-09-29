@@ -181,13 +181,13 @@ def h_business_rule(ctx: dict, rule: dict) -> dict:
             return {"ok": False, "detail": f"missing:{rule.get('path')}"}
         variables.setdefault("bytes", full.stat().st_size)
         if full.suffix == ".csv":
-            n = 0
+            # 先读表头再数行：for循环会把缓冲耗尽，之后再readline()直接
+            # 抛"I/O operation on closed file"（踩过）
             with full.open("r", encoding="utf-8", errors="ignore") as f:
-                for _ in f:
-                    n += 1
+                header = f.readline()
+                n = 1 + sum(1 for _ in f)
             variables.setdefault("rows", max(0, n - 1))
-            variables.setdefault("cols",
-                                  len(f.readline().split(",")) if n else 0)
+            variables.setdefault("cols", len(header.split(",")) if header else 0)
     ok, detail = eval_expr(expr, variables)
     return {"ok": ok, "detail": detail or f"expr={expr}"}
 
