@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS tasks(
   freshness TEXT NOT NULL DEFAULT 'none' CHECK(freshness IN ('none','recent','strict')),
   enqueued_at TEXT NOT NULL,
   shard_json TEXT NOT NULL, updated_at TEXT NOT NULL,
+  -- V7§3 LLM语义评审局部重入：存verified_rules已通过的rule_id，requeue_verify只重跑未过的
+  verify_progress_json TEXT,
   UNIQUE(plan_id, task_id));
 CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
   plan_id TEXT NOT NULL, task_id TEXT NOT NULL, from_s TEXT NOT NULL, to_s TEXT NOT NULL,
@@ -226,7 +228,46 @@ class Store:
             d["shard"] = json.loads(d.get("shard_json") or "{}")
         except ValueError:
             d["shard"] = {}
+        try:
+            d["verify_progress"] = json.loads(d.get("verify_progress_json") or "{}")
+        except ValueError:
+            d["verify_progress"] = {}
         return d
+
+    def update_verify_progress(self, plan_id: str, task_id: str,
+                               verified_rules: list[str], *,
+                               expect_version: int) -> dict:
+        """V7§3：VERIFYING中记录已通过的rule_id（局部重入的进度账本）。
+        与status解耦，写回带expect_version防并发覆盖。"""
+        def _fn(con):
+            cur = con.execute(
+                "SELECT version,verify_progress_json FROM tasks"
+                " WHERE plan_id=? AND task_id=?",
+                (plan_id, task_id),
+            ).fetchone()
+            if cur is None:
+                raise StoreError(f"task_not_found:{plan_id}/{task_id}")
+            v, raw = cur
+            if v != expect_version:
+                raise Conflict(f"version expect={expect_version} actual={v}")
+            try:
+                progress = json.loads(raw or "{}")
+            except ValueError:
+                progress = {}
+            progress["verified_rules"] = sorted(set(verified_rules))
+            progress["updated_at"] = now_utc_iso()
+            blob = json.dumps(progress, ensure_ascii=False)
+            con.execute(
+                "UPDATE tasks SET verify_progress_json=?, version=?, updated_at=?"
+                " WHERE plan_id=? AND task_id=?",
+                (blob, v + 1, now_utc_iso(), plan_id, task_id),
+            )
+            return con.execute(
+                "SELECT * FROM tasks WHERE plan_id=? AND task_id=?",
+                (plan_id, task_id),
+            ).fetchone()
+
+        return self._row_to_task(self._write_txn(_fn))
 
     def request_cancel(self, plan_id: str, task_id: str, reason: str,
                        expect_version: int, by: str = "orchestrator",
@@ -621,12 +662,31 @@ class Store:
     # ---------- 备份/迁移 ----------
 
     def backup(self) -> Path:
-        """VACUUM INTO每日拷贝（上海自然日）；返回备份路径。"""
+        """VACUUM INTO每日拷贝（上海自然日）；已存在则幂等返回（不覆盖当日备份）。
+        VACUUM INTO要求目标不存在，故不能无条件重复调用。"""
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         dest = self.backup_dir / f"state-{shanghai_date()}.db"
+        if dest.exists():
+            jlog(self.root, "INFO", "backup_skipped_exists", path=str(dest))
+            return dest
         con = self._connect()
         try:
-            con.execute(f"VACUUM INTO '{dest}'")
+            con.execute("VACUUM INTO ?", (str(dest),))
         finally:
             con.close()
+        jlog(self.root, "INFO", "backup_created", path=str(dest))
         return dest
+
+    def integrity_check(self) -> dict:
+        """PRAGMA integrity_check + foreign/一致性快检（混沌后恢复演练用）。"""
+        con = self._connect()
+        try:
+            row = con.execute("PRAGMA integrity_check;").fetchone()
+            con.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            return {"integrity": row[0],
+                    "tasks": con.execute("SELECT COUNT(*) FROM tasks").fetchone()[0],
+                    "events": con.execute("SELECT COUNT(*) FROM events").fetchone()[0],
+                    "seq_max": con.execute(
+                        "SELECT COALESCE(MAX(seq),0) FROM tasks").fetchone()[0]}
+        finally:
+            con.close()

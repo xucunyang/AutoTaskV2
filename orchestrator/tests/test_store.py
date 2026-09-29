@@ -197,6 +197,26 @@ def test_fifo_list_ready_ordered(tmp_path):
     assert got == ["high", "low1", "low2"]
 
 
+def test_verify_progress_tracks_passed_rules(tmp_path):
+    """V7§3：VERIFYING局部重入的进度账本——只重跑未通过的rule。"""
+    s = Store(tmp_path)
+    t = _ready_task(s)
+    t = s.transition("p1", "t1", "RUNNING", agent="a", run_id="r",
+                     expect_version=t["version"], lease_op="acquire")
+    t = s.transition("p1", "t1", "SUBMITTED", agent="a", run_id="r",
+                     expect_version=t["version"])
+    t = s.transition("p1", "t1", "VERIFYING", agent="orch", run_id="r",
+                     expect_version=t["version"])
+    assert t["verify_progress"] == {}
+    got = s.update_verify_progress("p1", "t1", ["rule_0", "rule_2", "rule_0"],
+                                   expect_version=t["version"])
+    assert got["verify_progress"]["verified_rules"] == ["rule_0", "rule_2"]
+    assert got["version"] == t["version"] + 1
+    assert got["status"] == "VERIFYING"      # 进度写不改状态
+    with pytest.raises(Conflict):
+        s.update_verify_progress("p1", "t1", ["rule_1"], expect_version=t["version"])
+
+
 def test_replay_and_rebuild_and_backup(tmp_path):
     s = Store(tmp_path)
     s.ensure_plan("p1", template="daily")
