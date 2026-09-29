@@ -14,10 +14,18 @@ from zoneinfo import ZoneInfo
 
 from schemas.transitions import (
     ALLOWED,
+    TERMINAL,
     YIELD_REASONS,
     SESSION_SWITCH_LIMIT,
+    SYSTEM_ONLY,
+    ORCH_ONLY_TRANSITIONS,
+    SELF_YIELD_TRANSITIONS,
+    ROLES,
+    SUBAGENT_TRANSITIONS,
+    VERIFIER_TRANSITIONS,
     is_allowed,
     is_self_yield,
+    role_allowed,
 )
 from core.utils import now_utc_iso, atomic_write_json, append_jsonl, jlog
 
@@ -319,6 +327,154 @@ class Store:
         finally:
             con.close()
 
+    def list_plan_tasks(self, plan_id: str) -> list[dict]:
+        """同plan全部任务（依赖门禁/CANCELLED级联需要看兄弟任务状态）。"""
+        con = self._connect()
+        try:
+            rows = con.execute(
+                "SELECT * FROM tasks WHERE plan_id=? ORDER BY seq ASC", (plan_id,)
+            ).fetchall()
+            return [self._row_to_task(r) for r in rows]
+        finally:
+            con.close()
+
+    @staticmethod
+    def _unsatisfied_deps_on(con, plan_id: str, task_id: str, *,
+                             shard_json: str | None = None,
+                             strict: bool = False) -> list[dict]:
+        """同连接内查依赖（必须在写事务里用同连接，避免嵌套连接与锁竞争）。"""
+        if shard_json is None:
+            row = con.execute(
+                "SELECT shard_json FROM tasks WHERE plan_id=? AND task_id=?",
+                (plan_id, task_id),
+            ).fetchone()
+            if row is None:
+                raise StoreError(f"task_not_found:{plan_id}/{task_id}")
+            shard_json = row[0]
+        try:
+            deps = json.loads(shard_json or "{}").get("depends_on") or []
+        except ValueError:
+            deps = []
+        if not deps:
+            return []
+        sibs = {r["task_id"]: r["status"] for r in con.execute(
+            "SELECT task_id,status FROM tasks WHERE plan_id=?", (plan_id,))}
+        ok = {"DONE"} if strict else {"DONE", "SKIPPED", "SKIPPED_CACHED"}
+        return [{"task_id": d, "status": sibs.get(d, "MISSING")}
+                for d in deps if sibs.get(d) not in ok]
+
+    def unsatisfied_dependencies(self, plan_id: str, task_id: str, *,
+                                 strict: bool = False) -> list[dict]:
+        """返回未满足的依赖（Phase0§2.3）。
+        默认视 SKIPPED/SKIPPED_CACHED 为满足（任务被跳过不再挡路）；
+        strict=True 时只认 DONE，让跳过也变下游阻塞（模板可开）。"""
+        con = self._connect()
+        try:
+            return self._unsatisfied_deps_on(con, plan_id, task_id, strict=strict)
+        finally:
+            con.close()
+
+    CANCELABLE_FROM_NOT_STARTED = ("PENDING", "BLOCKED", "READY")
+
+    def cancel_cascade(self, plan_id: str, task_id: str, reason: str, *,
+                       agent: str = "orchestrator", run_id: str = "",
+                       start_version: int | None = None) -> list[dict]:
+        """Phase0§2.3：取消上游级联取消**未启动**的下游。
+        目标本身按跃迁表语义取消（RUNNING→CANCELLED 表里是合法边）；
+        但级联只继续往下走未启动的（PENDING/BLOCKED/READY），
+        已开跑的下游不强改——强改会丢现场，应走request_cancel协作中断。
+        逐个走transition，每个都留审计行。"""
+        cancelled = []
+        seen = {task_id}
+        # 目标：按表取消
+        t = self.get_task(plan_id, task_id)
+        if t is not None and t["status"] not in TERMINAL and t["status"] != "CANCELLED":
+            payload = {"reason": reason}
+            try:
+                cancelled.append(self.transition(
+                    plan_id, task_id, "CANCELLED", agent=agent, run_id=run_id,
+                    expect_version=start_version if start_version is not None
+                    else t["version"], payload=payload))
+            except (Conflict, IllegalTransition):
+                pass
+        # 级联：只吃未启动下游
+        frontier = list(self._dependents(plan_id, task_id))
+        while frontier:
+            tid = frontier.pop(0)
+            if tid in seen:
+                continue
+            seen.add(tid)
+            d = self.get_task(plan_id, tid)
+            if d is None or d["status"] not in self.CANCELABLE_FROM_NOT_STARTED:
+                continue          # 已启动/终态：不级联，留给协作中断
+            try:
+                cancelled.append(self.transition(
+                    plan_id, tid, "CANCELLED", agent=agent, run_id=run_id,
+                    expect_version=d["version"],
+                    payload={"reason": reason, "cascaded_from": task_id}))
+            except (Conflict, IllegalTransition):
+                continue
+            frontier.extend(self._dependents(plan_id, tid))
+        return cancelled
+
+    def _dependents(self, plan_id: str, task_id: str) -> list[str]:
+        """谁依赖我（反向边）。"""
+        con = self._connect()
+        try:
+            out = []
+            for r in con.execute(
+                "SELECT task_id,shard_json FROM tasks WHERE plan_id=?", (plan_id,)
+            ).fetchall():
+                try:
+                    deps = json.loads(r["shard_json"] or "{}").get("depends_on") or []
+                except ValueError:
+                    deps = []
+                if task_id in deps:
+                    out.append(r["task_id"])
+            return out
+        finally:
+            con.close()
+
+    def record_schema_reject(self, plan_id: str, task_id: str, where: str,
+                             error: str, *, agent: str = "system",
+                             run_id: str = "", payload: dict | None = None) -> None:
+        """Phase0§3：启动/派发/写回三处model_validate失败记SCHEMA_REJECT，不派发。
+        独立事务写（同状态审计行，replay跳过），不依赖任务当前是否可跃迁。"""
+        body = {"event": "SCHEMA_REJECT", "where": where, "error": error[:500],
+                **(payload or {})}
+        now = now_utc_iso()
+        con = self._connect()
+        try:
+            row = con.execute(
+                "SELECT status FROM tasks WHERE plan_id=? AND task_id=?",
+                (plan_id, task_id),
+            ).fetchone()
+            s = row[0] if row else "UNKNOWN"
+            self._write_lock.acquire()
+            try:
+                con.execute("BEGIN IMMEDIATE")
+                con.execute(
+                    "INSERT INTO events(ts,plan_id,task_id,from_s,to_s,run_id,"
+                    "agent,payload) VALUES (?,?,?,?,?,?,?,?)",
+                    (now, plan_id, task_id, s, s, run_id, agent,
+                     json.dumps(body, ensure_ascii=False)),
+                )
+                con.commit()
+            finally:
+                self._write_lock.release()
+        finally:
+            con.close()
+        jlog(self.root, "WARN", "schema_reject", plan_id=plan_id,
+             task_id=task_id, where=where, error=error[:200])
+
+    def alert(self, priority: str, kind: str, **fields) -> None:
+        """Phase0§2.2 的P1告警通道：写events/ALERTS.jsonl（追加、不去重，
+        去重属Phase3告警收敛），同时落结构化日志。"""
+        row = {"ts": now_utc_iso(), "priority": priority, "kind": kind, **fields}
+        append_jsonl(self.events_dir / "ALERTS.jsonl", row)
+        jlog(self.root, "ERROR" if priority in ("P0", "P1") else "WARN",
+             f"alert_{priority}", kind=kind, **{k: v for k, v in fields.items()})
+
     def list_by_status(self, status: str) -> list[dict]:
         """按状态列候选（供lease回收扫描用；排序固定seq保证可重放）。"""
         con = self._connect()
@@ -475,9 +631,13 @@ class Store:
     def transition(self, plan_id: str, task_id: str, to_s: str, *, agent: str,
                    run_id: str, expect_version: int, expect_fencing: int | None = None,
                    handoff: dict | None = None, payload: dict | None = None,
-                   lease_op: str | None = None) -> dict:
+                   lease_op: str | None = None,
+                   role: str = "orchestrator") -> dict:
         """唯一状态跃迁入口。lease_op∈{acquire,renew,revoke}时fencing+1（评审Minor2），
-        普通跃迁只+version；RETRY→READY时attempts+1；其余attempts不变。"""
+        普通跃迁只+version；RETRY→READY时attempts+1；其余attempts不变。
+
+        role∈{orchestrator,subagent,verifier}：权限矩阵在store强制（Phase0§2.2），
+        子Agent/Verifier越权写系统跃迁一律IllegalTransition+REJECTED。"""
         t0 = time.monotonic()
         payload = dict(payload or {})
 
@@ -492,6 +652,9 @@ class Store:
             s, v, f, switch, attempts, shard_json = cur
             if not is_allowed(s, to_s):
                 raise IllegalTransition(f"{s}->{to_s}")
+            ok, why = role_allowed(role, s, to_s)
+            if not ok:
+                raise IllegalTransition(why)
             if v != expect_version:
                 raise Conflict(f"version expect={expect_version} actual={v}")
             if expect_fencing is not None and f != expect_fencing:
@@ -499,6 +662,10 @@ class Store:
             new_attempts = attempts
             new_switch = switch
             if to_s == "READY" and s == "RUNNING":  # 让出边（V7§2.9）
+                # 主动让出只有持有当前租约的owner能写：必须回带fencing，
+                # 否则脑裂时旧owner能让掉新owner正在跑的任务（Phase0§2.2）
+                if expect_fencing is None:
+                    raise IllegalTransition("yield_requires_fencing")
                 reason = payload.get("reason")
                 if reason not in YIELD_REASONS:
                     raise IllegalTransition(f"bad_yield_reason:{reason}")
@@ -514,8 +681,25 @@ class Store:
                 if switch >= self.session_switch_limit:
                     raise IllegalTransition("session_switch_fused")
                 new_switch = switch + 1
+            if to_s == "RETRY" and not payload.get("reason"):
+                # Phase0§2.3：重试必须带reason，否则事后无法判断该重试什么
+                raise IllegalTransition("retry_requires_reason")
+            if to_s == "DEAD_LETTER":
+                # 死信必须带reason+last_error+人工SOP链接，否则无人知道怎么处理
+                missing = [k for k in ("reason", "last_error", "sop_ref")
+                           if not payload.get(k)]
+                if missing:
+                    raise IllegalTransition(f"dead_letter_missing:{missing}")
             if s == "RETRY" and to_s == "READY":
                 new_attempts = attempts + 1  # +1只在此边，全程一次
+            if to_s == "READY" and s in ("PENDING", "BLOCKED"):
+                # Phase0§2.3：依赖未全终态不得进READY（否则日报DAG乱序派发）
+                blocking = self._unsatisfied_deps_on(
+                    con, plan_id, task_id, shard_json=shard_json,
+                    strict=bool(payload.get("strict_depends")))
+                if blocking:
+                    raise IllegalTransition(
+                        f"deps_unsatisfied:{[b['task_id'] for b in blocking]}")
             new_fencing = f + (1 if lease_op in ("acquire", "renew", "revoke") else 0)
             new_shard = shard_json
             if handoff is not None:
@@ -558,12 +742,17 @@ class Store:
                                           run_id, str(e), payload)
             jlog(self.root, "WARN", "transition_rejected",
                  plan_id=plan_id, task_id=task_id, to=to_s, error=str(e)[:200])
+            # Phase0§2.2：非法跃迁/越权是P1（有入队方在等这个状态）
+            self.alert("P1", "illegal_transition", plan_id=plan_id,
+                       task_id=task_id, to=to_s, role=role, error=str(e)[:300])
             raise
         except StaleOwner as e:
             self._record_rejected_outside(plan_id, task_id, to_s, agent,
                                           run_id, str(e), payload)
             jlog(self.root, "WARN", "stale_owner",
                  plan_id=plan_id, task_id=task_id, error=str(e)[:200])
+            self.alert("P1", "stale_owner_write", plan_id=plan_id,
+                       task_id=task_id, to=to_s, role=role, error=str(e)[:300])
             raise
         task = self._row_to_task(new_row)
         self._export_task(task)

@@ -215,7 +215,8 @@ def main(argv: list[str] | None = None) -> int:
                 reset = store.transition(pid, args.rerun, "RETRY", agent="cli",
                                          run_id="manual_rerun",
                                          expect_version=t["version"],
-                                         payload={"manual_rerun": True})
+                                         payload={"reason": "manual_cli_rerun",
+                                                  "manual_rerun": True})
             except (IllegalTransition, Conflict) as e:
                 # 只允许状态机允许的边（当前态→RETRY），否则明确报错而非静默改状态
                 print(json.dumps({"error": type(e).__name__, "detail": str(e),

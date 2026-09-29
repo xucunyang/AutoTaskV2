@@ -29,3 +29,30 @@ def is_terminal(s: str) -> bool:
 
 def is_self_yield(fr: str, to: str) -> bool:
     return (fr, to) in SELF_YIELD_TRANSITIONS
+
+# 权限矩阵（Phase0§2.2，唯一来源，store.transition强制落码）
+ROLES = {"orchestrator", "subagent", "verifier"}
+# 子Agent只允许：执行产物/失败/主动让出（V7无回退重试权，重试由系统决定）
+SUBAGENT_TRANSITIONS = {("RUNNING", "SUBMITTED"), ("RUNNING", "FAILED"),
+                        ("RUNNING", "READY")}
+# Verifier只允许：VERIFYING的四个出边
+VERIFIER_TRANSITIONS = {("VERIFYING", "DONE"), ("VERIFYING", "RETRY"),
+                        ("VERIFYING", "FAILED"), ("VERIFYING", "WAITING_APPROVAL")}
+
+def role_allowed(role: str, fr: str, to: str) -> tuple[bool, str]:
+    """校验role能否写这条边；返回(是否允许, 拒绝原因)。orchestrator拥有全部系统跃迁。"""
+    if role not in ROLES:
+        return False, f"unknown_role:{role}"
+    if role == "orchestrator":
+        return True, ""
+    if to in SYSTEM_ONLY:
+        return False, f"system_only:{to}"
+    if (fr, to) in ORCH_ONLY_TRANSITIONS:
+        return False, f"orch_only:{fr}->{to}"
+    if role == "subagent":
+        if (fr, to) not in SUBAGENT_TRANSITIONS:
+            return False, f"subagent_cannot:{fr}->{to}"
+    else:  # verifier
+        if (fr, to) not in VERIFIER_TRANSITIONS:
+            return False, f"verifier_cannot:{fr}->{to}"
+    return True, ""

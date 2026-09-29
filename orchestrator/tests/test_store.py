@@ -92,10 +92,14 @@ def test_attempts_plus_one_only_on_retry_to_ready(tmp_path):
     t = s.transition("p1", "t1", "RUNNING", agent="o", run_id="r",
                      expect_version=t["version"])
     t = s.transition("p1", "t1", "FAILED", agent="s", run_id="r",
-                     expect_version=t["version"])
+                     expect_version=t["version"], role="subagent")
     assert t["attempts"] == 0
+    with pytest.raises(IllegalTransition, match="retry_requires_reason"):
+        s.transition("p1", "t1", "RETRY", agent="v", run_id="r",
+                     expect_version=t["version"])          # Phase0§2.3：RETRY必带reason
     t = s.transition("p1", "t1", "RETRY", agent="v", run_id="r",
-                     expect_version=t["version"])
+                     expect_version=t["version"],
+                     payload={"reason": "verify_failed"})
     assert t["attempts"] == 0
     t = s.transition("p1", "t1", "READY", agent="o", run_id="r",
                      expect_version=t["version"])
@@ -103,28 +107,35 @@ def test_attempts_plus_one_only_on_retry_to_ready(tmp_path):
 
 
 def _to_running(s, tid="t1", pid="p1", **over):
+    """跑到RUNNING并**持有租约**（lease_op=acquire使fencing≥1），
+    因为Phase0§2.2：让出边必须回带fencing，只有租约持有者能写。"""
     t = _ready_task(s, tid, pid, **over)
     return s.transition(pid, tid, "RUNNING", agent="o", run_id="r",
-                        expect_version=t["version"])
+                        expect_version=t["version"], lease_op="acquire")
+
+
+def _mark_long_running(s, tid, pid):
+    t = s.get_task(pid, tid)
+    shard = dict(t["shard"])
+    shard["long_running"] = True
+    con = s._connect()
+    try:
+        con.execute("UPDATE tasks SET shard_json=? WHERE plan_id=? AND task_id=?",
+                    (json.dumps(shard, ensure_ascii=False), pid, tid))
+        con.commit()
+    finally:
+        con.close()
 
 
 def test_yield_ok_with_reason_and_checkpoint(tmp_path):
     s = Store(tmp_path)
     t = _to_running(s)
-    # shard默认无long_running → 直接覆写shard_json补标记（模拟planner写卡）
-    import json as _j
-    shard = dict(t["shard"]); shard["long_running"] = True
-    con = s._connect()
-    try:
-        con.execute("UPDATE tasks SET shard_json=? WHERE plan_id='p1' AND task_id='t1'",
-                    (_j.dumps(shard),))
-        con.commit()
-    finally:
-        con.close()
+    _mark_long_running(s, "t1", "p1")
     _ckpt(s)
     t2 = s.transition("p1", "t1", "READY", agent="sub", run_id="r",
                       expect_version=t["version"],
-                      payload={"reason": "context_full"})
+                      expect_fencing=t["fencing_token"],
+                      payload={"reason": "context_full"}, role="subagent")
     assert t2["status"] == "READY"
     assert t2["attempts"] == 0  # 让出不加attempts
     assert t2["session_switch_total"] == 1
@@ -133,46 +144,61 @@ def test_yield_ok_with_reason_and_checkpoint(tmp_path):
 def test_yield_rejects(tmp_path):
     s = Store(tmp_path)
     t = _to_running(s)
+    f = t["fencing_token"]
     # 无checkpoint拒
     with pytest.raises(IllegalTransition):
         s.transition("p1", "t1", "READY", agent="sub", run_id="r",
-                     expect_version=t["version"],
-                     payload={"reason": "context_full"})
+                     expect_version=t["version"], expect_fencing=f,
+                     payload={"reason": "context_full"}, role="subagent")
     # 非法reason拒
     _ckpt(s)
     with pytest.raises(IllegalTransition):
         s.transition("p1", "t1", "READY", agent="sub", run_id="r",
-                     expect_version=t["version"], payload={"reason": "preempted_by_x"})
+                     expect_version=t["version"], expect_fencing=f,
+                     payload={"reason": "preempted_by_x"}, role="subagent")
     # 短任务拒（long_running=false）
     with pytest.raises(IllegalTransition):
         s.transition("p1", "t1", "READY", agent="sub", run_id="r",
+                     expect_version=t["version"], expect_fencing=f,
+                     payload={"reason": "timeout"}, role="subagent")
+
+
+def test_yield_requires_matching_fencing(tmp_path):
+    """Phase0§2.2：让出必须回带fencing，且与当前一致。
+    脑裂下旧owner拿着过期fencing让出，会把新owner正在跑的任务打回READY。"""
+    s = Store(tmp_path)
+    t = _to_running(s)
+    _mark_long_running(s, "t1", "p1")
+    _ckpt(s)
+    with pytest.raises(IllegalTransition, match="yield_requires_fencing"):
+        s.transition("p1", "t1", "READY", agent="sub", run_id="r",
                      expect_version=t["version"],
-                     payload={"reason": "timeout"})
+                     payload={"reason": "context_full"}, role="subagent")
+    with pytest.raises(StaleOwner):
+        s.transition("p1", "t1", "READY", agent="sub", run_id="r",
+                     expect_version=t["version"],
+                     expect_fencing=t["fencing_token"] - 1,
+                     payload={"reason": "context_full"}, role="subagent")
 
 
 def test_yield_fused_after_limit(tmp_path):
     s = Store(tmp_path, session_switch_limit=1)
     t = _to_running(s)
-    import json as _j
-    shard = dict(t["shard"]); shard["long_running"] = True
-    con = s._connect()
-    try:
-        con.execute("UPDATE tasks SET shard_json=? WHERE plan_id='p1' AND task_id='t1'",
-                    (_j.dumps(shard),))
-        con.commit()
-    finally:
-        con.close()
+    _mark_long_running(s, "t1", "p1")
     _ckpt(s)
+    f = t["fencing_token"]
     t = s.transition("p1", "t1", "READY", agent="sub", run_id="r",
-                     expect_version=t["version"],
-                     payload={"reason": "context_full"})
+                     expect_version=t["version"], expect_fencing=f,
+                     payload={"reason": "context_full"}, role="subagent")
     assert t["session_switch_total"] == 1
     t = s.transition("p1", "t1", "RUNNING", agent="o", run_id="r",
-                     expect_version=t["version"])
+                     expect_version=t["version"], lease_op="acquire")
+    _ckpt(s)
     with pytest.raises(IllegalTransition):  # 超限拒，改走FAILED
         s.transition("p1", "t1", "READY", agent="sub", run_id="r",
                      expect_version=t["version"],
-                     payload={"reason": "context_full"})
+                     expect_fencing=t["fencing_token"],
+                     payload={"reason": "context_full"}, role="subagent")
 
 
 def test_insert_idempotent_on_key_conflict(tmp_path):
