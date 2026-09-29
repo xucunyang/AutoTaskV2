@@ -69,8 +69,10 @@ def transition(plan_id, task_id, to_s, *, agent, run_id,
         if v != expect_version: raise Conflict("乐观锁冲突")
         if expect_fencing is not None and f != expect_fencing: raise StaleOwner("旧owner")
         if to_s == 'READY' and s == 'RUNNING':  # 让出边（V7）
-            assert payload.reason in {'context_full','steps_exhausted','timeout','cancel_requested'}
+            assert payload.reason in {'context_full','steps_exhausted','timeout','cancel_requested','context_overflow'}
             assert checkpoint_exists(plan_id, task_id)          # 无checkpoint=丢现场，拒
+            if not task.long_running:                           # 短任务拒让出→走失败重试+自动置True自学习
+                raise IllegalTransition("short_task_no_yield")
             if switch >= SESSION_SWITCH_LIMIT:                  # 熔断K=5（可配）
                 raise IllegalTransition("session_switch熔断")   # 上层改走FAILED
             session_switch_total += 1                           # attempts不变
@@ -155,9 +157,10 @@ def transition(plan_id, task_id, to_s, *, agent, run_id,
 ## 7. V6→V7 变更清单（2026-09-28，本轮，待评审）
 
 - §2.1：DDL加`session_switch_total`/`needs_web`/`freshness`列；shard_json承载slice_rationale/key_questions。
-- §2.2：`transition()`加让出边校验（reason四值+checkpoint断言+熔断K=5，attempts不变）。
+- §2.2：`transition()`加让出边校验（reason五值+checkpoint断言+long_running前置+熔断K=5，attempts不变）。
 - §2.3b：时间参数加`session_switch_limit=5`。
 - §2.4：enqueue加`needs_web=true`时freshness必填校验；飞书改口（预留IngressProvider接口，V7§12.8）。
 - §3：租约回收与主动让出明确区分（被动失联计attempts vs 主动切换不计）。
 - §5：异常矩阵加让出两行。
+- 本轮（动态窗口+兜底reason）：§2.2让出reason四值→五值（+context_overflow）+long_running前置校验（短任务拒让出→失败重试+自学习）。
 - 前轮（V6）保留：单表制、AUTOINCREMENT、简化抢占模型、wakeup.flag、两档老化、ttl=120/心跳30s续120s。
