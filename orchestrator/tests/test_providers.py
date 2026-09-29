@@ -66,11 +66,24 @@ def test_ollama_model_selection(monkeypatch):
     calls = []
     _patch_urlopen(monkeypatch, {"message": {"content": "x"},
                                  "prompt_eval_count": 1, "eval_count": 1}, calls)
-    p = OllamaProvider(base_url="http://x", models={"simple": "q3b", "medium": "q7b"})
+    p = OllamaProvider(base_url="http://x", models={"simple": "q4b",
+                                                   "medium": "q7b"})
     p.chat("q", {"complexity": "medium"})
     assert calls[0]["body"]["model"] == "q7b"
-    p.chat("q", {"complexity": "complex"})     # 未知档退回simple
-    assert calls[1]["body"]["model"] == "q3b"
+    p.chat("q", {"complexity": "simple"})
+    assert calls[1]["body"]["model"] == "q4b"
+
+
+def test_ollama_refuses_unconfigured_complexity(monkeypatch):
+    """没配该复杂度就报错，**不静默回落到simple**。
+    原来回落意味着用4B悄悄跑medium任务，质量掉了日志里还看不出来。"""
+    _patch_urlopen(monkeypatch, {"message": {"content": "x"},
+                                 "prompt_eval_count": 1, "eval_count": 1})
+    p = OllamaProvider(base_url="http://x", models={"simple": "q4b"})
+    with pytest.raises(ProviderError, match="no_local_model_for_medium"):
+        p.chat("q", {"complexity": "medium"})
+    with pytest.raises(ProviderError, match="no_local_model_for_complex"):
+        p.chat("q", {"complexity": "complex"})
 
 
 def test_num_ctx_passed_through(monkeypatch):

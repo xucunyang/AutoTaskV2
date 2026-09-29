@@ -6,7 +6,21 @@ build/
 .venv/
 venv/
 .env
+.env.local
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 *.pyc
+.coverage
+coverage.xml
+htmlcov/
+
+# 运行时目录（跑一次真实调度就会生成，不该进仓库）
+orchestrator/state/
+orchestrator/logs/
+orchestrator/events/
+orchestrator/inbox/
+orchestrator/backup/
+orchestrator/artifacts/
+# reports/ 不忽略：chaos_*.log 与 smoke_*.log 是验收证据，要留。
+# 只想忽略每日产物的话用 orchestrator/reports/*.md 精确规则。

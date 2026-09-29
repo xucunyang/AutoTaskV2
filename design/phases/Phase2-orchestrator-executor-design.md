@@ -1,6 +1,7 @@
 # Phase2 编排/执行设计（上下文与成本核心）（V7）
 
-状态：主体已实现并落码（2026-09-29）。DoD逐条见§8，实现与设计的偏差见附录F。
+状态：**已实现并落码**（2026-09-29）。**评审：通过**（用户 2026-09-29 确认；Phase0–4 阶段设计稿全部通过）。
+DoD逐条见§8，实现与设计的偏差见附录F。
 对齐基线：`design/plans/IMPLEMENTATION_PLAN_V7.md`；修订见文末附录E。
 
 ## 1. 目标
@@ -202,25 +203,30 @@ def chat_with_yield_check(card, ...):
 
 ## 附录F. 实现与设计的偏差（2026-09-29 落码后记录）
 
-1. **老化时钟取 `enqueued_at` 而非 `updated_at`**：老化自己会改`updated_at`，
+1. **老化时钟取 `enqueued_at` 而非 `updated_at`**（用户 2026-09-29 确认）：老化自己会改`updated_at`，
    拿它当基准等于每次提升都把等待清零，第二档（20min）永远触发不了。
    等待时间必须单调递增。
-2. **老化"一次只升一档"是硬约束**：等了25min也只到5，下轮检查再到3。
+2. **老化"一次只升一档"是硬约束**（用户 2026-09-29 确认）：等了25min也只到5，下轮检查再到3。
    一次跳到3会让分档失去意义——分档就是为了分级提优先级。
    下限是3不是0（0..2留给管道高优）。
-3. **`Store.update_priority` 只许升不许降**：降级会让等待中的任务被无限推后，
+3. **`Store.update_priority` 只许升不许降**（用户 2026-09-29 确认）：降级会让等待中的任务被无限推后，
    正好和防饿死的目标相反。每次提升记`AGED`审计行（含等待秒数）。
-4. **让出被拒时执行器改走FAILED**：设计§6b要求"熔断超限改走FAILED"。
+4. **让出被拒时执行器改走FAILED**（用户 2026-09-29 确认）：设计§6b要求"熔断超限改走FAILED"。
    实现上必须显式处理——若让出transition抛`IllegalTransition`而执行器不接，
    异常会逃出`run_task`，任务永久卡在RUNNING，只能等租约过期被回收（白等一个TTL）。
 5. **执行器 `budget` 有兜底**：模板用了`budget.max_steps/timeout_s`，
    任务卡没显式写budget时传空dict会让StrictUndefined直接抛错，
    把执行器在渲染阶段就打崩——而"任务没写预算"是完全正常的输入。
-6. **planner 的 `done_steps` 存序号(int)不存task_id**：`Checkpoint.done_steps`
-   在Phase0契约里就是`List[int]`，塞字符串会被Pydantic拒绝。
+6. **产物由模型自己写，执行器只确认落盘+补manifest**（用户 2026-09-29 确认该边界）：
+   曾经把模型回复同一坨文本写进所有声明产物，导致 `summary.json` 里是markdown、
+   `json_schema` 永远 `bad_json`，且报错指不到真因。产物归模型（它有工具），
+   执行器一个都没落盘就报 `no_artifacts_produced`，不替模型编。
+7. **planner 的 `done_steps` 存序号(int)不存task_id**（用户 2026-09-29 确认）：
+   `Checkpoint.done_steps` 在Phase0契约里就是`List[int]`，塞字符串会被Pydantic拒绝。
    而且没必要存id——已拆出的卡在`tasks`表里，按`plan_id`查就有。
    **契约保持严格，checkpoint只记"拆到第几张+剩下什么"。**
-7. **分级cache按URL存**：`state/source_tiers.json` 同一URL复用，重复检索不再调LLM。
+   （用户选择：按任务颗粒度续跑即可，不追求拆分层的id级精度。）
+8. **分级cache按URL存**：`state/source_tiers.json` 同一URL复用，重复检索不再调LLM。
 
 ## 附录A. 轻量网关（可插拔，防本地拖慢）
 

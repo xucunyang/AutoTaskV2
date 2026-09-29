@@ -289,7 +289,10 @@ def test_stub_providers_raise_not_implemented():
 
 
 def test_tavily_requires_api_key(monkeypatch):
+    """这条测的是"没key要明确报错"，不能被开发者本机的 .env 污染。
+    所以把 load_dotenv 打桩掉，只验守卫本身。"""
     from core.search.base import TavilyProvider
+    monkeypatch.setattr("core.utils.load_dotenv", lambda *a, **k: {})
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="missing_api_key"):
         TavilyProvider().search("q")

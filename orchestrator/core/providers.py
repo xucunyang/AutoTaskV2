@@ -20,6 +20,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 
 class ProviderError(RuntimeError):
@@ -109,7 +110,18 @@ class OllamaProvider(BaseProvider):
         self.models = models or {"simple": "qwen2.5:3b", "medium": "qwen2.5:7b"}
 
     def model_for(self, complexity: str = "simple") -> str:
-        return self.models.get(complexity) or self.models.get("simple")
+        """取本地模型。**没有对应档位就报错，不静默降级**。
+
+        原来对未知复杂度回落models["simple"]——等于用4B悄悄跑medium任务，
+        质量掉了但日志里看不出来。路由层已按"配了哪些档位"决定走不走本地，
+        走到这里却没有对应模型说明配置不一致，必须炸出来而不是猜。
+        """
+        m = self.models.get(complexity)
+        if not m:
+            raise ProviderError(
+                f"{self.name}:no_local_model_for_{complexity} "
+                f"(configured={sorted(self.models)})")
+        return m
 
     def chat(self, prompt: str, budget: dict, *, model: str | None = None,
              num_ctx: int | None = None) -> dict:
@@ -150,11 +162,14 @@ class OpenAICompatProvider(BaseProvider):
 
     name = "online"
 
-    def __init__(self, base_url="", api_key: str = "", model="gpt-4o-mini", **kw):
+    def __init__(self, base_url="", api_key: str = "", model="gpt-4o-mini",
+                 path: str = "/v1/chat/completions", **kw):
         kw.setdefault("max_concurrency", 8)
         super().__init__(base_url=base_url, **kw)
         self.api_key = api_key
         self.model = model
+        # 路径可配：DeepSeek是 /chat/completions，标准OpenAI兼容是 /v1/chat/completions
+        self.path = path if path.startswith("/") else f"/{path}"
 
     def chat(self, prompt: str, budget: dict, *, model: str | None = None) -> dict:
         self._allow()
@@ -166,8 +181,7 @@ class OpenAICompatProvider(BaseProvider):
                     "stream": False}
             if budget.get("max_tokens"):
                 body["max_tokens"] = int(budget["max_tokens"])
-            data = self._request(f"{self.base_url}/v1/chat/completions", body,
-                                 headers)
+            data = self._request(f"{self.base_url}{self.path}", body, headers)
             choices = data.get("choices") or [{}]
             content = (choices[0].get("message") or {}).get("content", "")
             u = data.get("usage") or {}
@@ -186,9 +200,15 @@ class OpenAICompatProvider(BaseProvider):
 
 
 def build_providers(cfg: dict, env=None) -> dict:
-    """按config/gateway.yaml造provider实例。api_key_env只存**环境变量名**，
-    不把key写进配置文件（配置进git就等于泄密）。"""
+    """按 config/gateway.yaml 造 provider 实例。
+
+    密钥/地址**不写进 yaml**，只写变量名（api_key_env / ${VAR}），
+    实际值从 .env 或环境变量取——配置进 git 就等于泄密。
+    """
     import os
+    from core.utils import load_dotenv
+    root = Path(__file__).resolve().parent.parent
+    load_dotenv(root)                 # .env 优先不覆盖已存在的环境变量
     env = env if env is not None else os.environ
     out = {}
     lg = cfg.get("latency_guard") or {}
@@ -211,5 +231,7 @@ def build_providers(cfg: dict, env=None) -> dict:
             akey = p.get("api_key_env")
             out[name] = OpenAICompatProvider(
                 base_url=base, api_key=env.get(akey, "") if akey else "",
-                model=p.get("model", ""), **kw)
+                model=p.get("model", ""), path=p.get("path",
+                                                     "/v1/chat/completions"),
+                **kw)
     return out

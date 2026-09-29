@@ -86,11 +86,31 @@ class AlertPolicy:
 
 class Notifier:
     def __init__(self, root: str | Path, policy: AlertPolicy | None = None,
-                 printer=print):
+                 printer=print, webhook: str | None = None):
         self.root = Path(root)
         self.policy = policy or AlertPolicy()
         self.printer = printer
         self.state_path = self.root / "state" / "alerts_state.json"
+        if webhook is None:
+            from core.utils import load_dotenv
+            load_dotenv(self.root)
+            import os
+            webhook = os.environ.get("ALERT_WEBHOOK_URL", "")
+        self.webhook = webhook
+
+    def _post_webhook(self, row: dict) -> bool:
+        """可选通道。没配ALERT_WEBHOOK_URL就静默跳过——告警不能因为通道缺失而丢。"""
+        if not self.webhook:
+            return False
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                self.webhook, data=json.dumps(row).encode("utf-8"),
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return 200 <= r.status < 300
+        except Exception:
+            return False
 
     def load_state(self) -> dict:
         if not self.state_path.exists():
@@ -133,9 +153,10 @@ class Notifier:
              run_id=run_id, body=body[:200])
         self.printer(f"[{actual}] {kind} plan={plan_id} task={task_id} "
                      f"{body[:160]}")
+        sent_webhook = self._post_webhook(row) if actual in ("P0", "P1") else False
         return {"sent": True, "level": actual, "requested": want,
                 "kind": kind, "reason": reason,
-                "downgraded": want != actual}
+                "downgraded": want != actual, "webhook": sent_webhook}
 
     # 便捷入口
     def p0(self, kind: str, **kw) -> dict:

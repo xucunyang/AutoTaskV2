@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 
 @dataclass
@@ -39,10 +40,13 @@ class TavilyProvider(SearchProvider):
     name = "tavily"
 
     def __init__(self, api_key: str | None = None, base_url: str | None = None,
-                 timeout_s: int = 30):
+                 timeout_s: int = 30, path: str = "/search"):
+        from core.utils import load_dotenv
+        load_dotenv(Path(__file__).resolve().parents[2])
         self.api_key = api_key or os.environ.get("TAVILY_API_KEY", "")
         self.base_url = (base_url or "https://api.tavily.com").rstrip("/")
         self.timeout_s = timeout_s
+        self.path = path if path.startswith("/") else f"/{path}"
 
     def search(self, query: str, top_k: int = 8) -> list[SearchResult]:
         if not self.api_key:
@@ -50,7 +54,7 @@ class TavilyProvider(SearchProvider):
         body = json.dumps({"api_key": self.api_key, "query": query,
                            "max_results": top_k}).encode("utf-8")
         req = urllib.request.Request(
-            f"{self.base_url}/search", data=body,
+            f"{self.base_url}{self.path}", data=body,
             headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
             data = json.loads(resp.read().decode("utf-8"))

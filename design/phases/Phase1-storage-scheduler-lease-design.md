@@ -1,6 +1,7 @@
 # Phase1 存储/调度/租约设计（V7）
 
-状态：已按V7对齐，待用户评审，前置依赖 Phase0契约冻结。
+状态：**已实现并落码**（2026-09-29）。**评审：通过**（用户 2026-09-29 确认；Phase0–4 阶段设计稿全部通过）。
+DoD逐条见§6，实现与设计的偏差见§6.1/§6.2与`Phase1-implementation-record.md`。
 对齐基线：`design/plans/IMPLEMENTATION_PLAN_V7.md`；修订见文末§8。
 
 ## 1. 目标

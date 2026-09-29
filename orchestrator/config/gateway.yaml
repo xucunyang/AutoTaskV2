@@ -2,28 +2,75 @@ default_policy: privacy_first
 providers:
   # V7动态窗口：context_window为空=走动态计算（min架构上限/档位建议/显存可撑）；
   # 若显式填写则参与min()（只能往下压不能往上抬）；chat()返回usage.prompt_tokens
-  local-ollama: {type: ollama, base_url: http://localhost:11434, models: {simple: qwen2.5:3b, medium: qwen2.5:7b}, context_window: null, timeout_s: 60, enabled: true, max_concurrency: 2, slo_p50_ms: 8000}
-  online: {type: openai_compat, base_url: "${ONLINE_BASE_URL}", api_key_env: ONLINE_API_KEY, model: gpt-4o-mini, context_window: null, timeout_s: 90, enabled: true, max_concurrency: 8}
+  # models 里配了哪些 key，就决定"本地能做哪些复杂度"（没配的复杂度自动走在线，
+  # 不猜、不降级）。只留 simple → medium/complex 全走在线。
+  # medium 本地做不了：把 medium 这一行删掉即可，不要留个跑不动的模型名。
+  local-ollama:
+    {
+      type: ollama,
+      base_url: http://localhost:11434,
+      models: { simple: qwen3.5:4b },
+      context_window: null,
+      timeout_s: 60,
+      enabled: true,
+      max_concurrency: 2,
+      slo_p50_ms: 8000,
+    }
+  # 密钥与地址不写这里，只写变量名；实际值从 .env 取（见 .env.example）。
+  # path：DeepSeek 是 /chat/completions（不是标准OpenAI的 /v1/...）
+  online:
+    {
+      type: openai_compat,
+      base_url: "${ONLINE_BASE_URL}",
+      api_key_env: ONLINE_API_KEY,
+      model: "${ONLINE_MODEL}",
+      path: /chat/completions,
+      context_window: null,
+      timeout_s: 90,
+      enabled: true,
+      max_concurrency: 8,
+    }
 policies: [privacy_guard, latency_guard, capability_match, cost_saver]
-local_tiers: {3B: {max_complexity: simple}, 4B: {max_complexity: simple}, 7B: {max_complexity: medium}}
-routing: {secret: {allow: [local-ollama], fallback: local-retry-then-human}, public-simple: {allow: [local-ollama, online], prefer: local-ollama}, public-complex: {allow: [online], fallback: online-retry-then-deadletter}}
+# 能力分档：本地各参数量级模型能扛的最高复杂度。
+# 注意：实际路由以 providers.local-ollama.models 里配了哪些 key 为准
+# （没配的复杂度走在线），这张表是给人看的参考，改它不改变路由行为。
+local_tiers:
+  {
+    3B: { max_complexity: simple },
+    4B: { max_complexity: simple },
+    7B: { max_complexity: medium },
+  }
+routing:
+  {
+    secret: { allow: [local-ollama], fallback: local-retry-then-human },
+    public-simple: { allow: [local-ollama, online], prefer: local-ollama },
+    public-complex: { allow: [online], fallback: online-retry-then-deadletter },
+  }
 # 网关层成本预算（与TaskShard执行限制不同层面）
-budgets: {per_task_tokens: 8000, per_day_online_tokens: 200000}
-latency_guard: {queue_threshold: 4, fail_threshold: 3, cooldown_s: 300, local_simple_timeout: 20, local_medium_timeout: 60}
+budgets: { per_task_tokens: 8000, per_day_online_tokens: 200000 }
+latency_guard:
+  {
+    queue_threshold: 4,
+    fail_threshold: 3,
+    cooldown_s: 300,
+    local_simple_timeout: 20,
+    local_medium_timeout: 60,
+  }
 # V7§8: 隐私默认关闭，只留扩展接口（classify/redact/PrivacyGuard保留，enqueue/route/日志跳过扫描与脱敏）
-privacy: {enabled: false}
+privacy: { enabled: false }
 # V7§10: session切换判定阈值（context_window的80%触发让出）
-session_yield: {context_ratio: 0.8}
+session_yield: { context_ratio: 0.8 }
 # V7动态窗口分档：建议值是上限非固定值，最终取min(架构上限,档位建议,显存可撑,配置覆盖)
 # 原因：Ollama默认4096且架构上限因模型而异（Qwen2.5-7B是128K/Qwen3-14B只有40K），写死必错；
 # KV随层数×头数增长快于参数量，14B@64K要12G所以L档给64K而XL只给32K
 context_profiles:
-  - {max_params_b: 4, context_window: 32768}
-  - {max_params_b: 7, context_window: 65536}
-  - {max_params_b: 14, context_window: 65536}
-  - {max_params_b: 999, context_window: 32768}
+  - { max_params_b: 4, context_window: 32768 }
+  - { max_params_b: 7, context_window: 65536 }
+  - { max_params_b: 14, context_window: 65536 }
+  - { max_params_b: 999, context_window: 32768 }
 # 系统提示+工具定义+completion预留（粗值不拆细，32K窗口下占25%）
 context_reserved: 8192
 # 本地可用门禁：usable低于此值→本地不可用→路由走在线
 min_usable: 16384
-memory: {system_reserved_gb: 5, fallback_local: 65536, fallback_online: 262144}
+memory:
+  { system_reserved_gb: 5, fallback_local: 65536, fallback_online: 262144 }
