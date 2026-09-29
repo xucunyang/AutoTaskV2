@@ -1,0 +1,15 @@
+default_policy: privacy_first
+providers:
+  # V7: context_window=模型窗口（session切换80%判定分母）；chat()返回usage.prompt_tokens
+  local-ollama: {type: ollama, base_url: http://localhost:11434, models: {simple: qwen2.5:3b, medium: qwen2.5:7b}, context_window: 32768, timeout_s: 60, enabled: true, max_concurrency: 2, slo_p50_ms: 8000}
+  online: {type: openai_compat, base_url: "${ONLINE_BASE_URL}", api_key_env: ONLINE_API_KEY, model: gpt-4o-mini, context_window: 128000, timeout_s: 90, enabled: true, max_concurrency: 8}
+policies: [privacy_guard, latency_guard, capability_match, cost_saver]
+local_tiers: {3B: {max_complexity: simple}, 4B: {max_complexity: simple}, 7B: {max_complexity: medium}}
+routing: {secret: {allow: [local-ollama], fallback: local-retry-then-human}, public-simple: {allow: [local-ollama, online], prefer: local-ollama}, public-complex: {allow: [online], fallback: online-retry-then-deadletter}}
+# 网关层成本预算（与TaskShard执行限制不同层面）
+budgets: {per_task_tokens: 8000, per_day_online_tokens: 200000}
+latency_guard: {queue_threshold: 4, fail_threshold: 3, cooldown_s: 300, local_simple_timeout: 20, local_medium_timeout: 60}
+# V7§8: 隐私默认关闭，只留扩展接口（classify/redact/PrivacyGuard保留，enqueue/route/日志跳过扫描与脱敏）
+privacy: {enabled: false}
+# V7§10: session切换判定阈值（context_window的80%触发让出）
+session_yield: {context_ratio: 0.8}

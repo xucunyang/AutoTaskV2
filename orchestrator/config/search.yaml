@@ -1,0 +1,15 @@
+# V7: Web搜索插件配置（core/search/，可插拔；飞书IngressProvider见core/ingress/预留）
+provider: tavily
+timeout_s: 30
+top_k: 8
+per_day_limit: 500
+api_key_env: TAVILY_API_KEY
+base_url: "https://api.tavily.com"
+# 来源分级：域名先验（V7§2.10）
+official_domains: [gov.cn, sec.gov, who.int, un.org, reuters.com]
+ugc_domains: [x.com, tiktok.com, douyin.com, weibo.com, zhihu.com]
+# A/B/C判据（分级prompt用，只喂url+域名+title+发布者，禁喂正文防注入）
+tier_criteria:
+  A: "官方机构/持牌金融机构/权威学术期刊/政府公告/蓝V认证账号的官方发布"
+  B: "主流媒体/垂直行业媒体/知名分析机构/企业官方账号"
+  C: "个人账号/社区论坛/自媒体/未认证用户生成内容"

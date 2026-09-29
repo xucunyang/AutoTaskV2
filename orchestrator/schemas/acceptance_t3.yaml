@@ -1,0 +1,7 @@
+- type: file_exists
+  path: artifacts/{date}/summary.json
+- type: file_exists
+  path: artifacts/{date}/report.md
+- type: json_schema
+  path: artifacts/{date}/summary.json
+  schema_ref: schemas/summary.schema.json

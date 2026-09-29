@@ -1,0 +1,8 @@
+- type: file_exists
+  path: artifacts/{date}/t2_clean.csv
+- type: row_count
+  path: artifacts/{date}/t2_clean.csv
+  min: 1
+- type: python_test
+  cmd: pytest tests/test_clean.py -q
+  timeout_s: 120

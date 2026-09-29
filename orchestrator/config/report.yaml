@@ -1,0 +1,8 @@
+top_n: 5
+slow_task_s: 120
+queue_block_p95_s: 60
+dispatch_starve_s: 30
+verify_rule_slow_s: 60
+export_slow_ms: 500
+high_prio_sla_s: 30
+timezone_display: Asia/Shanghai

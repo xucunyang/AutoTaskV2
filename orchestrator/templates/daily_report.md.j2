@@ -1,0 +1,6 @@
+# 日报 {{ date }}（plan={{ plan_id }}, run={{ run_id }}）
+- 总任务: {{ total }} 成功: {{ done }} 失败: {{ failed }} 死信: {{ dead }} 跳过缓存: {{ cached }}
+- p50耗时: {{ p50_s }}s 重试总数: {{ retries }} 租约过期回收: {{ lease_expired }}
+- 明细:
+{% for t in tasks %}- {{ t.task_id }}: {{ t.status }} attempts={{ t.attempts }} {{ t.summary }}
+{% endfor %}
