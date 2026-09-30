@@ -69,15 +69,22 @@ def _finish(store: Store, task: dict, results: list[dict], run_id: str,
     cur = store.get_task(plan_id, task_id)
     if cur is None or cur["status"] != "VERIFYING":
         return VerifyOutcome.REJECTED
-    failed = [r for r in results if not r["ok"]]
+    # not_evaluated = 整轮预算耗尽、压根没跑到。不能算失败（那会让任务
+    # 无端进RETRY，下一轮重跑同样的慢rule直到死信），也不能算通过
+    # （那就是"没验就说验过了"）。
+    deferred = [r for r in results if r.get("not_evaluated")]
+    evaluated = [r for r in results
+                 if not r.get("not_evaluated") and not r.get("skipped")]
+    failed = [r for r in evaluated if not r["ok"]]
     progress = dict(cur.get("verify_progress") or {})
     passed = sorted(set(progress.get("verified_rules") or []) |
-                    {r["rule_id"] for r in results if r["ok"]})
+                    {r["rule_id"] for r in evaluated if r["ok"]})
     progress["verified_rules"] = passed
     progress["last_results"] = [{k: v for k, v in r.items()
                                  if k in ("rule_id", "type", "ok", "detail")}
                                 for r in results]
-    payload = {"rules": len(results), "failed": [r["rule_id"] for r in failed]}
+    payload = {"rules": len(evaluated), "failed": [r["rule_id"] for r in failed],
+               "deferred": [r["rule_id"] for r in deferred]}
     try:
         store.update_verify_progress(plan_id, task_id, passed,
                                      expect_version=cur["version"],
@@ -85,6 +92,24 @@ def _finish(store: Store, task: dict, results: list[dict], run_id: str,
     except (Conflict, StoreError):
         return VerifyOutcome.ERROR
     cur = store.get_task(plan_id, task_id)
+    if not failed and deferred:
+        # 部分rule没跑到 → 不能标DONE（等于宣称全部验过了）。
+        # 走RETRY + 预算原因，下一轮从已通过的rule续跑，只补没跑到的。
+        detail = ("verify_budget_exceeded: " +
+                  ", ".join(f"{r['rule_id']}" for r in deferred[:5]))
+        try:
+            store.transition(plan_id, task_id, "RETRY", agent="verifier",
+                             run_id=run_id, expect_version=cur["version"],
+                             payload={"reason": "verify_budget_exceeded",
+                                      "detail": detail[:300],
+                                      "deferred_rules": [r["rule_id"]
+                                                         for r in deferred]},
+                             role="verifier")
+        except (Conflict, IllegalTransition, StaleOwner):
+            return VerifyOutcome.ERROR
+        store.alert("P2", "verify_budget_exceeded", plan_id=plan_id,
+                    task_id=task_id, body=detail[:300], run_id=run_id)
+        return VerifyOutcome.RETRY
     if not failed:
         try:
             store.transition(plan_id, task_id, "DONE", agent="verifier",

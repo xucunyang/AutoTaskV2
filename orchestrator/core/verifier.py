@@ -99,7 +99,10 @@ def h_python_test(ctx: dict, rule: dict) -> dict:
         return {"ok": False, "detail": f"security:shell_metachar:{cmd[:40]}"}
     if not cmd.startswith(CMD_WHITELIST):
         return {"ok": False, "detail": f"security:cmd_not_whitelisted:{cmd[:40]}"}
-    timeout = int(rule.get("timeout_s") or 120)
+    # 墙钟封顶：timeout_s 由任务自己配，不封顶的话一条规则就能占住
+    # verify worker（默认120s）。run_rules 也会下发 _rule_timeout_s 覆盖它。
+    timeout = int(ctx.get("_rule_timeout_s") or rule.get("timeout_s")
+                  or RULE_TIMEOUT_CAP_S)
     retries = int(rule.get("flaky_retry", 2))     # 默认重试2次
     attempts, out, code = [], "", -1
     for i in range(max(0, retries) + 1):
@@ -316,10 +319,28 @@ SUFFIX_BY_KIND = {"json_schema": None, "source_traceable": "sources",
                   "coverage": "report"}
 
 
-def run_rules(ctx: dict, rules: list[dict], skip: set[str] | None = None) -> list[dict]:
-    """跑全部rule（不短路）。skip里的rule_id视为已通过（局部重入）。"""
+# 整轮验收的墙钟预算。单条rule各有 timeout_s，但**没有整轮上限**——
+# 一个任务声明10条会挂的 python_test，就是 10×timeout 的占用，
+# 而 verify worker 是被占住的，后面的任务全在排队。
+# 预算耗尽后剩下的rule不跑、也不算失败，只标 not_evaluated 等下一轮。
+VERIFY_BUDGET_S = 300
+# 单条rule的墙钟上限（秒）。规则的 timeout_s 由任务自己配，
+# 不封顶的话一个写错的任务就能让验收worker占住一小时。
+RULE_TIMEOUT_CAP_S = 120
+
+
+def run_rules(ctx: dict, rules: list[dict], skip: set[str] | None = None,
+              budget_s: float = VERIFY_BUDGET_S) -> list[dict]:
+    """跑全部rule（不短路）。skip里的rule_id视为已通过（局部重入）。
+
+    整轮受 budget_s 约束：超预算后剩余rule标 not_evaluated。
+    **not_evaluated 既不算失败也不进 verified_rules**——
+    算失败会把任务无端打成 RETRY（下一轮重跑同样的慢rule，死循环）；
+    进账本则等于"验过了"，那是在撒谎。两条路都不能走。
+    """
     skip = skip or set()
     out = []
+    t_start = time.monotonic()
     for orig_index, rule in _ordered(rules):
         # rule_id用**原始序号**编号：重排不能改变rule_id，
         # 否则verified_rules账本里的id下次就对不上了
@@ -328,12 +349,24 @@ def run_rules(ctx: dict, rules: list[dict], skip: set[str] | None = None) -> lis
             out.append({"rule_id": rid, "type": rule.get("type"), "ok": True,
                         "skipped": True, "detail": "already_verified"})
             continue
+        elapsed = time.monotonic() - t_start
+        if elapsed >= budget_s:
+            out.append({"rule_id": rid, "type": rule.get("type"), "ok": False,
+                        "not_evaluated": True,
+                        "detail": f"verify_budget_exceeded({elapsed:.0f}s"
+                                  f">={budget_s:.0f}s)",
+                        "duration_ms": 0})
+            continue
         fn = HANDLERS.get(str(rule.get("type")))
         t0 = time.monotonic()
         if fn is None:
             res = {"ok": False, "detail": f"unknown_rule_type:{rule.get('type')}"}
         else:
             rctx = dict(ctx)
+            # 单rule墙钟封顶，防止任务把 timeout_s 配成很大
+            rule_cap = min(float(rule.get("timeout_s") or RULE_TIMEOUT_CAP_S),
+                           RULE_TIMEOUT_CAP_S)
+            rctx["_rule_timeout_s"] = rule_cap
             try:
                 res = fn(rctx, rule)
             except Exception as e:      # noqa: BLE001 单条rule异常不能带崩整轮
