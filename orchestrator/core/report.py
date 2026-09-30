@@ -77,6 +77,9 @@ def collect_plan(store, plan_id: str) -> dict:
             "depends_on": sh.get("depends_on") or [],
             "slice_rationale": sh.get("slice_rationale", ""),
             "enqueued_at": t["enqueued_at"], "updated_at": t["updated_at"],
+            # 产物目录按"这条任务自己的入队日"分，不是plan的首条任务日：
+            # 跨零点的plan里，后者会让后半夜的任务在报告里永远显示"缺四件套"。
+            "artifacts_date": shanghai_date(t["enqueued_at"]),
         })
     metrics = _metrics_of(store, plan_id)
     return {"plan_id": plan_id, "date": shanghai_date(
@@ -176,14 +179,34 @@ def render_plan_summary(store, plan_id: str, cfg: dict | None = None) -> str:
     return "\n".join(lines)
 
 
+def _find_sources(store, task_id: str, date: str) -> Path | None:
+    """找 {task_id}.sources.json。
+
+    先按该任务自己的入队日找（正常路径）；找不到再退回 plan 的日期，
+    最后扫最近几天。原因是产物目录按入队日分，而任务可能因重试/跨零点
+    在别的日期补写——报告不该因为跨天就把已产出的四件套判成"缺"。
+    """
+    root = Path(store.root) / "artifacts"
+    for cand in (root / date, root / shanghai_date()):
+        p = cand / f"{task_id}.sources.json"
+        if p.exists():
+            return p
+    for d in sorted((p for p in root.glob("*") if p.is_dir()),
+                    reverse=True)[:7]:
+        p = d / f"{task_id}.sources.json"
+        if p.exists():
+            return p
+    return None
+
+
 def _research_lines(store, d: dict) -> list[str]:
     rows = []
     for t in d["tasks"]:
         if not t["needs_web"]:
             continue
-        base = Path(store.root) / "artifacts" / d["date"]
-        src = base / f"{t['task_id']}.sources.json"
-        if not src.exists():
+        src = _find_sources(store, t["task_id"],
+                            t.get("artifacts_date") or d["date"])
+        if src is None:
             rows.append(f"- `{t['task_id']}` 缺 sources.json（未产出四件套）")
             continue
         try:

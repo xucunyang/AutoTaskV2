@@ -53,8 +53,10 @@ def test_heartbeat_keeps_lease_alive(tmp_path):
 
 
 def test_heartbeat_stops_when_lease_stolen(tmp_path):
-    """脑裂：worker-2抢走租约后，worker-1的心跳必须停并置lost，
-    不能继续对一个不属于自己的任务续租。"""
+    """已有worker-2抢走租约：心跳应察觉lost并停止并发告警。
+    不能用"先把租约改过期、再让sub-2 acquire"来模拟——那两步之间
+    0.05s的心跳有机会续租，acquire就会报Conflict。那是测试自己的
+    竞态，不是被测行为（心跳就该在这期间续租）。"""
     s = Store(tmp_path)
     _running(s)
     lease.acquire(s, "p1", "t1", owner="sub-1", ttl=120)
@@ -62,17 +64,20 @@ def test_heartbeat_stops_when_lease_stolen(tmp_path):
     hb.start()
     try:
         assert _wait_until(lambda: hb.beats >= 1)
-        # 模拟worker-2抢租：把租约置过期后acquire
+        # 原子模拟"被抢走"：一步改owner+lease_until并bump fencing。
+        # 对心跳而言这就是"owner/fencing不再是我的"。
         from datetime import datetime, timedelta, timezone
-        s.lease_update("p1", "t1", owner="sub-1",
+        s.lease_update("p1", "t1", owner="sub-2",
                        lease_until=(datetime.now(timezone.utc)
-                                    - timedelta(seconds=1)).isoformat(),
-                       bump_fencing=False)
-        lease.acquire(s, "p1", "t1", owner="sub-2", ttl=120)
-        assert _wait_until(lambda: hb.lost), "心跳应置lost并停止"
+                                    + timedelta(seconds=120)).isoformat(),
+                       bump_fencing=True)
+        beats_at_steal = hb.beats
+        assert _wait_until(lambda: hb.lost), "心跳应察觉lost并停止"
     finally:
         hb.stop()
-    assert hb.beats == 1   # 丢了之后没有再续
+    # 抢走后不可能再有成功的续租：renew带expect_fencing，
+    # 抢租bump过fencing，所以在途的renew也会被挡下。
+    assert hb.beats == beats_at_steal, "被抢后不应再续租"
     alerts = (tmp_path / "reports" / "alerts.jsonl").read_text(encoding="utf-8")
     assert "heartbeat_lost" in alerts
 

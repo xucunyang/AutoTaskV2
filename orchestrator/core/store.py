@@ -1022,17 +1022,20 @@ class Store:
             append_jsonl(path, dict(r))
 
     def rebuild_export(self, plan_id: str) -> int:
-        """从DB全量重建导出（含master）；返回任务数。
-        master按plan_id分文件：多plan并存时（daily+多管道）后写的不能覆盖先写的。"""
+        """从DB全量重建导出，返回任务数。
+
+        每个plan一个文件 `plans/{plan_id}.json`，不设全局索引文件：
+        master.json 是 V1/V2 时代 task.md 的遗留（"Master State 跨天记录
+        计划/DAG/全局状态"），V7 纲领已不再提它。跨plan的全局视图由
+        `daily_summary()` 直接从DB聚合，不该在导出目录里再存一份
+        "可能与DB不一致的事实"。
+        """
         con = self._connect()
         try:
             tasks = [self._row_to_task(r) for r in con.execute(
                 "SELECT * FROM tasks WHERE plan_id=? ORDER BY seq", (plan_id,))]
             plan = con.execute(
                 "SELECT * FROM plans WHERE plan_id=?", (plan_id,)).fetchone()
-            all_plans = [dict(r) for r in con.execute(
-                "SELECT plan_id,template,status,created_at FROM plans"
-                " ORDER BY plan_id ASC").fetchall()]
         finally:
             con.close()
         for t in tasks:
@@ -1045,12 +1048,6 @@ class Store:
             "rebuilt_at": now_utc_iso(),
         }
         atomic_write_json(self.export_dir / "plans" / f"{plan_id}.json", body)
-        # 索引文件：只列有哪些plan，各plan自己的细节在plans/{plan_id}.json
-        atomic_write_json(self.export_dir / "master.json", {
-            "rebuilt_at": body["rebuilt_at"],
-            "plans": all_plans,
-            "index": "plans/{plan_id}.json",
-        })
         return len(tasks)
 
     def replay(self, plan_id: str) -> dict:
