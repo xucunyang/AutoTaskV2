@@ -101,7 +101,10 @@ def build_card(store: Store, task: dict, run_id: str) -> str:
         inputs=shard.get("inputs") or [],
         needs_web=bool(shard.get("needs_web")),
         freshness=shard.get("freshness", "none"),
-        key_questions=shard.get("key_questions") or [])
+        key_questions=shard.get("key_questions") or [],
+        # 任务卡要写明真实白名单，不能只说"白名单内命令"：
+        # 模型试了被拒会浪费一整轮工具调用，白名单直接告诉他更省。
+        cmd_allowlist=" / ".join(tools.CMD_ALLOWLIST))
 
 
 def self_test(store: Store, task: dict) -> list[dict]:
@@ -189,9 +192,10 @@ def run_task(store: Store, plan_id: str, task_id: str, run_id: str,
             cp.save(store.root, ckpt)     # 成功也留一份（generation可观测）
         handoff_err = None
         try:
+            ver, fen = _fresh(store, plan_id, task_id)
             got = store.transition(plan_id, task_id, "SUBMITTED", agent=owner,
-                                   run_id=run_id, expect_version=task["version"],
-                                   expect_fencing=_fencing(store, plan_id, task_id),
+                                   run_id=run_id, expect_version=ver,
+                                   expect_fencing=fen,
                                    handoff=handoff.model_dump(mode="json"),
                                    role="subagent")
         except (Conflict, StaleOwner) as e:
@@ -208,9 +212,10 @@ def run_task(store: Store, plan_id: str, task_id: str, run_id: str,
             cp.save(store.root, Checkpoint(task_id=task_id, plan_id=plan_id,
                                            summary=[f"yield:{y.reason}"[:500]]))
         try:
+            ver, fen = _fresh(store, plan_id, task_id)
             store.transition(plan_id, task_id, "READY", agent=owner,
-                             run_id=run_id, expect_version=task["version"],
-                             expect_fencing=_fencing(store, plan_id, task_id),
+                             run_id=run_id, expect_version=ver,
+                             expect_fencing=fen,
                              payload={"reason": y.reason, "detail": y.detail[:200]},
                              role="subagent")
             return f"yielded:{y.reason}"
@@ -244,13 +249,35 @@ def _fencing(store: Store, plan_id: str, task_id: str) -> int:
     return t["fencing_token"] if t else 0
 
 
+def _fresh(store: Store, plan_id: str, task_id: str) -> tuple[int, int]:
+    """写终态前重读 (version, fencing_token)。
+
+    **不能沿用任务开始时那份 task 里的 version**。心跳每续租一次，
+    `lease_update` 就把 version +1；一个跑超过一个心跳周期（默认30s）
+    的任务，写 SUBMITTED/FAILED 时手里那份 version 早就过期了，
+    会被 Conflict 拒掉。后果是任务**永久卡在 RUNNING**——设计里
+    明确禁止这个状态（只能等租约过期被回收，白等一个TTL）。
+
+    这不是"并发写"的竞态：心跳的写入方就是我们自己（同一个 owner
+    同一个 run_id），所以重读 version 是安全的。真正的所有权防护
+    靠 expect_fencing——那是租约代际，别人抢不走。而"任务是否被别人
+    动过"由状态机自己把关：transition 要求当前是 RUNNING，
+    别人改过状态就不会让我们到 SUBMITTED。
+    """
+    t = store.get_task(plan_id, task_id)
+    if not t:
+        raise LostOwnership(f"task_gone:{plan_id}/{task_id}")
+    return int(t["version"]), int(t["fencing_token"])
+
+
 def _fail(store: Store, plan_id: str, task_id: str, owner: str, run_id: str,
           task: dict, error: str) -> None:
     """落FAILED。失败也要处理失败：写不进去时只记日志，不二次抛。"""
     try:
+        ver, fen = _fresh(store, plan_id, task_id)
         store.transition(plan_id, task_id, "FAILED", agent=owner,
-                         run_id=run_id, expect_version=task["version"],
-                         expect_fencing=_fencing(store, plan_id, task_id),
+                         run_id=run_id, expect_version=ver,
+                         expect_fencing=fen,
                          payload={"error": str(error)[:2000]}, role="subagent")
     except Exception as e:  # noqa: BLE001
         jlog(store.root, "ERROR", "fail_transition_failed", plan_id=plan_id,
@@ -279,6 +306,16 @@ def _run_with_provider(store: Store, task: dict, card: str, ckpt, provider,
 
     toolbox = tools.ToolBox(root, search_fn=_search_adapter(search_fn))
     resp, steps = _tool_loop(provider, card, ckpt, toolbox, shard, final_window)
+    # 工具调用审计必须落盘：这系统的卖点就是可审计，而"模型到底调了什么"
+    # 只存在内存里的话，任务失败后无法复盘——只能看到"没产出产物"。
+    for c in toolbox.calls:
+        c["task_id"] = task["task_id"]
+        c["plan_id"] = task["plan_id"]
+    if toolbox.calls:
+        jlog(store.root, "INFO", "tool_calls", task_id=task["task_id"],
+             count=len(toolbox.calls),
+             tools=[c["tool"] for c in toolbox.calls][:20],
+             denied=[c for c in toolbox.calls if c.get("error")][:5])
 
     declared = [str(o) for o in shard.get("outputs") or []]
     written, missing = [], []
@@ -402,12 +439,38 @@ def _supports_tools(provider) -> bool:
 
 
 def _chat_tools(provider, messages, budget, final_window, schemas) -> dict:
-    resp = provider.chat(messages[0]["content"], budget,
-                         messages=messages, tools=schemas)
+    """一轮 chat。每轮：查水位线 → 返回。
+
+    num_ctx 必须在每轮都传：Ollama 默认 num_ctx=4096，任务卡+工具schema
+    很容易超过，长卡会被ollama拒或被静默截断。config 里
+    context_window: null 表示"走动态计算"，既然算出来了就得真用上。
+    思维模型还要给 max_tokens 留出思考空间——pro 一次要 3000+
+    completion token，写死小值会得到"想完了但正文为空"。
+
+    num_ctx 是 ollama 专有参数，OpenAI兼容端点不接受，所以按签名过滤。
+    无脑传给所有 provider 会让每个在线任务都挂在
+    "unexpected keyword argument 'num_ctx'"上。
+    """
+    kw: dict = {"messages": messages, "tools": schemas}
+    params = _sig_params(provider)
+    if "num_ctx" in params:
+        kw["num_ctx"] = final_window
+    if "messages" in params:
+        resp = provider.chat(messages[0]["content"], budget, **kw)
+    else:
+        resp = provider.chat(messages[0]["content"], budget)
     over, detail = should_yield(resp.get("usage", {}), final_window)
     if over:
         raise SessionYield("context_full", detail)
     return resp
+
+
+def _sig_params(provider) -> set:
+    import inspect
+    try:
+        return set(inspect.signature(provider.chat).parameters)
+    except (TypeError, ValueError):
+        return set()
 
 
 def main(argv: list[str] | None = None) -> int:

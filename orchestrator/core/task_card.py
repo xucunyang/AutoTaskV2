@@ -42,6 +42,7 @@ def render_task_card(root: str | Path, *, task_id: str, plan_id: str, run_id: st
                      acceptance: list, budget: dict, inputs: list | None = None,
                      checkpoint: dict | None = None, needs_web: bool = False,
                      freshness: str = "none", key_questions: list | None = None,
+                     cmd_allowlist: str = "python / pytest / ruff / node",
                      extra: dict | None = None) -> str:
     """渲染任务卡。inputs只给manifest（不读文件全文）。
 
@@ -71,6 +72,7 @@ def render_task_card(root: str | Path, *, task_id: str, plan_id: str, run_id: st
         "outputs": "、".join(outputs) if outputs else "（未声明）",
         "needs_web": needs_web, "freshness": freshness,
         "key_questions": key_questions or [],
+        "cmd_allowlist": cmd_allowlist,
     }
     if needs_web and freshness == "none":
         # 与TaskShard._needs_web_requires_freshness同一条约束，只是提前到渲染口

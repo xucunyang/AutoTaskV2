@@ -31,6 +31,17 @@ class CircuitOpen(ProviderError):
     """熔断打开：直接拒绝，不再打模型。"""
 
 
+def _is_cold_start(data: dict) -> bool:
+    """ollama 冷启动特征：done_reason="load" 且没算过 prompt。
+
+    含义是"这次只把模型载入内存就返回了"，没有真正推理。
+    把它当正常响应会让调用方拿到空回复。
+    """
+    d = data or {}
+    return (d.get("done_reason") == "load"
+            and not d.get("prompt_eval_count"))
+
+
 def _parse_tool_calls(raw) -> list[dict]:
     """统一各家 tool_calls 形状 → [{id, name, arguments(dict)}]。
 
@@ -126,8 +137,19 @@ class BaseProvider:
         req = urllib.request.Request(
             url, data=json.dumps(body).encode("utf-8"),
             headers={"Content-Type": "application/json", **headers})
-        with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            # 把响应体带出来。ollama 的 400 会在 body 里说明原因
+            # （比如 "the request exceeds the available context size"），
+            # 只报 "HTTP Error 400" 等于把唯一线索扔了。
+            try:
+                detail = e.read().decode("utf-8", "replace")[:400]
+            except Exception:       # noqa: BLE001
+                detail = ""
+            raise ProviderError(
+                f"{self.name}:http_{e.code}:{detail or e.reason}") from e
 
 
 class OllamaProvider(BaseProvider):
@@ -161,30 +183,47 @@ class OllamaProvider(BaseProvider):
 
     def chat(self, prompt: str, budget: dict, *, messages: list | None = None,
              tools: list | None = None, model: str | None = None,
-             num_ctx: int | None = None) -> dict:
+             num_ctx: int | None = None, retries: int = 1) -> dict:
         """Ollama /api/chat。
 
-        多轮用 messages（tool loop 需要），单轮可只给 prompt。
-        tools 传 OpenAI 那套 function schema，Ollama 原生吃这个格式。
+        多轮用 messages（tool loop 需要），单轮也统一走 messages——
+        qwen3.5 这类**思维模型**在 `prompt` 字段下基本不输出正文
+        （实测返回 content 空 + 无 tool_calls），用 messages 才有正常响应。
+
+        retries 是给**冷启动**用的：模型不在内存时，ollama 第一次请求
+        会把模型载入内存然后直接返回空响应（done_reason="load"，
+        连 prompt_eval_count 都没有）。这不是错误，是加载动作。
+        不重试的话每次重启ollama后的第一个任务都会拿到空回复，
+        然后被误判成"模型什么都没产出"。
         """
         self._allow()
         t0 = time.monotonic()
         try:
             body = {"model": model or self.model_for(budget.get("complexity", "simple")),
                     "prompt": prompt, "stream": False}
-            if messages:
-                body.pop("prompt")            # 多轮时prompt字段会被messages覆盖
-                body["messages"] = messages
+            if messages or not prompt:
+                body.pop("prompt")
+                body["messages"] = messages or [
+                    {"role": "user", "content": prompt or ""}]
             if tools:
                 body["tools"] = tools
             if num_ctx:
                 body["options"] = {"num_ctx": num_ctx}
-            data = self._request(f"{self.base_url}/api/chat", body, {})
+            data = None
+            for attempt in range(retries + 1):
+                data = self._request(f"{self.base_url}/api/chat", body, {})
+                if not _is_cold_start(data):
+                    break
+                if attempt < retries:
+                    self.calls += 1     # 这次确实打到了模型，只是载入
+                    continue
             msg = data.get("message") or {}
             usage = {"prompt_tokens": int(data.get("prompt_eval_count") or 0),
                      "completion_tokens": int(data.get("eval_count") or 0)}
             out = {"content": msg.get("content", "") or "", "usage": usage,
-                   "tool_calls": _parse_tool_calls(msg.get("tool_calls"))}
+                   "tool_calls": _parse_tool_calls(msg.get("tool_calls")),
+                   "thinking": (msg.get("thinking") or msg.get("reasoning_content")
+                                or "") or ""}
             self.calls += 1
             self.p50_ms.append((time.monotonic() - t0) * 1000)
             self._on_success()

@@ -29,6 +29,23 @@ class RoutePolicy:
 # 改配置不该牵动代码里的 provider 命名。
 # ---------------------------------------------------------------------------
 
+def _field(task, name: str, default=None):
+    """取任务字段，**同时支持 dict 和对象**。
+
+    之前三处 policy 都用 getattr(task, "complexity", "simple")。
+    对 Pydantic 对象没问题，但编排层传进来的是 store.get_task() 的
+    **dict**——getattr(dict, "complexity") 取不到属性，会静默返回默认值
+    "simple"。后果是所有任务都被当成 simple 路由到本地小模型，
+    包括 medium 和 complex。
+    这类"取不到就默认"在路由上是特别危险的默认值：它不报错，
+    只会让错模型静默跑完整个任务。真实端到端跑一次就抓到了。
+    """
+    if isinstance(task, dict):
+        v = task.get(name, None)
+        return default if v is None else v
+    return getattr(task, name, default)
+
+
 def _model_for(ctx: dict, complexity: str) -> str:
     """复杂度→模型引用。
 
@@ -50,7 +67,7 @@ def _model_for(ctx: dict, complexity: str) -> str:
 class PrivacyGuard(RoutePolicy):
     name = "privacy_guard"
     def decide(self, task, ctx):
-        if getattr(task, "privacy", "public") == "secret":
+        if _field(task, "privacy", "public") == "secret":
             return {"model": ctx.get("secret_model") or ctx.get("local_model_name")
                     or "local", "reason": "privacy_secret"}
         return None
@@ -62,7 +79,7 @@ class LatencyGuard(RoutePolicy):
     def decide(self, task, ctx):
         import time
         st = ctx.get("local_health", {})
-        privacy = getattr(task, "privacy", "public")
+        privacy = _field(task, "privacy", "public")
         online = ctx.get("online_model_name") or ctx.get("default_model")
         if time.time() < self.muted_until:
             if privacy != "secret":
@@ -89,8 +106,8 @@ class CapabilityMatch(RoutePolicy):
     name = "capability_match"
 
     def decide(self, task, ctx):
-        complexity = getattr(task, "complexity", "simple")
-        if getattr(task, "privacy", "public") == "secret":
+        complexity = _field(task, "complexity", "simple")
+        if _field(task, "privacy", "public") == "secret":
             return {"model": ctx.get("secret_model")
                     or ctx.get("local_model_name") or "local",
                     "reason": "privacy_local_only"}
