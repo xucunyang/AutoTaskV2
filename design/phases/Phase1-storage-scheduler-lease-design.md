@@ -86,7 +86,12 @@ def transition(plan_id, task_id, to_s, *, agent, run_id,
     append events/YYYY-MM-DD.jsonl
 ```
 
-- 导出：`state/export/master.json`（计划汇总+任务索引）+ `tasks/{id}.json`（分片只读）。
+- 导出：`state/export/plans/{plan_id}.json`（每plan一份）+ `tasks/{id}.json`（分片只读）。
+  **不设全局索引文件**：原设计里的 `master.json` 来自 V1/V2 `task.md` 的
+  "Master State 跨天记录计划/DAG/全局状态"，V7 纲领全文不再提它。
+  多plan并存时后导出的会覆盖先导出的索引；真正需要跨plan全局视图的地方
+  一律走 `Store.daily_summary()` 从DB聚合，不该在导出目录里再存一份
+  "可能与DB不一致的事实"。用户 2026-09-29 确认删除。
 - 恢复：`rebuild_export(plan_id)`从DB全量重建导出；`replay(plan_id)`从events重放校验快照一致。
 
 ### 2.3 读取路径
@@ -171,7 +176,7 @@ Phase0把设计里只写在文档的规则真正落进`store.transition()`之后
 | §2.1 DDL新增列对老库无效 | `ADDED_COLUMNS` + `ALTER TABLE`补列，`SCHEMA_VERSION`升2 | `test_migration_adds_missing_column_to_legacy_db` |
 | §2.3b 迁移前备份 | `migrate()`探测旧版本，真迁移才先`VACUUM` | `test_real_migration_takes_backup_first` |
 | §5 锁失败记metrics+告警 | `record_metric` + `db_lock_retry/db_lock_exhausted` + P1 | `test_db_locked_retries_then_succeeds` |
-| §2.2 master单文件覆盖 | `plans/{plan_id}.json` + `master.json`只做索引 | `test_replay_and_rebuild_and_backup` |
+| §2.2 master单文件覆盖 | 改为每plan一份 `plans/{plan_id}.json`；`master.json` 已按用户决策**彻底删除**（V1遗留，V7不提） | `test_replay_and_rebuild_and_backup` |
 | §4 DST切换记日志 | `_log_timezone_resolution`记下一次触发时刻 | `test_build_scheduler_logs_timezone_resolution` |
 
 第一条是本轮最值得记的：`CREATE TABLE IF NOT EXISTS` **不会给已存在的表补列**。上一版给`tasks`加了`verify_progress_json`，对已有库完全不生效——启动一路绿灯，直到运行期某条查询才 `no such column`。凡是给既有表加字段，都必须同时声明进`ADDED_COLUMNS`。

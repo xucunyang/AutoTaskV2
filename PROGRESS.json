@@ -1,41 +1,57 @@
 {
-    "current_phase": "ALL_PHASES_IMPLEMENTED_AWAITING_REVIEW",
-    "pending_review": "Phase4收口轮 (2026-09-29): 补三个沙箱关键handler测试(json_schema/business_rule/eval_expr, verifier 68%→91%)+覆盖率门禁scripts/check_coverage.py(六模块91.0%); 异步verify池接进主循环(还Phase3欠账); 混沌14项全过(证据reports/chaos_01_07.log+chaos_08_14.log); 端到端冒烟8例+§5性能成本基线(reports/smoke_baseline.log)。pytest 398 passed。冒烟途中修掉3个真bug: ①执行器把模型回复同一坨文本写进所有声明产物(summary.json里塞markdown致json_schema永远bad_json且报错指不到真因) ②cache_hit把产物sha拿去比inputs_hash, 两者天然不同, SKIPPED_CACHED是死代码 ③RETRY任务永久卡住(主循环只处理PENDING/BLOCKED, 没人做RETRY→READY退避重排)。另: 预期内的拒绝(deps未满足/退避未到点)不再发P1(新增transition(expected=True)), scheduler补inputs_hash(否则缓存第1层永不成立), 检索补跨query URL去重(重复条目加权A类占比虚高质量分)。Phase0-4全部completed, 待用户评审签字",
-    "v6_master": "design/plans/IMPLEMENTATION_PLAN_V6.md",
-    "v7_master": "design/plans/IMPLEMENTATION_PLAN_V7.md",
-    "v6_validated": "33/33通过，3bug已修，4项coding清单见V6§11",
-    "phases": {
-        "Phase0": {
-            "desc": "契约schemas与状态机（V7：14态+让出边+调研三件套模型）",
-            "evidence": "动态窗口轮: transitions让出reason五值(+context_overflow); models加long_running/rule_id+needs_web×freshness交叉校验; 新建core/context.py(9单测)+test_gateway(6用例)+test_governor(4用例); gateway.yaml分档+reserved16384门槛+context_window=null; report.yaml tuning段+sla60; 新建docs/deploy-prereq.md。2026-09-29补落码轮: 发现§2.2/§2.3/§3/§4/§5共10条规则只写在文档未落code(store.transition未强制, test_transitions只测静态表is_allowed常量, 属'测试全绿但规则是空的')。补: ①depends_on门禁(PENDING/BLOCKED→READY查兄弟状态, 默认视SKIPPED/SKIPPED_CACHED满足, strict_depends开关) ②权限矩阵role_allowed+transition(role=orchestrator/subagent/verifier), SYSTEM_ONLY/ORCH_ONLY/SELF_YIELD此前定义却从未被调用 ③让出边强制回带expect_fencing(脑裂防护另一半) ④RETRY必带reason/DEAD_LETTER必带reason+last_error+sop_ref ⑤Store.cancel_cascade(只级联未启动下游) ⑥Store.record_schema_reject+enqueue接入 ⑦Store.alert写events/ALERTS.jsonl ⑧cmd白名单前缀 ⑨core/task_card.py渲染器+token<2k真门禁(DoD第4项, 此前完全缺失) ⑩幂等键含inputs_hash全hash+TaskIdConflict(换输入不再静默复用旧任务)。新增tests/test_phase0_rules.py(21例)+test_task_card.py(10例); 3个被新规推翻的旧断言按设计改正。tests 132 passed",
-            "status": "completed",
-            "updated_at": "2026-09-29T14:30:00Z"
-        },
-        "Phase1": {
-            "desc": "存储SQLite+调度+租约+队列入口（单表/AUTOINCREMENT/Store/备份迁移/让出熔断）",
-            "evidence": "core/store.py: WAL+schema_version幂等migrate+ADDED_COLUMNS增量补列(SCHEMA_VERSION=2)+迁移前VACUUM备份, tasks单表seq AUTOINCREMENT, transition()唯一写入口(乐观锁version+fencing仅lease_op+1+让出边五重门reason五值/checkpoint断言/强制回带fencing/long_running前置/熔断K=5/attempts仅RETRY→READY+1+depends_on门禁+权限矩阵role+RETRY必带reason+DEAD_LETTER三必填), cancel_cascade, list_ready_ordered(priority,seq), 原子导出plans/{plan_id}.json+master索引+tasks/*.json, rebuild_export, replay一致性, backup(VACUUM INTO幂等), integrity_check, request_cancel, update_verify_progress(V7局部重入账本), record_metric+db_lock_retry/db_lock_exhausted, daily_summary, alert→events/ALERTS.jsonl, record_schema_reject; core/lease.py: acquire/renew/release/recover_expired_leases/request_cancel, 零裸SQL(评审M6), TTL集中config/schedule.yaml(评审B2); core/enqueue.py: CLI+inbox扫描(processing→done|error), M9六道硬门(<100KB/task_id正则/路径限artifacts/YYYY-MM-DD/cmd禁shell元字符+白名单前缀/business_rule.expr AST白名单禁Call/Attribute/100条每小时), touch wakeup.flag(M2); core/scheduler.py: APScheduler BackgroundScheduler+SQLAlchemyJobStore, expand_template({date}展开+acceptance rule_id), ensure_plan幂等, catchup_missing(超期skip+告警/当天必补), 时区解析记日志, CLI --date/--catchup/--dry-run/--rerun/--root; 明确划到Phase2: 心跳线程周期调用/FAILED→DEAD_LETTER升级/RETRY指数退避。tests: test_store(12)+test_lease(9)+test_enqueue(19)+test_scheduler(15)+test_recovery(5)+test_migration(5)+test_phase1_recheck(4)=143 passed, 含kill -9混沌无半写/replay一致/seq不回退/备份可恢复/DB锁退避/v1老库补列/日报DAG按序推进",
-            "status": "completed",
-            "updated_at": "2026-09-29T12:00:00Z"
-        },
-        "Phase2": {
-            "desc": "编排+执行+planner拆分+四段式检索+session切换+网关/搜索插件",
-            "evidence": "core/orchestrator.py: 主循环tick(ingest_inbox→housekeeping→validate_dag→refresh_ready→apply_aging→backlog_check→dispatch_split→promote_submitted→export)+单实例DB锁(plans表占行, 锁行不进active_plans)+wait_wakeup消费wakeup.flag+STOP文件优雅停机; dispatch_split两阶段(高优N-1槽+低优预留1槽); validate_dag DFS三色判环+自依赖+孤儿; core/executor.py: 无状态执行(渲染任务卡→检索→chat→原子落产物+manifest→轻量自检→SUBMITTED带handoff)+SessionYield分支(先存checkpoint再让出)+协作式取消+不重试/不判终态/不吞异常; core/checkpoint.py: Checkpoint落盘+resume_payload(事实与summary_hint分离)+cache_hit三条件(inputs_hash+产物存在+sha匹配)+record_success+prune; core/planner.py: plan_id=问题hash(同题不重拆)+契约校验不做尽力修复(slice_rationale/needs_web×freshness/重id/自依赖/无key_questions)+planner_run_id/model/prompt_version落state/planner_runs+拆分侧session checkpoint+inbox/planner入口; core/search/: base(SearchProvider契约+tavily实现+exa/bing桩+DailyQuota)+classify_source(官方域名先验直接A不调LLM/平台域名强制LLM逐条判/tier_reason必填/解析失败落C不猜/按URL落盘复用)+pipeline(四段式, 先按published_at过滤再判级, 无published_at丢弃, 分析包声明数据非指令, 四件套产出+claims→sources悬空自检); lease补: Heartbeat线程(续租带fencing/StaleOwner即停并置lost/daemon可join)+escalate_dead_letters(attempts>=max升死信+P0, last_error从历史事件翻出而非现造)+backoff_delay_s(60*2^attempts封顶1h); Store补update_priority(老化唯一合法写口, 只许升不许降, 记AGED审计行)。DoD 10条逐条核对见tests/test_dod_phase2.py; 明确划到Phase3: 异步verifier池/告警去重/报告渲染/网关真实provider。写测试时抓出3个真bug: ①让出被Store拒时异常逃出run_task致任务卡死RUNNING(改为落FAILED) ②老化时钟用updated_at会被自己重置致第二档永不触发(改enqueued_at) ③老化min(target,3)把中间档5也压成3(改一次只升一档+下限3)。tests 263 passed",
-            "status": "completed",
-            "updated_at": "2026-09-29T17:00:00Z"
-        },
-        "Phase3": {
-            "desc": "验证器异步+调研质量4规则+告警去重+汇总报告",
-            "evidence": "core/notifier.py: level_for(kind)为告警级别唯一决定点, P0白名单仅{dead_letter,inconsistent,dispatch_sla_breach}三项(设计§9定版), 传入级别与政策冲突时按政策降级并留痕, 未知kind默认P2(宁可进日报不半夜打电话); AlertPolicy dedup_window=300s+max_per_hour, 去重状态落state/alerts_state.json(跨进程, 多实例各写内存等于没去重), 被去重的写alerts_suppressed.jsonl留痕; 补登3个漏掉的P1 kind(illegal_transition/stale_owner_write/dag_invalid); 改掉Phase2的apply_aging误发P0(设计§3.2把老化归P2)并用测试锁死; core/verifier.py: 9个沙箱化handler(file_exists/row_count流式计数/python_test白名单+shell=False+flaky_retry只重试测试层不计任务attempts/json_schema/business_rule AST白名单禁eval/source_traceable/freshness超期>30%FAIL且无published_at报P2/source_quality A类>50%且tier_reason空不计入/coverage查缺口), 路径必须规范化且不出artifacts/{date}/, 固定四件套校验顺序, 不短路(短路会让人看不出还错了几处); core/verify_orchestrator.py: AnyIO VerifyPool异步不阻塞主循环(评审M7), 局部重入verified_rules跳过已通过rule(不加状态边), requeue_verify只捞无lease的, final_consistency终检(DAG/依赖/验收记录/needs_web四件套/产物存在)不过则P0 INCONSISTENT; core/report.py: 三层报告只链不搬(任务tuning.md自包含/plan summary只做索引含任务分解视图slice_rationale+调研质量A类占比/日报一屏总览+算力画像+质量告警+弱建议), 队列看板(READY按priority/最老等待/是否阻塞/session切换/缓存命中), Prometheus导出reports/metrics.prom(指标名字符白名单清洗), 阈值全读config/report.yaml, 时区按上海自然日切分(DB存UTC展示+8); core/providers.py: 真实Ollama/在线provider, 返回契约统一{content,usage:{prompt_tokens,completion_tokens}}(session切换判定依赖它), 并发闸门+熔断半开(失败路径必须释放信号量否则第一次失败就永久卡死), api_key只存环境变量名, gateway.resolve查不到返回None不造假provider(假provider会让任务'成功'但产物为空, 比报错危险)。DoD九条逐条见tests/test_verifier.py的test_dod*。写测试抓出4个真bug: ①h_file_exists对相对路径直接.exists()等于按进程CWD找文件, 换个启动目录验收结论就变 ②update_verify_progress整体覆盖把诊断用last_results冲掉 ③VerifyPool.__aexit__无条件cancel worker致任务永停VERIFYING还得靠requeue_verify返工 ④test_daily_quality_flags_dead_letter我最初手算version写错(改为每次重读)。tests 350 passed",
-            "status": "completed",
-            "updated_at": "2026-09-29T19:00:00Z"
-        },
-        "Phase4": {
-            "desc": "混沌14项+端到端冒烟+覆盖率硬线+性能成本基线",
-            "evidence": "覆盖率: 补三个沙箱关键handler测试(json_schema/business_rule/eval_expr, 此前9个handler只测了6个, verifier 68%→91%), 门禁做成scripts/check_coverage.py(不做成pytest用例: 那会在测试进程里再跑全量测试而全量测试包含它自己=无限递归), 六模块平均91.0%九项全≥80%; 门禁自身修两个会'假通过'的洞(正则不允许路径第二个分隔符致core/search/*子模块被静默丢掉——search覆盖率哪怕0%也显示通过; --cov参数insert(-3)错位)。异步verify池接线(还Phase3欠账): tick里promote→dispatch_verify_async一气呵成, _in_flight去重防双写终态, 只捞无lease的VERIFYING, 校验走anyio.to_thread免得慢python_test卡住主循环, run_forever有池子时走async路径退出时等worker收尾。混沌14项(证据reports/chaos_01_07.log+chaos_08_14.log): 1 kill-9租约回收+无半写+checkpoint可续跑 2 双调度只建一次 3 旧fencing写回StaleOwner拒 4 READY->DONE直写被拒+P1 5 大文件20万行prompt=284tokens+sha真实 6 FIFO十任务顺序一致 7 高优排队p95=38.4ms 8 防饿死AGED+预留槽 9 session切换attempts=0+done_steps不重复 10 让出熔断K=2改走FAILED 11 幻觉拒收INCONSISTENT P0 12 拆分幂等 13 静默截断truncated+水位线按实际下调 14 Mac空闲检测保安全0.0。端到端冒烟8例(A daily三任务链全DONE+产物+replay+报告 B 二次同输入命中SKIPPED_CACHED C 混合注入不抢占+自然衔接+双链路DONE D 调研链planner→四段式→4验收全过→分解视图+调研质量章节)+§5基线(单计划<5min/state.db<10MB/任务卡<2k/rebuild<5s/官方域名0次LLM)。冒烟抓3个真bug: ①执行器把模型回复同一坨文本写进所有声明产物(summary.json里塞markdown致json_schema永远bad_json且报错指不到真因; 设计§5本就是llm_analyze_and_write=模型写) ②cache_hit把产物sha拿去比inputs_hash两者天然不同致SKIPPED_CACHED是死代码(改两层: inputs_hash相等+逐个产物比manifest里的sha) ③RETRY任务永久卡住(新增promote_retries按60*2^attempts退避重排)。另修告警骚扰: deps未满足/退避未到点属预期内拒绝, 新增transition(expected=True)仍记REJECTED但不发P1。scheduler补inputs_hash(任务规格规范化哈希, 不设则缓存第1层永不成立; 只取影响产出的字段不含priority)。检索补跨query URL去重(重复条目加权A类占比虚高质量分)。pytest 398 passed, 覆盖率91.0%",
-            "status": "completed",
-            "updated_at": "2026-09-29T21:00:00Z"
-        }
+  "current_phase": "ALL_PHASES_REVIEWED_AND_IMPLEMENTED",
+  "pending_review": null,
+  "v6_master": "design/plans/IMPLEMENTATION_PLAN_V6.md",
+  "v7_master": "design/plans/IMPLEMENTATION_PLAN_V7.md",
+  "v6_validated": "33/33通过，3bug已修，4项coding清单见V6§11",
+  "phases": {
+    "Phase0": {
+      "desc": "契约schemas与状态机（V7：14态+让出边+调研三件套模型）",
+      "evidence": "动态窗口轮: transitions让出reason五值(+context_overflow); models加long_running/rule_id+needs_web×freshness交叉校验; 新建core/context.py(9单测)+test_gateway(6用例)+test_governor(4用例); gateway.yaml分档+reserved16384门槛+context_window=null; report.yaml tuning段+sla60; 新建docs/deploy-prereq.md。2026-09-29补落码轮: 发现§2.2/§2.3/§3/§4/§5共10条规则只写在文档未落code(store.transition未强制, test_transitions只测静态表is_allowed常量, 属'测试全绿但规则是空的')。补: ①depends_on门禁(PENDING/BLOCKED→READY查兄弟状态, 默认视SKIPPED/SKIPPED_CACHED满足, strict_depends开关) ②权限矩阵role_allowed+transition(role=orchestrator/subagent/verifier), SYSTEM_ONLY/ORCH_ONLY/SELF_YIELD此前定义却从未被调用 ③让出边强制回带expect_fencing(脑裂防护另一半) ④RETRY必带reason/DEAD_LETTER必带reason+last_error+sop_ref ⑤Store.cancel_cascade(只级联未启动下游) ⑥Store.record_schema_reject+enqueue接入 ⑦Store.alert写events/ALERTS.jsonl ⑧cmd白名单前缀 ⑨core/task_card.py渲染器+token<2k真门禁(DoD第4项, 此前完全缺失) ⑩幂等键含inputs_hash全hash+TaskIdConflict(换输入不再静默复用旧任务)。新增tests/test_phase0_rules.py(21例)+test_task_card.py(10例); 3个被新规推翻的旧断言按设计改正。tests 132 passed",
+      "status": "completed",
+      "updated_at": "2026-09-29T14:30:00Z",
+      "review": "passed 2026-09-29"
     },
-    "plan_id": "autotask_bootstrap",
-    "updated_at": "2026-09-29T15:30:00Z"
+    "Phase1": {
+      "desc": "存储SQLite+调度+租约+队列入口（单表/AUTOINCREMENT/Store/备份迁移/让出熔断）",
+      "evidence": "core/store.py: WAL+schema_version幂等migrate+ADDED_COLUMNS增量补列(SCHEMA_VERSION=2)+迁移前VACUUM备份, tasks单表seq AUTOINCREMENT, transition()唯一写入口(乐观锁version+fencing仅lease_op+1+让出边五重门reason五值/checkpoint断言/强制回带fencing/long_running前置/熔断K=5/attempts仅RETRY→READY+1+depends_on门禁+权限矩阵role+RETRY必带reason+DEAD_LETTER三必填), cancel_cascade, list_ready_ordered(priority,seq), 原子导出plans/{plan_id}.json+master索引+tasks/*.json, rebuild_export, replay一致性, backup(VACUUM INTO幂等), integrity_check, request_cancel, update_verify_progress(V7局部重入账本), record_metric+db_lock_retry/db_lock_exhausted, daily_summary, alert→events/ALERTS.jsonl, record_schema_reject; core/lease.py: acquire/renew/release/recover_expired_leases/request_cancel, 零裸SQL(评审M6), TTL集中config/schedule.yaml(评审B2); core/enqueue.py: CLI+inbox扫描(processing→done|error), M9六道硬门(<100KB/task_id正则/路径限artifacts/YYYY-MM-DD/cmd禁shell元字符+白名单前缀/business_rule.expr AST白名单禁Call/Attribute/100条每小时), touch wakeup.flag(M2); core/scheduler.py: APScheduler BackgroundScheduler+SQLAlchemyJobStore, expand_template({date}展开+acceptance rule_id), ensure_plan幂等, catchup_missing(超期skip+告警/当天必补), 时区解析记日志, CLI --date/--catchup/--dry-run/--rerun/--root; 明确划到Phase2: 心跳线程周期调用/FAILED→DEAD_LETTER升级/RETRY指数退避。tests: test_store(12)+test_lease(9)+test_enqueue(19)+test_scheduler(15)+test_recovery(5)+test_migration(5)+test_phase1_recheck(4)=143 passed, 含kill -9混沌无半写/replay一致/seq不回退/备份可恢复/DB锁退避/v1老库补列/日报DAG按序推进",
+      "status": "completed",
+      "updated_at": "2026-09-29T12:00:00Z",
+      "review": "passed 2026-09-29"
+    },
+    "Phase2": {
+      "desc": "编排+执行+planner拆分+四段式检索+session切换+网关/搜索插件",
+      "evidence": "core/orchestrator.py: 主循环tick(ingest_inbox→housekeeping→validate_dag→refresh_ready→apply_aging→backlog_check→dispatch_split→promote_submitted→export)+单实例DB锁(plans表占行, 锁行不进active_plans)+wait_wakeup消费wakeup.flag+STOP文件优雅停机; dispatch_split两阶段(高优N-1槽+低优预留1槽); validate_dag DFS三色判环+自依赖+孤儿; core/executor.py: 无状态执行(渲染任务卡→检索→chat→原子落产物+manifest→轻量自检→SUBMITTED带handoff)+SessionYield分支(先存checkpoint再让出)+协作式取消+不重试/不判终态/不吞异常; core/checkpoint.py: Checkpoint落盘+resume_payload(事实与summary_hint分离)+cache_hit三条件(inputs_hash+产物存在+sha匹配)+record_success+prune; core/planner.py: plan_id=问题hash(同题不重拆)+契约校验不做尽力修复(slice_rationale/needs_web×freshness/重id/自依赖/无key_questions)+planner_run_id/model/prompt_version落state/planner_runs+拆分侧session checkpoint+inbox/planner入口; core/search/: base(SearchProvider契约+tavily实现+exa/bing桩+DailyQuota)+classify_source(官方域名先验直接A不调LLM/平台域名强制LLM逐条判/tier_reason必填/解析失败落C不猜/按URL落盘复用)+pipeline(四段式, 先按published_at过滤再判级, 无published_at丢弃, 分析包声明数据非指令, 四件套产出+claims→sources悬空自检); lease补: Heartbeat线程(续租带fencing/StaleOwner即停并置lost/daemon可join)+escalate_dead_letters(attempts>=max升死信+P0, last_error从历史事件翻出而非现造)+backoff_delay_s(60*2^attempts封顶1h); Store补update_priority(老化唯一合法写口, 只许升不许降, 记AGED审计行)。DoD 10条逐条核对见tests/test_dod_phase2.py; 明确划到Phase3: 异步verifier池/告警去重/报告渲染/网关真实provider。写测试时抓出3个真bug: ①让出被Store拒时异常逃出run_task致任务卡死RUNNING(改为落FAILED) ②老化时钟用updated_at会被自己重置致第二档永不触发(改enqueued_at) ③老化min(target,3)把中间档5也压成3(改一次只升一档+下限3)。tests 263 passed",
+      "status": "completed",
+      "updated_at": "2026-09-29T17:00:00Z",
+      "review": "passed 2026-09-29"
+    },
+    "Phase3": {
+      "desc": "验证器异步+调研质量4规则+告警去重+汇总报告",
+      "evidence": "core/notifier.py: level_for(kind)为告警级别唯一决定点, P0白名单仅{dead_letter,inconsistent,dispatch_sla_breach}三项(设计§9定版), 传入级别与政策冲突时按政策降级并留痕, 未知kind默认P2(宁可进日报不半夜打电话); AlertPolicy dedup_window=300s+max_per_hour, 去重状态落state/alerts_state.json(跨进程, 多实例各写内存等于没去重), 被去重的写alerts_suppressed.jsonl留痕; 补登3个漏掉的P1 kind(illegal_transition/stale_owner_write/dag_invalid); 改掉Phase2的apply_aging误发P0(设计§3.2把老化归P2)并用测试锁死; core/verifier.py: 9个沙箱化handler(file_exists/row_count流式计数/python_test白名单+shell=False+flaky_retry只重试测试层不计任务attempts/json_schema/business_rule AST白名单禁eval/source_traceable/freshness超期>30%FAIL且无published_at报P2/source_quality A类>50%且tier_reason空不计入/coverage查缺口), 路径必须规范化且不出artifacts/{date}/, 固定四件套校验顺序, 不短路(短路会让人看不出还错了几处); core/verify_orchestrator.py: AnyIO VerifyPool异步不阻塞主循环(评审M7), 局部重入verified_rules跳过已通过rule(不加状态边), requeue_verify只捞无lease的, final_consistency终检(DAG/依赖/验收记录/needs_web四件套/产物存在)不过则P0 INCONSISTENT; core/report.py: 三层报告只链不搬(任务tuning.md自包含/plan summary只做索引含任务分解视图slice_rationale+调研质量A类占比/日报一屏总览+算力画像+质量告警+弱建议), 队列看板(READY按priority/最老等待/是否阻塞/session切换/缓存命中), Prometheus导出reports/metrics.prom(指标名字符白名单清洗), 阈值全读config/report.yaml, 时区按上海自然日切分(DB存UTC展示+8); core/providers.py: 真实Ollama/在线provider, 返回契约统一{content,usage:{prompt_tokens,completion_tokens}}(session切换判定依赖它), 并发闸门+熔断半开(失败路径必须释放信号量否则第一次失败就永久卡死), api_key只存环境变量名, gateway.resolve查不到返回None不造假provider(假provider会让任务'成功'但产物为空, 比报错危险)。DoD九条逐条见tests/test_verifier.py的test_dod*。写测试抓出4个真bug: ①h_file_exists对相对路径直接.exists()等于按进程CWD找文件, 换个启动目录验收结论就变 ②update_verify_progress整体覆盖把诊断用last_results冲掉 ③VerifyPool.__aexit__无条件cancel worker致任务永停VERIFYING还得靠requeue_verify返工 ④test_daily_quality_flags_dead_letter我最初手算version写错(改为每次重读)。tests 350 passed",
+      "status": "completed",
+      "updated_at": "2026-09-29T19:00:00Z",
+      "review": "passed 2026-09-29"
+    },
+    "Phase4": {
+      "desc": "混沌14项+端到端冒烟+覆盖率硬线+性能成本基线",
+      "evidence": "覆盖率: 补三个沙箱关键handler测试(json_schema/business_rule/eval_expr, 此前9个handler只测了6个, verifier 68%→91%), 门禁做成scripts/check_coverage.py(不做成pytest用例: 那会在测试进程里再跑全量测试而全量测试包含它自己=无限递归), 六模块平均91.0%九项全≥80%; 门禁自身修两个会'假通过'的洞(正则不允许路径第二个分隔符致core/search/*子模块被静默丢掉——search覆盖率哪怕0%也显示通过; --cov参数insert(-3)错位)。异步verify池接线(还Phase3欠账): tick里promote→dispatch_verify_async一气呵成, _in_flight去重防双写终态, 只捞无lease的VERIFYING, 校验走anyio.to_thread免得慢python_test卡住主循环, run_forever有池子时走async路径退出时等worker收尾。混沌14项(证据reports/chaos_01_07.log+chaos_08_14.log): 1 kill-9租约回收+无半写+checkpoint可续跑 2 双调度只建一次 3 旧fencing写回StaleOwner拒 4 READY->DONE直写被拒+P1 5 大文件20万行prompt=284tokens+sha真实 6 FIFO十任务顺序一致 7 高优排队p95=38.4ms 8 防饿死AGED+预留槽 9 session切换attempts=0+done_steps不重复 10 让出熔断K=2改走FAILED 11 幻觉拒收INCONSISTENT P0 12 拆分幂等 13 静默截断truncated+水位线按实际下调 14 Mac空闲检测保安全0.0。端到端冒烟8例(A daily三任务链全DONE+产物+replay+报告 B 二次同输入命中SKIPPED_CACHED C 混合注入不抢占+自然衔接+双链路DONE D 调研链planner→四段式→4验收全过→分解视图+调研质量章节)+§5基线(单计划<5min/state.db<10MB/任务卡<2k/rebuild<5s/官方域名0次LLM)。冒烟抓3个真bug: ①执行器把模型回复同一坨文本写进所有声明产物(summary.json里塞markdown致json_schema永远bad_json且报错指不到真因; 设计§5本就是llm_analyze_and_write=模型写) ②cache_hit把产物sha拿去比inputs_hash两者天然不同致SKIPPED_CACHED是死代码(改两层: inputs_hash相等+逐个产物比manifest里的sha) ③RETRY任务永久卡住(新增promote_retries按60*2^attempts退避重排)。另修告警骚扰: deps未满足/退避未到点属预期内拒绝, 新增transition(expected=True)仍记REJECTED但不发P1。scheduler补inputs_hash(任务规格规范化哈希, 不设则缓存第1层永不成立; 只取影响产出的字段不含priority)。检索补跨query URL去重(重复条目加权A类占比虚高质量分)。pytest 398 passed, 覆盖率91.0%",
+      "status": "completed",
+      "updated_at": "2026-09-29T21:00:00Z",
+      "review": "passed 2026-09-29"
+    }
+  },
+  "plan_id": "autotask_bootstrap",
+  "updated_at": "2026-09-29T20:40:00Z",
+  "decisions_2026_09_29": {
+    "review": "Phase0-4 阶段设计稿全部评审通过",
+    "delete_master_json": "master.json 是V1/V2 task.md的遗留，V7纲领全文不再提。用户确认删除。现在只留 state/export/plans/{plan_id}.json；跨plan全局视图走 Store.daily_summary() 从DB聚合，不在导出目录里再存一份可能不一致的事实。",
+    "tool_calling": "自己做薄 tool loop，不拉起 CC/opencode。理由：session让出、checkpoint续跑、白名单沙箱这三项是本系统价值所在，通用CLI agent是黑盒做不到。工具集只4个：read_range/search/atomic_write/run_cmd，shell不进白名单。",
+    "model_registry": "模型注册表 + 复杂度映射，改配置即可切换。models是注册表，complexity_models 如 {simple: local, medium: flash, complex: pro}，路由结果 {model: 注册表名}（不再返回provider名）。以后接多个厂商/多个token套餐=往models加条目，不动代码。",
+    "alert_level": "告警级别由 level_for() 单一决定，调用方不能自选",
+    "aging_alert": "老化告警归 P2",
+    "backoff_cap": "RETRY 退避 60*2^attempts，封顶 3600 秒",
+    "artifact_boundary": "产物由模型自己用 atomic_write 写，执行器只确认落盘+补manifest",
+    "planner_checkpoint": "done_steps 存序号(int)；按任务颗粒度续跑，不追求拆分层id精度"
+  }
 }

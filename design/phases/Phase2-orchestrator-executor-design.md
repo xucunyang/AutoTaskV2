@@ -227,6 +227,33 @@ def chat_with_yield_check(card, ...):
    **契约保持严格，checkpoint只记"拆到第几张+剩下什么"。**
    （用户选择：按任务颗粒度续跑即可，不追求拆分层的id级精度。）
 8. **分级cache按URL存**：`state/source_tiers.json` 同一URL复用，重复检索不再调LLM。
+9. **自己做薄 tool loop，不拉起 CC/opencode**（用户 2026-09-29 决策）：
+   本系统的价值恰恰在"可控的上下文 + 可审计的执行"——session让出、
+   checkpoint续跑、白名单沙箱。通用CLI agent是黑盒：中途只能kill，
+   状态全丢，水位线和usage也拿不到，用它等于放弃§6b/§5b一半的设计。
+   代价是自己维护工具层，收益是这三项都还在自己手里。
+   工具集**给窄不给宽**，只4个（`core/tools.py`）：
+   `read_range`（分页读）/ `search`（检索）/ `atomic_write`（原子写产物）/
+   `run_cmd`（白名单可执行文件，shell=False，无管道/重定向/子shell）。
+   白名单**不含 shell/powershell/cmd**——它们是任意代码执行入口，
+   加进去等于把整个沙箱作废。
+   错误分两类，这个区分是设计要点：
+   - **越权**（路径逃出root / 命令不在白名单）→ 终止循环。
+     把DENIED回给模型让它重试，等于教它怎么绕过。
+   - **参数错**（空路径/文件不存在/引号坏）→ 软失败，错误文本回填让模型改。
+     这类错模型改一次参数就能纠正，不该打断整个循环。
+   循环内三条硬约束：**每轮查水位线**（这是§6b session让出唯一的落点，
+   一次chat做完整个任务的话让出设计完全没有落点）、**轮次上限**
+   （默认12，`budget.max_steps`可下调）、工具失败不抛异常打断循环。
+10. **模型是注册表，路由按名字引用**（用户 2026-09-29 确认）：
+    `config/gateway.yaml` 的 `models` 是注册表，`complexity_models` 是
+    复杂度→模型名的映射（如 `{simple: local, medium: flash, complex: pro}`）。
+    路由结果一律 `{"model": <注册表名>, "reason": ...}`，**不再返回provider名**：
+    provider是"怎么连"（代码里的类），model是"用哪个"（配置里的名），
+    混在一个词里会导致每加一个模型都要碰代码。
+    另有 `privacy_models.secret`（强制不外发）与 `default_model`
+    （兜底，**不指local**——静默降级到4B比报错更糟）。
+    以后接多个厂商/多个token套餐=往`models`里加条目，不动代码。
 
 ## 附录A. 轻量网关（可插拔，防本地拖慢）
 
