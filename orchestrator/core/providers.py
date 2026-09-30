@@ -24,7 +24,24 @@ from pathlib import Path
 
 
 class ProviderError(RuntimeError):
-    pass
+    """provider调用失败。
+
+    带 status / permanent 两个属性给熔断器分类：
+    - status    HTTP状态码（网络层错误为None）
+    - permanent 是否"重试也没用"。401/403 属于这类：key 错了，
+      再打一百次还是错，等阈值攒够纯属浪费。
+    """
+
+    def __init__(self, msg: str, status: int | None = None,
+                 permanent: bool = False):
+        super().__init__(msg)
+        self.status = status
+        self.permanent = permanent
+
+
+# 这些状态码重试没有意义：不是配置错就是请求本身不被接受。
+# 立刻熔断，让运维先修配置，而不是用无效重试把端点刷一遍。
+PERMANENT_STATUS = (401, 403, 404)
 
 
 class CircuitOpen(ProviderError):
@@ -88,17 +105,24 @@ class BaseProvider:
         self._fails = 0
         self._opened_at = 0.0
         self._half_open = False
+        self.last_permanent = ""     # 最近一次永久性失败的状态码（排查配置用）
         self.calls = 0
         self.failures = 0
         self.p50_ms: list[float] = []
 
-    # ---- 熔断（连续失败→cooldown；cooldown后放一个探测=半开） ----
+    # ---- 熔断（连续失败→cooldown；cooldown后放**一个**探测=半开） ----
     def _allow(self) -> None:
         with self._lock:
-            if self._opened_at and (time.time() - self._opened_at) < self.cooldown_s:
-                raise CircuitOpen(f"{self.name}:circuit_open")
-            if self._opened_at and (time.time() - self._opened_at) >= self.cooldown_s:
-                self._half_open = True      # 半开：放一个探测
+            if self._opened_at:
+                age = time.time() - self._opened_at
+                if age < self.cooldown_s:
+                    raise CircuitOpen(f"{self.name}:circuit_open")
+                if self._half_open:
+                    # 探测已在飞。cooldown 一过就全放行是标准的惊群——
+                    # 熔断的意义就是别在恢复瞬间压垮端点，而文档
+                    # §附录A 承诺的就是"放一个探测"，之前代码里没有这个闸门。
+                    raise CircuitOpen(f"{self.name}:half_open_probe_inflight")
+                self._half_open = True       # 放一个探测
         if not self._sem.acquire(timeout=1.0):
             raise ProviderError(f"{self.name}:busy(max_concurrency)")
 
@@ -108,13 +132,22 @@ class BaseProvider:
             self._opened_at = 0.0
             self._half_open = False
 
-    def _on_failure(self) -> None:
+    def _on_failure(self, err: Exception | None = None) -> None:
         with self._lock:
             self._fails += 1
             self.failures += 1
-            if self._fails >= self.fail_threshold:
+            # 探测失败 → 立刻重新熔断。原来只是 fails+1，而阈值是3，
+            # 要连败三次才重新打开，中间两次等于"完全放开"——
+            # 熔断会退化成随机失败，对持续故障的端点毫无保护作用。
+            probe_failed = self._half_open
+            permanent = bool(getattr(err, "permanent", False))
+            if probe_failed or permanent or self._fails >= self.fail_threshold:
                 self._opened_at = time.time()
+                self._half_open = False
                 self._fails = 0
+                if permanent:
+                    # 配置类错误：让上层一眼看出要改配置而不是等重试
+                    self.last_permanent = str(getattr(err, "status", "")) or "?"
 
     def health(self) -> dict:
         now = time.time()
@@ -122,7 +155,8 @@ class BaseProvider:
                 "queue_depth": 0, "p50_ms": int(self._median()),
                 "fails": self.failures, "calls": self.calls,
                 "half_open": self._half_open,
-                "circuit_opened": bool(self._opened_at)}
+                "circuit_opened": bool(self._opened_at),
+                "last_permanent": self.last_permanent}
 
     def _median(self) -> float:
         if not self.p50_ms:
@@ -158,15 +192,18 @@ class BaseProvider:
             with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            # 把响应体带出来。ollama 的 400 会在 body 里说明原因
-            # （比如 "the request exceeds the available context size"），
+            # 把响应体带出来。ollama/DeepSeek 的错误码都在body里说明原因
+            # （如 "the request exceeds the available context size"），
             # 只报 "HTTP Error 400" 等于把唯一线索扔了。
             try:
                 detail = e.read().decode("utf-8", "replace")[:400]
             except Exception:       # noqa: BLE001
                 detail = ""
+            # 注意不要再拼一次 self.name：调用方还会包一层，
+            # 拼两次就成了 local-ollama:failed:local-ollama:http_500
             raise ProviderError(
-                f"{self.name}:http_{e.code}:{detail or e.reason}") from e
+                f"http_{e.code}:{detail or e.reason}",
+                status=e.code, permanent=e.code in PERMANENT_STATUS) from e
 
 
 class OllamaProvider(BaseProvider):
@@ -259,7 +296,13 @@ class OllamaProvider(BaseProvider):
             self._on_success()
             return out
         except Exception as e:      # noqa: BLE001
-            self._on_failure()
+            # 熔断要按错误类型分类：401/403 是配置错，不能和"服务抖动"
+            # 一起攒够阈值——所以把异常原样交给 _on_failure，
+            # 并把 status/permanent 透传给上层（否则上层分不清限流和宕机）
+            self._on_failure(e)
+            if isinstance(e, ProviderError):
+                raise ProviderError(f"{self.name}:failed:{e}", status=e.status,
+                                    permanent=e.permanent) from e
             raise ProviderError(f"{self.name}:failed:{e}") from e
         finally:
             self._sem.release()
@@ -319,7 +362,13 @@ class OpenAICompatProvider(BaseProvider):
             self._on_success()
             return out
         except Exception as e:      # noqa: BLE001
-            self._on_failure()
+            # 熔断要按错误类型分类：401/403 是配置错，不能和"服务抖动"
+            # 一起攒够阈值——所以把异常原样交给 _on_failure，
+            # 并把 status/permanent 透传给上层（否则上层分不清限流和宕机）
+            self._on_failure(e)
+            if isinstance(e, ProviderError):
+                raise ProviderError(f"{self.name}:failed:{e}", status=e.status,
+                                    permanent=e.permanent) from e
             raise ProviderError(f"{self.name}:failed:{e}") from e
         finally:
             self._sem.release()
