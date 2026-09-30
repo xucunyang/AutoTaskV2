@@ -44,7 +44,7 @@ def test_ollama_returns_unified_contract(monkeypatch):
     _patch_urlopen(monkeypatch, {"message": {"content": "答案"},
                                  "prompt_eval_count": 4321,
                                  "eval_count": 88})
-    p = OllamaProvider(base_url="http://x")
+    p = OllamaProvider(base_url="http://x", models={"simple": "q4b"})
     out = p.chat("问题", {"complexity": "simple"})
     assert out["content"] == "答案"
     assert out["usage"] == {"prompt_tokens": 4321, "completion_tokens": 88}
@@ -90,7 +90,7 @@ def test_num_ctx_passed_through(monkeypatch):
     calls = []
     _patch_urlopen(monkeypatch, {"message": {"content": "x"},
                                  "prompt_eval_count": 1, "eval_count": 1}, calls)
-    OllamaProvider(base_url="http://x").chat("q", {}, num_ctx=32768)
+    OllamaProvider(base_url="http://x", models={"simple": "q4b"}).chat("q", {}, num_ctx=32768)
     assert calls[0]["body"]["options"]["num_ctx"] == 32768
 
 
@@ -107,7 +107,8 @@ def test_online_sends_auth_header(monkeypatch):
 # ---------- 并发闸门（本地保护 max_concurrency=2） ----------
 
 def test_concurrency_gate_rejects_when_saturated(monkeypatch):
-    p = OllamaProvider(base_url="http://x", max_concurrency=1)
+    p = OllamaProvider(base_url="http://x", models={"simple": "q4b"},
+                     max_concurrency=1)
     p._sem.acquire()                     # 占满唯一槽
     with pytest.raises(ProviderError, match="busy"):
         p.chat("q", {})
@@ -117,7 +118,8 @@ def test_semaphore_released_on_error(monkeypatch):
     def boom(req, timeout=None):
         raise OSError("连接拒绝")
     monkeypatch.setattr("urllib.request.urlopen", boom)
-    p = OllamaProvider(base_url="http://x", max_concurrency=1)
+    p = OllamaProvider(base_url="http://x", models={"simple": "q4b"},
+                     max_concurrency=1)
     for _ in range(2):
         with pytest.raises(ProviderError):
             p.chat("q", {})
@@ -132,7 +134,8 @@ def test_circuit_opens_after_threshold(monkeypatch):
     def boom(req, timeout=None):
         raise OSError("down")
     monkeypatch.setattr("urllib.request.urlopen", boom)
-    p = OllamaProvider(base_url="http://x", fail_threshold=3, cooldown_s=300)
+    p = OllamaProvider(base_url="http://x", models={"simple": "q4b"},
+                     fail_threshold=3, cooldown_s=300)
     for _ in range(3):
         with pytest.raises(ProviderError):
             p.chat("q", {})
@@ -150,7 +153,8 @@ def test_half_open_after_cooldown(monkeypatch):
             raise OSError("down")
         return FakeResp(payload)
     monkeypatch.setattr("urllib.request.urlopen", handler)
-    p = OllamaProvider(base_url="http://x", fail_threshold=2, cooldown_s=0.2)
+    p = OllamaProvider(base_url="http://x", models={"simple": "q4b"},
+                     fail_threshold=2, cooldown_s=0.2)
     for _ in range(2):
         with pytest.raises(ProviderError):
             p.chat("q", {})
@@ -167,7 +171,7 @@ def test_half_open_after_cooldown(monkeypatch):
 def test_health_reports_queue_and_latency(monkeypatch):
     _patch_urlopen(monkeypatch, {"message": {"content": "x"},
                                  "prompt_eval_count": 1, "eval_count": 1})
-    p = OllamaProvider(base_url="http://x")
+    p = OllamaProvider(base_url="http://x", models={"simple": "q4b"})
     p.chat("q", {})
     h = p.health()
     assert h["ok"] is True and h["calls"] == 1 and h["p50_ms"] >= 0
@@ -175,29 +179,43 @@ def test_health_reports_queue_and_latency(monkeypatch):
 
 # ---------- 配置装配 ----------
 
-def test_build_providers_from_gateway_config(tmp_path):
+def test_build_models_from_registry_config(tmp_path):
     root = _root(tmp_path)
     import yaml
     (root / "config" / "gateway.yaml").write_text(yaml.safe_dump({
-        "providers": {
-            "local-ollama": {"type": "ollama", "base_url": "http://localhost:11434",
-                             "models": {"simple": "q3b"}, "timeout_s": 60,
-                             "max_concurrency": 2, "enabled": True},
-            "online": {"type": "openai_compat", "base_url": "${ONLINE_BASE_URL}",
-                       "api_key_env": "ONLINE_API_KEY", "model": "gpt",
-                       "timeout_s": 90, "max_concurrency": 8, "enabled": True},
+        "models": {
+            "local": {"type": "ollama", "base_url": "http://localhost:11434",
+                      "models": {"simple": "q3b"}, "timeout_s": 60,
+                      "max_concurrency": 2, "enabled": True},
+            "flash": {"type": "openai_compat", "base_url": "${ONLINE_BASE_URL}",
+                      "api_key_env": "ONLINE_API_KEY",
+                      "model": "${ONLINE_FLASH_MODEL}", "path": "/chat/completions",
+                      "timeout_s": 90, "max_concurrency": 8, "enabled": True},
             "off": {"type": "ollama", "enabled": False},
         },
         "latency_guard": {"fail_threshold": 3, "cooldown_s": 300},
     }, allow_unicode=True), encoding="utf-8")
-    got = pv.build_providers(yaml.safe_load(
-        (root / "config" / "gateway.yaml").read_text(encoding="utf-8")),
-        env={"ONLINE_BASE_URL": "https://api.example.com",
-             "ONLINE_API_KEY": "sk-test"})
-    assert set(got) == {"local-ollama", "online"}      # disabled的不建
-    assert got["online"].base_url == "https://api.example.com"
-    assert got["online"].api_key == "sk-test"
-    assert got["local-ollama"].max_concurrency == 2
+    got = pv.build_models_from_config(root,
+                                      env={"ONLINE_BASE_URL": "https://api.example.com",
+                                           "ONLINE_API_KEY": "sk-test",
+                                           "ONLINE_FLASH_MODEL": "ds-flash"})
+    assert set(got) == {"local", "flash"}      # disabled的不建
+    assert got["flash"].base_url == "https://api.example.com"
+    assert got["flash"].api_key == "sk-test"
+    # model字段的${}以前没被解析，会把字面量当模型名发出去
+    assert got["flash"].model == "ds-flash"
+    assert got["flash"].path == "/chat/completions"
+    assert got["local"].max_concurrency == 2
+    assert got["local"].name == "local"        # 熔断信息用注册表名字
+
+
+def test_build_models_never_creates_default_local_models():
+    """配置漏了models时不能兜底一个谁都没指定的模型。
+    空models → 路由判"本地做不了"→ 走在线，配置错误立刻可见。"""
+    got = pv.build_models({"models": {"local": {"type": "ollama",
+                                                "base_url": "http://l"}}},
+                          env={})
+    assert got["local"].models == {}
 
 
 def test_gateway_config_has_no_hardcoded_key():
@@ -212,15 +230,15 @@ def test_gateway_config_has_no_hardcoded_key():
 # ---------- 路由 → 实例（执行器只认这个） ----------
 
 def test_resolve_returns_instance():
-    ps = {"online": OpenAICompatProvider(base_url="http://y", model="m")}
-    assert gateway.resolve({"provider": "online"}, ps) is ps["online"]
+    ps = {"flash": OpenAICompatProvider(base_url="http://y", model="m")}
+    assert gateway.resolve({"model": "flash"}, ps) is ps["flash"]
 
 
 def test_resolve_missing_returns_none_not_fake():
     """查不到必须None：造个空provider会让任务"成功"但产物是空的，比报错危险。"""
-    assert gateway.resolve({"provider": "nope"}, {}) is None
-    with pytest.raises(KeyError, match="provider_not_found"):
-        gateway.chat({"provider": "nope"}, {}, "q", {})
+    assert gateway.resolve({"model": "nope"}, {}) is None
+    with pytest.raises(KeyError, match="model_not_found"):
+        gateway.chat({"model": "nope"}, {}, "q", {})
 
 
 def test_route_then_chat_end_to_end(monkeypatch):
@@ -228,26 +246,26 @@ def test_route_then_chat_end_to_end(monkeypatch):
     _patch_urlopen(monkeypatch, {"message": {"content": "最终答案"},
                                  "prompt_eval_count": 500, "eval_count": 10},
                    calls)
-    ps = {"local-ollama": OllamaProvider(base_url="http://x")}
+    ps = {"local": OllamaProvider(base_url="http://x", models={"simple": "q4b"})}
 
     class T:
         privacy = "public"
         complexity = "simple"
     r = gateway.route(T(), {"local_usable": True})
-    assert r["provider"] == "local-ollama"
+    assert r["model"] == "local"
     out = gateway.chat(r, ps, "问题", {})
     assert out["content"] == "最终答案"
     assert out["usage"]["prompt_tokens"] == 500
 
 
 def test_privacy_secret_routes_local(monkeypatch):
-    ps = {"local-ollama": OllamaProvider(base_url="http://x")}
+    ps = {"local": OllamaProvider(base_url="http://x", models={"simple": "q4b"})}
 
     class T:
         privacy = "secret"
         complexity = "complex"
     r = gateway.route(T(), {"local_usable": False})
-    assert r["provider"] == "local-ollama"
+    assert r["model"] == "local"
     assert r["reason"] == "privacy_secret"
 
 
@@ -256,6 +274,7 @@ def test_local_window_insufficient_routes_online():
     class T:
         privacy = "public"
         complexity = "simple"
-    r = gateway.route(T(), {"local_usable": False})
-    assert r["provider"] == "online"
+    r = gateway.route(T(), {"local_usable": False,
+                            "online_model_name": "flash"})
+    assert r["model"] == "flash"
     assert r["reason"] == "local_window_insufficient"

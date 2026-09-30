@@ -1,11 +1,24 @@
 default_policy: privacy_first
-providers:
-  # V7动态窗口：context_window为空=走动态计算（min架构上限/档位建议/显存可撑）；
-  # 若显式填写则参与min()（只能往下压不能往上抬）；chat()返回usage.prompt_tokens
-  # models 里配了哪些 key，就决定"本地能做哪些复杂度"（没配的复杂度自动走在线，
-  # 不猜、不降级）。只留 simple → medium/complex 全走在线。
-  # medium 本地做不了：把 medium 这一行删掉即可，不要留个跑不动的模型名。
-  local-ollama:
+
+# ---------------------------------------------------------------------------
+# 模型注册表
+# ---------------------------------------------------------------------------
+# 想加模型/换模型，只改这一块；想改"哪个复杂度用哪个模型"，
+# 只改下面 complexity_models。两件事分开，以后接多个厂商/多个额度包
+# （比如不同token套餐给不同key）就是往 models 里加条目，不动代码。
+#
+# 每个条目统一字段：
+#   type          ollama | openai_compat
+#   base_url      ${VAR} 会从 .env 取值（真实环境变量优先于.env）
+#   api_key_env   密钥的变量名（值不进仓库，只在.env里）
+#   model         模型名（openai_compat 必填）
+#   path          URL 后缀。DeepSeek 是 /chat/completions，
+#                 标准OpenAI是 /v1/chat/completions，不统一，所以要能配
+#   context_window null = 走动态计算（见 context_profiles）
+#   models        仅 ollama：复杂度→模型名。配了哪些 key 就决定本地能做哪些
+#                 复杂度，没配的复杂度自动走在线，不猜不降级
+models:
+  local:
     {
       type: ollama,
       base_url: http://localhost:11434,
@@ -16,24 +29,48 @@ providers:
       max_concurrency: 2,
       slo_p50_ms: 8000,
     }
-  # 密钥与地址不写这里，只写变量名；实际值从 .env 取（见 .env.example）。
-  # path：DeepSeek 是 /chat/completions（不是标准OpenAI的 /v1/...）
-  online:
+  # 快模型：适合 medium 及以下的批量活
+  flash:
     {
       type: openai_compat,
       base_url: "${ONLINE_BASE_URL}",
       api_key_env: ONLINE_API_KEY,
-      model: "${ONLINE_MODEL}",
+      model: "${ONLINE_FLASH_MODEL}",
       path: /chat/completions,
       context_window: null,
       timeout_s: 90,
       enabled: true,
       max_concurrency: 8,
     }
-policies: [privacy_guard, latency_guard, capability_match, cost_saver]
-# 能力分档：本地各参数量级模型能扛的最高复杂度。
-# 注意：实际路由以 providers.local-ollama.models 里配了哪些 key 为准
-# （没配的复杂度走在线），这张表是给人看的参考，改它不改变路由行为。
+  # 强模型：只给 complex 用
+  pro:
+    {
+      type: openai_compat,
+      base_url: "${ONLINE_BASE_URL}",
+      api_key_env: ONLINE_API_KEY,
+      model: "${ONLINE_PRO_MODEL}",
+      path: /chat/completions,
+      context_window: null,
+      timeout_s: 180,
+      enabled: true,
+      max_concurrency: 4,
+    }
+
+# ---------------------------------------------------------------------------
+# 复杂度 → 模型引用（改这两三行就能整体换模型分配）
+# ---------------------------------------------------------------------------
+complexity_models:
+  { simple: local, medium: flash, complex: pro }
+
+# 隐私强制覆盖：secret 任务不外发，无论复杂度都走这里指定的模型
+privacy_models:
+  { secret: local }
+
+# 复杂度没配时的兜底模型（不要指向 local，否则会静默降级）
+default_model: flash
+
+policies: [privacy_guard, latency_guard, capability_match]
+# 能力分档参考表（仅供人看，不参与路由；路由只看 complexity_models）
 local_tiers:
   {
     3B: { max_complexity: simple },
@@ -42,9 +79,9 @@ local_tiers:
   }
 routing:
   {
-    secret: { allow: [local-ollama], fallback: local-retry-then-human },
-    public-simple: { allow: [local-ollama, online], prefer: local-ollama },
-    public-complex: { allow: [online], fallback: online-retry-then-deadletter },
+    secret: { allow: [local], fallback: local-retry-then-human },
+    public-simple: { allow: [local, flash, pro], prefer: local },
+    public-complex: { allow: [flash, pro], fallback: online-retry-then-deadletter },
   }
 # 网关层成本预算（与TaskShard执行限制不同层面）
 budgets: { per_task_tokens: 8000, per_day_online_tokens: 200000 }

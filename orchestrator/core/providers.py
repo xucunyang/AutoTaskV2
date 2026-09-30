@@ -105,9 +105,15 @@ class OllamaProvider(BaseProvider):
 
     name = "local-ollama"
 
-    def __init__(self, base_url="http://localhost:11434", models=None, **kw):
+    def __init__(self, base_url="http://localhost:11434", models=None,
+                 name: str | None = None, **kw):
         super().__init__(base_url=base_url, **kw)
-        self.models = models or {"simple": "qwen2.5:3b", "medium": "qwen2.5:7b"}
+        if name:
+            self.name = name            # 熔断/健康信息用注册表里的名字
+        # 不给默认模型：原来兜底 {"simple":qwen2.5:3b,"medium":qwen2.5:7b}
+        # 会让"配置漏了models"变成静默跑一个谁都没指定的模型。空就是空，
+        # 路由层会因此判"本地做不了"并走在线，配置错误立刻可见。
+        self.models = dict(models or {})
 
     def model_for(self, complexity: str = "simple") -> str:
         """取本地模型。**没有对应档位就报错，不静默降级**。
@@ -163,9 +169,12 @@ class OpenAICompatProvider(BaseProvider):
     name = "online"
 
     def __init__(self, base_url="", api_key: str = "", model="gpt-4o-mini",
-                 path: str = "/v1/chat/completions", **kw):
+                 path: str = "/v1/chat/completions",
+                 name: str | None = None, **kw):
         kw.setdefault("max_concurrency", 8)
         super().__init__(base_url=base_url, **kw)
+        if name:
+            self.name = name            # 熔断/健康信息用注册表里的名字
         self.api_key = api_key
         self.model = model
         # 路径可配：DeepSeek是 /chat/completions，标准OpenAI兼容是 /v1/chat/completions
@@ -199,8 +208,25 @@ class OpenAICompatProvider(BaseProvider):
             self._sem.release()
 
 
-def build_providers(cfg: dict, env=None) -> dict:
-    """按 config/gateway.yaml 造 provider 实例。
+def _expand(value, env) -> str:
+    """解析 ${VAR} 占位。
+
+    之前只对 base_url 做这件事，model 字段漏了——于是
+    `model: "${ONLINE_FLASH_MODEL}"` 会把字面量"${ONLINE_FLASH_MODEL}"
+    当模型名发给DeepSeek，表现为模型不存在。所有字符串字段统一走这里。
+    """
+    s = str(value or "")
+    if "${" not in s:
+        return s
+    key = s.split("${", 1)[1].split("}", 1)[0]
+    return str(env.get(key, "") or "")
+
+
+def build_models(cfg: dict, env=None) -> dict:
+    """按 config/gateway.yaml 的 models 注册表造 provider 实例。
+
+    返回 {注册表里的模型名: provider}。路由结果里的 {"model": name}
+    就是这个 name——换模型/加模型只改 yaml，不动代码。
 
     密钥/地址**不写进 yaml**，只写变量名（api_key_env / ${VAR}），
     实际值从 .env 或环境变量取——配置进 git 就等于泄密。
@@ -208,30 +234,37 @@ def build_providers(cfg: dict, env=None) -> dict:
     import os
     from core.utils import load_dotenv
     root = Path(__file__).resolve().parent.parent
-    load_dotenv(root)                 # .env 优先不覆盖已存在的环境变量
+    load_dotenv(root)                 # .env 不覆盖已存在的真实环境变量
     env = env if env is not None else os.environ
     out = {}
     lg = cfg.get("latency_guard") or {}
-    for name, p in (cfg.get("providers") or {}).items():
+    for name, p in (cfg.get("models") or {}).items():
         if not p.get("enabled", True):
             continue
         kw = {"timeout_s": int(p.get("timeout_s", 60)),
               "max_concurrency": int(p.get("max_concurrency", 2)),
               "fail_threshold": int(lg.get("fail_threshold", 3)),
               "cooldown_s": int(lg.get("cooldown_s", 300))}
-        base = str(p.get("base_url") or "")
-        if "${" in base:                      # ${ONLINE_BASE_URL} 占位
-            key = base.split("${", 1)[1].split("}", 1)[0]
-            base = env.get(key, "")
+        base = _expand(p.get("base_url"), env)
         ptype = p.get("type")
         if ptype == "ollama":
-            out[name] = OllamaProvider(base_url=base,
-                                       models=p.get("models") or {}, **kw)
+            out[name] = OllamaProvider(
+                name=name, base_url=base,
+                models={k: _expand(v, env)
+                        for k, v in (p.get("models") or {}).items()}, **kw)
         elif ptype == "openai_compat":
             akey = p.get("api_key_env")
             out[name] = OpenAICompatProvider(
-                base_url=base, api_key=env.get(akey, "") if akey else "",
-                model=p.get("model", ""), path=p.get("path",
-                                                     "/v1/chat/completions"),
-                **kw)
+                name=name, base_url=base,
+                api_key=env.get(akey, "") if akey else "",
+                model=_expand(p.get("model"), env),
+                path=_expand(p.get("path", "/v1/chat/completions"), env), **kw)
     return out
+
+
+def build_models_from_config(root, env=None) -> dict:
+    """读 config/gateway.yaml 再造模型。给不想自己load_yaml的调用方用。"""
+    import yaml
+    cfg_path = Path(root) / "config" / "gateway.yaml"
+    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    return build_models(cfg, env=env)
