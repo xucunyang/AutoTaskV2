@@ -227,16 +227,74 @@ def _elapsed_s(t: dict) -> float:
     return max(0.0, (_parse(t["updated_at"]) - _parse(t["enqueued_at"])).total_seconds())
 
 
+def _has_task_of_day(store, plan_id: str, date: str) -> bool:
+    """这个plan里有没有任务是那天入队的。"""
+    for t in store.list_plan_tasks(plan_id):
+        if shanghai_date(t.get("enqueued_at")) == date:
+            return True
+    return False
+
+
+TERMINAL = ("DONE", "FAILED", "DEAD_LETTER", "SKIPPED_CACHED")
+
+
+def _has_unfinished(store, plan_id: str) -> bool:
+    rows = store.list_plan_tasks(plan_id)
+    return any(r["status"] not in TERMINAL for r in rows)
+
+
+def _daily_no_activity(store, date: str, cfg: dict, pending: list[str]) -> str:
+    """今天没有任务时的日报。
+
+    算力画像照常给（队列里可能还有昨天遗留的任务在等，这才是运维
+    真正要看的），但**不**把别的日期的统计凑进"今天的"计数里。
+    """
+    board = queue_board(store, cfg)
+    lines = [f"# 日报 {date}", "",
+             "- 今日无入队任务（跨日：零点后新plan尚未生成属正常）", "",
+             "## 算力画像", "",
+             f"- RUNNING {board['running']}｜READY {board['ready_total']}"
+             f"（按优先级 {board['ready_by_priority']}）",
+             f"- 最老等待 {board['oldest_wait_s']}s"
+             f"{'（队列阻塞）' if board['queue_blocked'] else ''}", ""]
+    if pending:
+        lines += ["## 昨日未完成（仍在推进）", ""]
+        for pid in pending:
+            rows = store.list_plan_tasks(pid)
+            n_un = sum(1 for r in rows if r["status"] not in TERMINAL)
+            lines.append(f"- [{pid}]({pid}.summary.md) → {n_un} 个未完成 / "
+                         f"{len(rows)} 个")
+    else:
+        lines += ["## 昨日未完成", "", "- 无"]
+    lines += ["", "> 今日无任务时不展示历史统计：报表标题与内容必须对得上，"
+                  "否则没人知道该信哪个数字。"]
+    return "\n".join(lines)
+
+
 # ---------- 日报（一屏总览） ----------
 
 def render_daily(store, date: str | None = None, cfg: dict | None = None) -> str:
     cfg = cfg or load_cfg(store.root)
     date = date or shanghai_date()
-    plans = [p["plan_id"] for p in store.list_plans()
-             if p["plan_id"] != "orchestrator_lock" and date in p["plan_id"]]
-    if not plans:
-        plans = [p["plan_id"] for p in store.list_plans()
-                 if p["plan_id"] != "orchestrator_lock"][:1]
+    all_plans = [p["plan_id"] for p in store.list_plans()
+                 if p["plan_id"] != "orchestrator_lock"]
+    # 属于这一天的plan，两个口径任一命中：
+    #  a) plan_id 里带这个日期串（daily plan 的约定，如 daily_report_2026-09-29）
+    #  b) 有任务是**这一天入队**的（adhoc plan 没有日期串，只能这么判）
+    # 只用(a)：手工建的plan和跨日续跑的plan会被整批漏掉。
+    # 只用(b)：显式查历史日期时会查空（那天建plan时任务可能还没入队）。
+    todays = [pid for pid in all_plans
+              if date in pid or _has_task_of_day(store, pid, date)]
+    if not todays and all_plans:
+        # 今天还没有任何任务。**不要**拿别的日期的plan充数——
+        # 原来 fallback 到 list_plans()[:1]，那是任意顺序的第一个，
+        # 于是"日报 2026-09-30"里可能印着三天前的plan，而标题写着今天。
+        # 宁可空着并说清楚，也不要给一个标题与内容不符的报表。
+        pending = [pid for pid in all_plans
+                   if store.list_plan_tasks(pid)
+                   and _has_unfinished(store, pid)]
+        return _daily_no_activity(store, date, cfg, pending)
+    plans = todays
     agg = {"total": 0, "DONE": 0, "FAILED": 0, "DEAD_LETTER": 0,
            "SKIPPED_CACHED": 0, "retries": 0, "switches": 0}
     task_rows = []

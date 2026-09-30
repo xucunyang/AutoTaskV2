@@ -22,5 +22,8 @@ orchestrator/events/
 orchestrator/inbox/
 orchestrator/backup/
 orchestrator/artifacts/
+# 模型用 run_cmd 留下的临时脚本（tool loop 允许python -c，拦不住写文件）。
+# 这不是产物，是垃圾——模型自己验产物时顺手造的。
+orchestrator/tools/
 # reports/ 不忽略：chaos_*.log 与 smoke_*.log 是验收证据，要留。
 # 只想忽略每日产物的话用 orchestrator/reports/*.md 精确规则。
