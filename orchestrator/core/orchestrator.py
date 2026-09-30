@@ -19,6 +19,7 @@ from pathlib import Path
 import anyio
 
 from core import enqueue as enqueue_mod
+from core import governor as gov_mod
 from core import lease as lease_mod
 from core.store import Conflict, IllegalTransition, Store, StaleOwner
 from core.utils import jlog, now_utc_iso
@@ -59,6 +60,16 @@ class Orchestrator:
         # 单实例锁的存活期。心跳过期即允许接管（见 acquire_lock 的说明）。
         # 必须是主循环轮询的数倍，否则一个卡住的 tick 就会让别人以为它死了。
         self.lock_ttl_s = float(cfg.get("lock", {}).get("ttl_s", 90))
+        # 动态算力总督：ACTIVE(有人在用,~1/8 CPU) / IDLE(空闲,放开跑)。
+        # 之前 governor.py 写好了却**从没被调用**——profile 算了没人消费，
+        # 于是 ACTIVE/IDLE 只是配置文件里的两组静态数字。
+        gcfg = cfg.get("governor") or {}
+        self._governor = gov_mod.Governor(
+            idle_after_s=int(gcfg.get("idle_after_s", 300)),
+            confirm=int(gcfg.get("confirm_samples", 2)),
+            headroom_gb=float(gcfg.get("mem_headroom_gb", 2.0)),
+            notifier=self.store) if gcfg.get("enabled", True) else None
+        self._gov_profile = None
         # 模型注册表（{名字: provider}）与网关配置。留空则不注入provider，
         # 执行器走无LLM的自检路径——冒烟/测试就是这个模式，不能被
         # "配置读不到key"这种环境问题静默改掉。
@@ -283,6 +294,31 @@ class Orchestrator:
         return aged
 
     # ---------- 派发（§2 dispatch_split，评审M5两阶段） ----------
+
+    # ---------- 算力档位（动态算力总督） ----------
+
+    def _govern(self) -> dict:
+        """每tick采一次算力档位，并把结果写进 max_workers / 保留槽。
+
+        设计§7 的表：ACTIVE=executor1/verifier0/local0（共享1槽，约1/8 CPU），
+        IDLE=放开跑。所以 max_workers 不能是构造时的常量——
+        否则 governor 存在的意义只是"算一个没人用的数"。
+        """
+        if self._governor is None:
+            return {"profile": "STATIC", "workers": {"executor": self.max_workers},
+                    "by": "disabled"}
+        st = self._governor.sample()
+        w = st["workers"]
+        # executor 至少留1个：低到0会让队列彻底停摆，
+        # 而"宁可慢一点"和"完全不动"是两个完全不同的失败模式。
+        self.max_workers = max(1, int(w.get("executor", 1)))
+        self.low_slot_reserve = int(w.get("shared_slot", 0))
+        if st.get("switched"):
+            jlog(self.root, "INFO", "governor_switch", **{k: v for k, v in st.items()
+                 if k in ("profile", "prev", "by", "avail_gb")})
+            self.store.record_metric("governor_switch", 1,
+                                     span=f"{st['prev']}->{st['profile']}")
+        return st
 
     def dispatch_split(self) -> list[dict]:
         """高优N-1槽 + 低优预留1槽。分段内仍 ORDER BY priority,seq（不内存重排）。"""
@@ -527,6 +563,7 @@ class Orchestrator:
         stats["dispatched"] = len(self.dispatch_split())
         stats["promoted"] = len(self.promote_submitted())
         stats["verify_dispatched"] = len(self.dispatch_verify_async())
+        stats["governor"] = self._govern()["profile"]
         for p in self.active_plans():
             try:
                 self.store.rebuild_export(p)

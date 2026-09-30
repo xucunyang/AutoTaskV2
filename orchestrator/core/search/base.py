@@ -43,7 +43,13 @@ class TavilyProvider(SearchProvider):
                  timeout_s: int = 30, path: str = "/search"):
         from core.utils import load_dotenv
         load_dotenv(Path(__file__).resolve().parents[2])
-        self.api_key = api_key or os.environ.get("TAVILY_API_KEY", "")
+        # 用 `is None` 而不是 `or`：传空串表示"**明确**不给密钥"，
+        # 传 None 才表示"去 .env 找"。原来写成 `api_key or os.environ.get(...)`，
+        # 结果 api_key="" 也会被 .env 里的真 key 填上——于是既没法在程序里
+        # 强制无密钥（缺密钥分支永远测不到），也没法用构造参数覆盖 .env。
+        if api_key is None:
+            api_key = os.environ.get("TAVILY_API_KEY", "")
+        self.api_key = api_key
         self.base_url = (base_url or "https://api.tavily.com").rstrip("/")
         self.timeout_s = timeout_s
         self.path = path if path.startswith("/") else f"/{path}"
@@ -82,7 +88,9 @@ class BochaProvider(SearchProvider):
                  summary: bool = True, freshness: str = "noLimit"):
         from core.utils import load_dotenv
         load_dotenv(Path(__file__).resolve().parents[2])
-        self.api_key = api_key or os.environ.get("BOCHA_API_KEY", "")
+        if api_key is None:            # 同 Tavily：空串=明确无密钥
+            api_key = os.environ.get("BOCHA_API_KEY", "")
+        self.api_key = api_key
         self.base_url = (base_url or "https://api.bochaai.com").rstrip("/")
         self.timeout_s = timeout_s
         self.path = path if path.startswith("/") else f"/{path}"
