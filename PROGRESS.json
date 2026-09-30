@@ -42,7 +42,7 @@
     }
   },
   "plan_id": "autotask_bootstrap",
-  "updated_at": "2026-09-29T20:40:00Z",
+  "updated_at": "2026-09-30T22:30:00Z",
   "decisions_2026_09_29": {
     "review": "Phase0-4 阶段设计稿全部评审通过",
     "delete_master_json": "master.json 是V1/V2 task.md的遗留，V7纲领全文不再提。用户确认删除。现在只留 state/export/plans/{plan_id}.json；跨plan全局视图走 Store.daily_summary() 从DB聚合，不在导出目录里再存一份可能不一致的事实。",
@@ -52,6 +52,64 @@
     "aging_alert": "老化告警归 P2",
     "backoff_cap": "RETRY 退避 60*2^attempts，封顶 3600 秒",
     "artifact_boundary": "产物由模型自己用 atomic_write 写，执行器只确认落盘+补manifest",
-    "planner_checkpoint": "done_steps 存序号(int)；按任务颗粒度续跑，不追求拆分层id精度"
+    "planner_checkpoint": "done_steps 存序号(int)；按任务颗粒度续跑，不追求拆分层id精度",
+    "simple_routes_local": "simple 走 local（qwen3.5:4b）。此前一度改成走 flash，原因是误判'本地小模型跑不了tool loop'——真因是回填 assistant.tool_calls 时用了 OpenAI 形状（arguments是JSON字符串）而ollama要dict。修好后本地可用：think=false 让同一任务卡 44.7s→13.2s 且可靠性不变。",
+    "local_think_false": "qwen3.5 是思维模型。实测同一任务卡 think 未设置 44.7s / think=false 13.2s，各5/5成功。simple任务不需要长思考，已配置化（models.local.think: false）。",
+    "complexity_mapping_is_authoritative": "complexity_models 就是路由本身（'配置即路由'），不再是兜底。理由：配置写了却不管用比没这个配置更糟。"
+  },
+  "production_hardening_2026_09_30": {
+    "note": "单测全绿≠生产可用。真实跑一次抓到10个单测抓不到的bug（4个致命），已全部修复并补上回归测试。详见 design/phases/Phase4-verification-chaos-design.md §6.0 与 §10。",
+    "real_e2e": {
+      "script": "orchestrator/scripts/e2e_real.py",
+      "result": "3/3 SUBMITTED（simple→local 56.5s / medium→flash 35.7s / complex→pro 68.7s）",
+      "bugs_fixed": [
+        "route() 用 getattr 取字段，编排层传 dict → 静默当simple → 全部走本地小模型（致命）",
+        "终态转移沿用任务开始时的 version，心跳续租每次推高 version → 跑超一个心跳周期的任务永久卡在RUNNING（致命）",
+        "num_ctx 无条件传给所有provider → 每个在线任务都挂在 unexpected keyword argument",
+        "num_ctx 从来没真传给ollama（动态窗口算了却没用）",
+        "任务卡是单次chat时代的：禁止联网却给了search工具、没提任何工具、让模型自己写manifest和更新分片 → pro跑12次工具调用一次atomic_write都没有"
+      ]
+    },
+    "multiprocess": {
+      "tests": "orchestrator/tests/test_multiprocess.py（7例，真subprocess）",
+      "bugs_fixed": [
+        "kill -9持锁者后锁行永久残留 → 系统再也无法启动（改为租约语义+心跳）",
+        "心跳发现锁被换主人时主循环不停手"
+      ]
+    },
+    "crossday": {
+      "tests": "orchestrator/tests/test_crossday.py（17例）",
+      "bugs_fixed": [
+        "日报把别的日期的plan算成今天（list_plans()[:1] 兜底是任意第一个）",
+        "检索额度用 time.localtime() 而全局用上海时区 → 归零时刻对不上"
+      ]
+    },
+    "real_circuit": {
+      "tests": "orchestrator/tests/test_circuit_real.py（8例，真HTTP服务器）",
+      "bugs_fixed": [
+        "半开是惊群：cooldown后所有并发同时打过去（文档承诺放一个探测，代码没闸门）",
+        "半开探测失败只fails+1、阈值3 → 中间两次等于完全放开",
+        "401要攒够3次才熔断（key写错时前三个任务白失败）",
+        "错误信息里 provider name 拼了两次"
+      ]
+    },
+    "slow_rule": {
+      "tests": "orchestrator/tests/test_slow_rule.py（10例，真跑子进程sleep）",
+      "bugs_fixed": [
+        "整轮验收无墙钟上限且单rule超时由任务自配 → 6条慢rule占住verify worker",
+        "最严重：验收被预算打断但任务仍到DONE（等于宣称验完了）"
+      ]
+    },
+    "methodology": [
+      "测副本等于没测：benchmark 最初自己复刻了一份 tool loop，修好生产代码它仍报同样的错。benchmark 必须调生产函数。",
+      "测试的输入形状要和生产一致：route 的测试全用带属性的对象，而编排层传的是 dict。",
+      "测试自己写错时先确认是测试错还是代码错：慢rule那轮连续5次是我的测试错（白名单前缀/子进程cwd/repo=store.root.parent布局/断言范围），每次都'看起来像代码有问题'。",
+      "少样本不能推系统性结论：qwen3.5:4b 一次400就被判成'本地模型不行'，实际是我回填方言错了。定性结论至少5~10个样本。"
+    ],
+    "still_pending": [
+      "2.6 剩余：200MB真机 / Mac真机 —— 需要用户提供机器",
+      "2.7 覆盖率盲区",
+      "3.3 根目录清理等（用户暂缓）"
+    ]
   }
 }

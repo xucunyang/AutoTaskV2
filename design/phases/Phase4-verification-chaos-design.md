@@ -58,7 +58,7 @@ DoD逐条见§6，实现与设计的偏差见§9。
 
 ## 6. DoD（全项目放行标准）
 
-实现现状（2026-09-29，pytest **398 passed**）。
+实现现状（2026-09-30，pytest **504 passed**）。
 
 - [x] 上述单元全绿，覆盖率≥80%。**91.0%**（门禁脚本 `scripts/check_coverage.py`，九项明细全≥80%：
       store 88 / lease 88 / verifier 91 / gateway 86 / planner 91 / search 87~94）。
@@ -67,8 +67,35 @@ DoD逐条见§6，实现与设计的偏差见§9。
       时间断言用p95口径（混沌7 p95=38.4ms，阈值60s），不用wall-clock硬线。
 - [x] 冒烟连续2次全绿（含调研冒烟），`{plan}.summary.md`含失败置顶+Top5+分解视图+调研质量章节。
       `tests/test_smoke_e2e.py` 8例（4条链+4条基线），结果落 `reports/smoke_baseline.log`。
+- [x] **真实端到端（不打桩）3/3**：`scripts/e2e_real.py` 用真实 `.env` 的 key 跑
+      simple→local / medium→flash(含联网检索) / complex→pro，产物与 manifest 全部落盘。
+      证据：`orchestrator/logs/structured.jsonl` 的 `model_routed` + `tool_calls` 行。
 - [x] `PROGRESS.json`全Phase `done` + evidence可追溯，`design/phases/*.md`评审签字通过。
-      **待你评审签字**——我只能保证代码与文档一致，签字是你的动作。
+
+### 6.0 生产环境补测（2026-09-30 追加，见 §10）
+
+单测全绿 ≠ 生产可用。真实跑一次抓到 **10 个单测抓不到的 bug**，其中 4 个致命。
+下表是补测项与它们各自暴露/修复的问题：
+
+| 补测项 | 测试 | 暴露的问题（已修） |
+|---|---|---|
+| 真实端到端 | `scripts/e2e_real.py` | route 静默把 dict 当 simple（全部走本地小模型）；跑超一个心跳周期的任务**永远到不了终态**（心跳每次续租推高 version，执行器用旧 version 写终态 → 永久卡 RUNNING）；`num_ctx` 传给不接受它的端点；任务卡是"单次chat"时代的，与 tool loop 自相矛盾（禁止联网却给了 search 工具、没提任何工具），导致 pro 跑 12 次工具调用一次没写产物 |
+| 多进程 | `tests/test_multiprocess.py` 7例（真 subprocess） | **kill -9 后系统永久死锁**（锁只看"行在不在"，没有存活期）；半开是惊群；并发派发幂等 |
+| 跨日 | `tests/test_crossday.py` 17例 | 日报把别的日期的plan算成今天（`list_plans()[:1]` 兜底是**任意**第一个）；额度用 `time.localtime()` 而全局用上海时区 |
+| 真实熔断 | `tests/test_circuit_real.py` 8例（真 HTTP 服务器，非 mock） | cooldown 后**所有**并发同时打过去（文档承诺"放一个探测"，代码里没有闸门）；探测失败只 `fails+1`，阈值3 → 中间两次等于完全放开；401 要攒够3次才熔断（key 写错时前三个任务白失败） |
+| 慢 rule | `tests/test_slow_rule.py` 10例（真跑子进程 sleep） | 整轮验收**无墙钟上限**且单 rule 超时由任务自配 → 6条慢 rule 占住 verify worker；最严重的是**验收被打断但任务仍到 DONE**（等于宣称验完了） |
+
+**方法论教训（比 bug 本身更值得记）**：
+1. 测**副本**等于没测。`bench_local_loop.py` 最初自己复刻了一份 tool loop，
+   于是修好生产代码后它仍报同样的错，白花一轮。benchmark 必须调生产函数。
+2. 测试的**输入形状**要和生产一致。原来 `route()` 的测试全用带属性的对象，
+   而编排层传的是 dict —— 错路由因此测不出来。
+3. 测试自己写错时，先确认是测试错还是代码错。慢 rule 那轮连续 5 次是我的
+   测试写错（白名单前缀、子进程 cwd、`repo=store.root.parent` 布局、
+   断言范围），每次都"看起来像代码有问题"。改代码前先把测试跑对。
+4. **少样本不能推系统性结论**。qwen3.5:4b 一次 400 就被我判成"本地模型不行"，
+   实际是我回填的方言错了。定性结论至少要 5~10 个样本。
+
 
 ### 6.1 混沌14项结果
 
@@ -126,6 +153,53 @@ DoD逐条见§6，实现与设计的偏差见§9。
    A类占比，质量分虚高。`raw_count` 保留去重前数值供观测召回冗余。
 7. **覆盖率门禁做成独立脚本** `scripts/check_coverage.py`，不做成pytest用例：
    那会在测试进程里再跑全量测试，而全量测试包含它自己，无限递归。
+8. **单实例锁改为租约语义**（2026-09-30，多进程补测）：
+   原实现只看"锁行在不在"，持锁进程被 kill -9 或机器断电后那一行
+   永远留在表里 —— 整个系统再也无法启动，只能人工连库删行。
+   现在带心跳时间（`schedule.yaml: lock.ttl_s`，默认90s，必须远大于
+   `poll.normal_s=10s`），心跳过期即允许接管并记 P1
+   `orchestrator_lock_taken_over`（带上前任 pid + 心跳时间，否则
+   "上一任去哪了"永远查不到）。心跳用**时间**而不是"进程是否活着"判定：
+   跨平台不一致（Windows 上 `os.kill(pid,0)` 语义不同），
+   且漏掉"进程活着但卡住"这一类。
+   接受"误抢"的理由：两个编排器短暂并行的代价小（派发靠
+   `expect_version` 幂等），且新进程一发现锁被换主人就立即收手；
+   而 kill -9 导致永久不可用的代价极大。
+9. **日报归属日改为两个口径任一命中**（跨日补测）：
+   原来按 `date in plan_id` 匹配、找不到就 `list_plans()[:1]` 兜底，
+   而那是**任意顺序的第一个** —— "日报 2026-09-30"里可能印着三天前的
+   plan 还带着它的 DONE 计数。改为 `plan_id含日期` **或**
+   `有任务是那天入队` 任一命中；今天无任务时走独立的"无活动"日报，
+   昨日未完成**单列一节**且不带今日计数。报表标题与内容必须对得上。
+10. **熔断器补上半开闸门与错误分类**（真实熔断补测）：
+    - 半开只放**一个**探测：原来只比较时间没有闸门，cooldown 一过
+      所有并发同时打过去（惊群）。
+    - 探测失败**立即**重新熔断：原来只 `fails+1`，阈值3 → 中间两次
+      等于完全放开，熔断退化成随机失败。
+    - 401/403/404 属**永久性**失败（重试无用），第一次就熔断；
+      新增 `ProviderError.status/.permanent` 供分类并透传给上层
+      （分不清"限流"和"宕机"，运维动作完全不同）。
+11. **整轮验收加墙钟预算**（慢 rule 补测）：
+    每条 rule 各有 `timeout_s` 但**没有整轮上限**，且 `timeout_s` 由任务自配。
+    6 条慢 rule 就能占住 verify worker，而最严重的后果是
+    **验收被打断但任务仍到 DONE**。现在：
+    - `VERIFY_BUDGET_S=300` 整轮预算，`RULE_TIMEOUT_CAP_S=120` 单rule封顶
+    - 超预算的 rule 标 `not_evaluated`：**既不算失败也不进 `verified_rules`**
+      （算失败→下一轮重跑同样慢rule直到死信；进账本→等于"没验说验过了"）
+    - 有 deferred 且无 failed → 走 `RETRY` + `reason=verify_budget_exceeded`
+      而非 DONE，并记 `deferred_rules` + P2 告警
+12. **tool_calls 方言回填按 provider 走**（真实端到端）：
+    OpenAI 兼容端点要 `arguments` 是 JSON 字符串，**Ollama 要 dict**。
+    写死一种会在另一家上**第二步必炸**，且症状极具误导性
+    （第一步不回填所以正常、产物也真写出来了，看上去像"模型JSON坏了"）。
+    现由 `provider.encode_assistant_tool_calls()` 各自编码。
+    另：`qwen3.5` 是思维模型，`think:false` 让同一任务卡从 44.7s → 13.2s
+    而可靠性不变（已配置化）。
+13. **ComplexityMatch 以 `complexity_models` 为准**（"配置即路由"）：
+    原来是"本地能做就本地，本地做不了才查映射"，于是 `complexity_models`
+    只是个兜底 —— ollama 配了 simple 之后，用户在配置里写 `simple: flash`
+    完全不起作用。**配置写了却不管用比没这个配置更糟**：改配置的人会以为
+    改好了，而问题要等到"为什么我的任务还在用4B"才会被发现。
 
 ## 7. V6→V7 变更清单（2026-09-28，本轮，待评审）
 
