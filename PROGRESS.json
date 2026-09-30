@@ -42,7 +42,7 @@
     }
   },
   "plan_id": "autotask_bootstrap",
-  "updated_at": "2026-09-30T23:40:00Z",
+  "updated_at": "2026-10-01T00:30:00Z",
   "decisions_2026_09_29": {
     "review": "Phase0-4 阶段设计稿全部评审通过",
     "delete_master_json": "master.json 是V1/V2 task.md的遗留，V7纲领全文不再提。用户确认删除。现在只留 state/export/plans/{plan_id}.json；跨plan全局视图走 Store.daily_summary() 从DB聚合，不在导出目录里再存一份可能不一致的事实。",
@@ -107,8 +107,7 @@
       "少样本不能推系统性结论：qwen3.5:4b 一次400就被判成'本地模型不行'，实际是我回填方言错了。定性结论至少5~10个样本。"
     ],
     "still_pending": [
-      "2.6 剩余：200MB真机 / Mac真机 —— 需要用户提供机器",
-      "3.3 根目录清理等（用户暂缓）"
+      "2.6 唯一剩余：Mac真机验证（core/governor.py:_idle_mac 依赖 macOS 专有的 ioreg，Windows 上无法执行）—— 需要在 Mac 上跑 python -c 'from core import governor; print(governor._idle_mac())' 确认返回值 >0 且量级合理"
     ],
     "coverage_blindspots": {
       "gate": "orchestrator/scripts/check_coverage.py（6模块 → 25模块）",
@@ -135,13 +134,28 @@
         "core/search/__init__.py 是空的，调用方得记住去base子模块找build"
       ],
       "gate_change": "门禁从'只看平均'改成'平均+单模块都过线'：只看平均会让'一个模块0%、另一个100%'互相掩盖，而0%那个恰恰最危险——那段代码从没被执行过。"
+    },
+    "bigfile_200mb": {
+      "script": "orchestrator/scripts/bigfile_check.py（按需）",
+      "regression": "orchestrator/tests/test_bigfile_streaming.py（7例，4MB vs 40MB 两档对比）",
+      "measured": "200.0MB / 3,443,497 行；总耗时 3.80s；峰值单步内存增量 0.5MB",
+      "per_path_ms_and_mem": {
+        "sha256_file": "1.29s / +0.0MB",
+        "build_manifest": "1.59s / +0.0MB",
+        "verifier.row_count": "0.79s / +0.0MB",
+        "build_card": "0.01s / +0.5MB (702 tokens)",
+        "tools.read_range": "0.12s / +0.0MB"
+      },
+      "conclusion": "内存与文件体积无关；原混沌5只造20万行(≈5MB)，离200MB差40倍，这个结论此前从没在真实体积上验过",
+      "why_two_sizes": "单看绝对内存会被解释器底噪淹没，且说明不了问题——代码改成整读时小档可能侥幸过关。两档对比下整读会让内存增量同步暴涨10倍，比值立刻拉开。比'内存<100MB'这种阈值抗得住重构。"
     }
   },
   "phase4_status": {
-    "pytest": "605 passed",
-    "coverage": "25模块平均 91.2%（门槛80%）",
+    "pytest": "612 passed",
+    "coverage": "25模块平均 91.2%（门槛80%，单模块也须过线）",
     "real_e2e": "3/3 SUBMITTED（simple→local / medium→flash / complex→pro）",
+    "bigfile_200mb": "3.80s / 峰值内存增量 0.5MB / 任务卡 702 tokens",
     "production_bugs_found_and_fixed": 10,
-    "note": "详见 design/phases/Phase4-verification-chaos-design.md §6.0 与 §10"
+    "note": "详见 design/phases/Phase4-verification-chaos-design.md §6.0、§6.0.1 与 §10"
   }
 }

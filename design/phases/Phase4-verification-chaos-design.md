@@ -85,6 +85,30 @@ DoD逐条见§6，实现与设计的偏差见§9。
 | 真实熔断 | `tests/test_circuit_real.py` 8例（真 HTTP 服务器，非 mock） | cooldown 后**所有**并发同时打过去（文档承诺"放一个探测"，代码里没有闸门）；探测失败只 `fails+1`，阈值3 → 中间两次等于完全放开；401 要攒够3次才熔断（key 写错时前三个任务白失败） |
 | 慢 rule | `tests/test_slow_rule.py` 10例（真跑子进程 sleep） | 整轮验收**无墙钟上限**且单 rule 超时由任务自配 → 6条慢 rule 占住 verify worker；最严重的是**验收被打断但任务仍到 DONE**（等于宣称验完了） |
 | 覆盖率盲区 | `scripts/check_coverage.py` 门禁从 6 模块扩到 **25 模块**；`tests/test_coverage_*.py` 101例 | **动态算力总督 governor.py 写好了却从没被调用**——ACTIVE/IDLE 只是配置里的两组静态数字，设计§7 的整套机制实际从未生效；`mem_ok` 算出来直接丢掉、`mem_cap_gb` 从没被用过，内存紧张时照样派 4 个执行器；`api_key=""` 无法抑制 `.env` 回退（缺密钥分支在有 .env 的机器上永远测不到） |
+| 200MB 真机 | `scripts/bigfile_check.py`（按需）+ `tests/test_bigfile_streaming.py` 7例（4MB vs 40MB 两档对比） | 无 bug，但**补上了一个从没验过的结论**：原混沌5只造20万行（≈5MB），离200MB差40倍。现实测 200.0MB / 344万行，总耗时 3.80s，峰值单步内存增量 **0.5MB**（全部来自任务卡渲染）。**内存与文件体积无关** |
+
+### 6.0.1 大文件：绝对值与性质分开验
+
+200MB 真机（Windows，GTX1650 那台）：
+
+| 路径 | 耗时 | 内存增量 |
+|---|---|---|
+| `sha256_file` | 1.29s | +0.0MB |
+| `build_manifest` | 1.59s | +0.0MB |
+| `verifier.row_count` | 0.79s | +0.0MB |
+| `build_card` | 0.01s | +0.5MB（card 1265B / **702 tokens**） |
+| `tools.read_range` | 0.12s | +0.0MB |
+
+**分工**：绝对值（这台机器上 200MB 多久）走 `scripts/bigfile_check.py` 按需跑——
+造 200MB 要几十秒，塞进常规测试会让每次全量多花一分钟；
+性质（不许整读进内存）走 `tests/test_bigfile_streaming.py`，
+用 **4MB vs 40MB 两档对比**而不是单档阈值。
+
+为什么必须两档对比：单看绝对内存会被解释器底噪（几十 MB）淹没，
+也说明不了问题——代码哪天改成整读，20MB 那档可能侥幸过关。
+两档下"整读"会让内存增量同步暴涨 10 倍，比值立刻拉开。
+这比"内存 < 100MB"抗得住重构。
+
 
 privacy 0%→**100%**、timing 0%→**100%**、governor 59%→**85%**、
 search.base 69%→**94%**、tools 77%→**97%**、utils 78%→**92%**、
