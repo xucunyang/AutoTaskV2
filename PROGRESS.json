@@ -42,7 +42,7 @@
     }
   },
   "plan_id": "autotask_bootstrap",
-  "updated_at": "2026-09-30T22:30:00Z",
+  "updated_at": "2026-09-30T23:40:00Z",
   "decisions_2026_09_29": {
     "review": "Phase0-4 阶段设计稿全部评审通过",
     "delete_master_json": "master.json 是V1/V2 task.md的遗留，V7纲领全文不再提。用户确认删除。现在只留 state/export/plans/{plan_id}.json；跨plan全局视图走 Store.daily_summary() 从DB聚合，不在导出目录里再存一份可能不一致的事实。",
@@ -108,8 +108,40 @@
     ],
     "still_pending": [
       "2.6 剩余：200MB真机 / Mac真机 —— 需要用户提供机器",
-      "2.7 覆盖率盲区",
       "3.3 根目录清理等（用户暂缓）"
-    ]
+    ],
+    "coverage_blindspots": {
+      "gate": "orchestrator/scripts/check_coverage.py（6模块 → 25模块）",
+      "tests": [
+        "orchestrator/tests/test_coverage_blindspots.py（49例）",
+        "orchestrator/tests/test_coverage_utils_tools.py（31例）",
+        "orchestrator/tests/test_coverage_orchestrator.py（21例）"
+      ],
+      "before_after": {
+        "core.privacy": "0% → 100%",
+        "core.timing": "0% → 100%",
+        "core.governor": "59% → 85%",
+        "core.search.base": "69% → 94%（含新增的博查解析器）",
+        "core.tools": "77% → 97%",
+        "core.utils": "78% → 92%",
+        "core.orchestrator": "78% → 83%"
+      },
+      "result": "25模块平均 91.2%，全部 ≥80%，门禁 PASS",
+      "bugs_fixed": [
+        "动态算力总督 governor.py 写好了却从没被调用——ACTIVE/IDLE 只是配置里的两组静态数字，设计§7的整套机制实际从未生效",
+        "mem_ok 算出来直接丢弃、mem_cap_gb 从没被用过：内存紧张时照样派4个执行器（指标算出来不用比不算更糟）",
+        "手动override期间没清零自动档位累计 → 从手动切回自动第一下就可能跳IDLE，手动设定被无视",
+        "api_key=\"\" 无法抑制 .env 回退 → 缺密钥分支在有.env的机器上永远测不到",
+        "core/search/__init__.py 是空的，调用方得记住去base子模块找build"
+      ],
+      "gate_change": "门禁从'只看平均'改成'平均+单模块都过线'：只看平均会让'一个模块0%、另一个100%'互相掩盖，而0%那个恰恰最危险——那段代码从没被执行过。"
+    }
+  },
+  "phase4_status": {
+    "pytest": "605 passed",
+    "coverage": "25模块平均 91.2%（门槛80%）",
+    "real_e2e": "3/3 SUBMITTED（simple→local / medium→flash / complex→pro）",
+    "production_bugs_found_and_fixed": 10,
+    "note": "详见 design/phases/Phase4-verification-chaos-design.md §6.0 与 §10"
   }
 }

@@ -84,6 +84,16 @@ DoD逐条见§6，实现与设计的偏差见§9。
 | 跨日 | `tests/test_crossday.py` 17例 | 日报把别的日期的plan算成今天（`list_plans()[:1]` 兜底是**任意**第一个）；额度用 `time.localtime()` 而全局用上海时区 |
 | 真实熔断 | `tests/test_circuit_real.py` 8例（真 HTTP 服务器，非 mock） | cooldown 后**所有**并发同时打过去（文档承诺"放一个探测"，代码里没有闸门）；探测失败只 `fails+1`，阈值3 → 中间两次等于完全放开；401 要攒够3次才熔断（key 写错时前三个任务白失败） |
 | 慢 rule | `tests/test_slow_rule.py` 10例（真跑子进程 sleep） | 整轮验收**无墙钟上限**且单 rule 超时由任务自配 → 6条慢 rule 占住 verify worker；最严重的是**验收被打断但任务仍到 DONE**（等于宣称验完了） |
+| 覆盖率盲区 | `scripts/check_coverage.py` 门禁从 6 模块扩到 **25 模块**；`tests/test_coverage_*.py` 101例 | **动态算力总督 governor.py 写好了却从没被调用**——ACTIVE/IDLE 只是配置里的两组静态数字，设计§7 的整套机制实际从未生效；`mem_ok` 算出来直接丢掉、`mem_cap_gb` 从没被用过，内存紧张时照样派 4 个执行器；`api_key=""` 无法抑制 `.env` 回退（缺密钥分支在有 .env 的机器上永远测不到） |
+
+privacy 0%→**100%**、timing 0%→**100%**、governor 59%→**85%**、
+search.base 69%→**94%**、tools 77%→**97%**、utils 78%→**92%**、
+orchestrator 78%→**83%**。**25 模块平均 91.2%**，全部 ≥80%。
+
+门禁同时从"只看平均"改成"平均 + 单模块都过线"：只看平均会让
+"一个模块 0%、另一个 100%" 互相掩盖，而 0% 那个恰恰最危险——
+那段代码**从没被执行过**。
+
 
 **方法论教训（比 bug 本身更值得记）**：
 1. 测**副本**等于没测。`bench_local_loop.py` 最初自己复刻了一份 tool loop，
@@ -200,6 +210,18 @@ DoD逐条见§6，实现与设计的偏差见§9。
     只是个兜底 —— ollama 配了 simple 之后，用户在配置里写 `simple: flash`
     完全不起作用。**配置写了却不管用比没这个配置更糟**：改配置的人会以为
     改好了，而问题要等到"为什么我的任务还在用4B"才会被发现。
+14. **动态算力总督接线**（覆盖率补测发现）：
+    `governor.py` 早就写好、也有测试、notifier 里还有 `governor_switch`
+    告警类型，但**编排器从不消费它算出的 profile** —— ACTIVE/IDLE 只是
+    `schedule.yaml` 里的两组静态数字，设计§7 要求的"人在用电脑就降到1/8 CPU"
+    实际从未生效。现在每 tick 采样并写进 `max_workers`。
+    另修 `mem_ok` 算出来直接丢弃的问题：IDLE 档的 executor 现在按
+    `min(档位, 内存-headroom, CPU-1)` 真正裁剪。
+    **指标算出来不用比不算更糟——它让人以为有防护。**
+15. **`api_key=""` 必须表示"明确无密钥"**：
+    原构造签名是 `api_key or os.environ.get(...)`，于是传空串也会被 `.env`
+    里的真 key 填上。后果是"缺密钥"这条分支在有 `.env` 的机器上
+    **永远测不到**，也没法用构造参数覆盖配置。改成 `if api_key is None`。
 
 ## 7. V6→V7 变更清单（2026-09-28，本轮，待评审）
 
