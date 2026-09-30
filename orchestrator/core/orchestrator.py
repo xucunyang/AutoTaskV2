@@ -56,6 +56,9 @@ class Orchestrator:
         cfg = _load_cfg(self.root)
         self.low_slot_reserve = int(cfg.get("workers", {})
                                     .get("reserved_low_slot", RESERVED_LOW_SLOTS))
+        # 单实例锁的存活期。心跳过期即允许接管（见 acquire_lock 的说明）。
+        # 必须是主循环轮询的数倍，否则一个卡住的 tick 就会让别人以为它死了。
+        self.lock_ttl_s = float(cfg.get("lock", {}).get("ttl_s", 90))
         # 模型注册表（{名字: provider}）与网关配置。留空则不注入provider，
         # 执行器走无LLM的自检路径——冒烟/测试就是这个模式，不能被
         # "配置读不到key"这种环境问题静默改掉。
@@ -80,24 +83,83 @@ class Orchestrator:
     # ---------- 单实例锁（§2：全局单编排实例，DB行锁） ----------
 
     def acquire_lock(self) -> bool:
-        """用 plans表占一行做DB级单实例锁。跨进程有效，不依赖文件锁。"""
+        """DB级单实例锁。跨进程有效，不依赖文件锁。
+
+        **带存活期**（租约语义）。之前只看"行在不在"，行在就返回 False——
+        于是持锁进程被 kill -9 或机器断电之后，那一行永远留在表里，
+        整个系统再也无法启动，只能人工连库删行。
+        一次意外崩溃导致系统永久不可用，这个代价比"可能误抢锁"高得多：
+        误抢的最坏后果是两个编排器短暂并行，而派发本身是幂等的
+        （expect_version 挡住重复派发），且下面的 heartbeat_lock 会
+        立刻发现行被换主人并退出。
+
+        存活判据用**心跳时间**而不是"进程是否活着"：跨平台一致
+        （Windows 上 os.kill(pid,0) 语义不同），且顺带覆盖了
+        "进程活着但卡死"的情况。
+        """
         def _fn(con):
-            cur = con.execute(
-                "SELECT template FROM plans WHERE plan_id=?", ("orchestrator_lock",)
-            ).fetchone()
-            if cur is not None:
-                return False
             now = now_utc_iso()
+            cur = con.execute(
+                "SELECT template,updated_at FROM plans WHERE plan_id=?",
+                ("orchestrator_lock",)).fetchone()
+            if cur is None:
+                con.execute(
+                    "INSERT INTO plans(plan_id,template,status,created_at,updated_at)"
+                    " VALUES ('orchestrator_lock',?,'HELD',?,?)",
+                    (f"pid={os.getpid()}", now, now))
+                return ("acquired", None)
+            holder, updated = cur[0], cur[1]
+            age = _age_s(updated)
+            if age is not None and age < self.lock_ttl_s:
+                return ("busy", holder)
+            # 心跳过期：接管。留下审计痕迹，否则"上一任去哪了"永远查不到。
             con.execute(
-                "INSERT INTO plans(plan_id,template,status,created_at,updated_at)"
-                " VALUES ('orchestrator_lock',?,'HELD',?,?)",
-                (f"pid={os.getpid()}", now, now))
-            return True
+                "UPDATE plans SET template=?,updated_at=?,status='HELD'"
+                " WHERE plan_id=?",
+                (f"pid={os.getpid()}", now, "orchestrator_lock"))
+            return ("taken_over", f"{holder}@{updated}(age={age}s)")
 
         try:
-            self._lock_held = bool(self.store._write_txn(_fn))
+            verdict, detail = self.store._write_txn(_fn)
         except Exception as e:
             jlog(self.root, "ERROR", "orchestrator_lock_error", error=str(e)[:200])
+            self._lock_held = False
+            return False
+        self._lock_held = verdict in ("acquired", "taken_over")
+        if not self._lock_held:
+            jlog(self.root, "WARN", "orchestrator_lock_busy", pid=os.getpid(),
+                 holder=detail, age_ttl_s=self.lock_ttl_s)
+        elif verdict == "taken_over":
+            jlog(self.root, "WARN", "orchestrator_lock_taken_over",
+                 pid=os.getpid(), previous=detail, ttl_s=self.lock_ttl_s)
+            try:
+                self.store.alert("P1", "orchestrator_lock_taken_over",
+                                 previous=detail[:200], pid=os.getpid())
+            except Exception:      # noqa: BLE001
+                pass
+        return self._lock_held
+
+    def heartbeat_lock(self) -> bool:
+        """刷新锁的心跳。返回False表示锁已被别人接管，要收手。
+
+        放在 tick 里而不是独立线程：tick 本身就是心跳（主循环在跑），
+        再开一个线程只会多一个"线程活着但循环卡住"的新问题。
+        """
+        if not self._lock_held:
+            return False
+        def _fn(con):
+            cur = con.execute(
+                "SELECT template FROM plans WHERE plan_id=?",
+                ("orchestrator_lock",)).fetchone()
+            if cur is None or not str(cur[0] or "").endswith(str(os.getpid())):
+                return False
+            con.execute("UPDATE plans SET updated_at=? WHERE plan_id=?",
+                        (now_utc_iso(), "orchestrator_lock"))
+            return True
+        try:
+            self._lock_held = bool(self.store._write_txn(_fn))
+        except Exception as e:      # noqa: BLE001
+            jlog(self.root, "ERROR", "lock_heartbeat_failed", error=str(e)[:200])
             self._lock_held = False
         return self._lock_held
 
@@ -110,6 +172,7 @@ class Orchestrator:
             self.store._write_txn(_fn)
         except Exception:
             pass
+        self._lock_held = False
         self._lock_held = False
 
     def check_shutdown(self) -> bool:
@@ -485,6 +548,10 @@ class Orchestrator:
             n = 0
             async with self.verify_pool:
                 while not self.check_shutdown():
+                    if not self.heartbeat_lock():
+                        jlog(self.root, "WARN", "lock_lost_stopping",
+                             pid=os.getpid())
+                        break
                     self.tick()
                     n += 1
                     if self.run_once or (max_ticks is not None and n >= max_ticks):
@@ -496,6 +563,10 @@ class Orchestrator:
                 n = anyio.run(_drive)
             else:
                 while not self.check_shutdown():
+                    if not self.heartbeat_lock():
+                        jlog(self.root, "WARN", "lock_lost_stopping",
+                             pid=os.getpid())
+                        break
                     self.tick()
                     n += 1
                     if self.run_once or (max_ticks is not None and n >= max_ticks):
@@ -504,6 +575,20 @@ class Orchestrator:
         finally:
             self.release_lock()
             jlog(self.root, "INFO", "orchestrator_stopped", ticks=n)
+
+
+def _age_s(ts: str | None) -> float | None:
+    """ISO时间戳距今多少秒。解析不了返回None（按"很旧"处理，见调用方）。"""
+    if not ts:
+        return None
+    from datetime import datetime as _dt
+    try:
+        d = _dt.fromisoformat(str(ts))
+    except ValueError:
+        return None
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - d).total_seconds()
 
 
 def _load_cfg(root: Path, name: str = "schedule.yaml") -> dict:
