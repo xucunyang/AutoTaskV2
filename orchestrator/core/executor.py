@@ -17,6 +17,7 @@ from pathlib import Path
 
 from core import checkpoint as cp
 from core import lease as lease_mod
+from core import tools
 from core.store import Conflict, IllegalTransition, StaleOwner, Store
 from core.task_card import render_task_card
 from core.utils import atomic_write_json, jlog, now_utc_iso
@@ -258,30 +259,28 @@ def _fail(store: Store, plan_id: str, task_id: str, owner: str, run_id: str,
 
 def _run_with_provider(store: Store, task: dict, card: str, ckpt, provider,
                        final_window: int, run_id: str, search_fn) -> list[str]:
-    """真实LLM路径：chat → 校验产物是否真的落盘 → 写manifest。
+    """真实LLM路径：tool loop → 校验产物是否真的落盘 → 写manifest。
 
     **不把模型回复当成产物写进outputs**。曾经这么干过，后果是：
     一个任务声明了 summary.json + report.md 两个产物时，
     同一坨文本被写进两个文件，json_schema验收永远报 bad_json，
     而且报错完全指不到真因（模型其实什么都没写错，是执行器写坏了）。
-    产物由模型自己用工具写（任务卡里明确要求），执行器只负责：
+    产物由模型自己用 atomic_write 工具写（任务卡里明确要求），执行器只负责：
       1. 确认声明的产物真的落盘了（没有就明确报错，不替模型编）
       2. 给已落盘的产物补manifest（sha/bytes/rows/preview）
     """
     shard = task.get("shard", {}) or {}
+    root = Path(store.root)
     sources = []
     if shard.get("needs_web"):
         if search_fn is None:
             raise SessionYield("context_full", "needs_web_but_no_search")
         sources = search_fn(shard, task)
-    payload = card
-    if ckpt is not None:
-        payload = card + "\n【续跑】" + json.dumps(cp.resume_payload(ckpt),
-                                                  ensure_ascii=False)
-    resp = chat_with_yield_check(provider, payload, shard.get("budget") or {},
-                                 final_window)
+
+    toolbox = tools.ToolBox(root, search_fn=_search_adapter(search_fn))
+    resp, steps = _tool_loop(provider, card, ckpt, toolbox, shard, final_window)
+
     declared = [str(o) for o in shard.get("outputs") or []]
-    root = Path(store.root)
     written, missing = [], []
     for out in declared:
         p = root / out
@@ -296,11 +295,119 @@ def _run_with_provider(store: Store, task: dict, card: str, ckpt, provider,
         # 那种绕远的报错掩盖"它压根没写"
         raise SelfTestFail(
             f"no_artifacts_produced: declared={declared} "
-            f"model_reply_len={len((resp or {}).get('content', ''))}")
+            f"model_reply_len={len((resp or {}).get('content', ''))} "
+            f"tool_steps={steps}")
     if sources:
         atomic_write_json(root / "artifacts" / f"{task['task_id']}.sources.json",
                           sources)
     return written
+
+
+MAX_TOOL_STEPS = 12
+
+
+def _search_adapter(search_fn):
+    """把 search_fn(shard, task) 包成工具层要的 search_fn(query, max_results)。
+
+    两种签名本来不一样：编排侧按任务检索，工具侧按query检索。工具层
+    需要的是后者，所以这里做一次闭包转换，而不是让ToolBox去猜。
+    """
+    if search_fn is None:
+        return None
+
+    def _q(query: str, max_results: int = 5):
+        try:
+            return search_fn(query, max_results=max_results)
+        except TypeError:
+            return search_fn({"query": query, "max_results": max_results}, {})
+    return _q
+
+
+def _tool_loop(provider, card: str, ckpt, toolbox, shard: dict,
+               final_window: int) -> tuple[dict, int]:
+    """薄 tool loop：模型调工具→回填结果→再调，直到它不再要工具。
+
+    三条硬约束（都是Phase2设计要求的，不是可选优化）：
+    1. **每轮查水位线**：命中就 SessionYield，让出并存checkpoint。
+       这只能在循环内做——一次chat就把整个任务做完的话，
+       "session切换"设计就完全没有落点。
+    2. **轮次上限**：模型可能反复调同一个工具。超限就停，
+       把已写的产物交给验收去判，而不是无限烧token。
+    3. **工具失败不抛异常打断循环**：把错误文本回填给模型让它自己改。
+       只有路径越界/命令越权（ToolDenied）才停——那是安全问题，
+       让模型重试等于教它怎么绕过。
+    """
+    budget = shard.get("budget") or {}
+    max_steps = int(budget.get("max_steps") or MAX_TOOL_STEPS)
+    max_steps = max(1, min(max_steps, MAX_TOOL_STEPS))
+    schemas = toolbox.schemas()
+    messages: list[dict] = [{"role": "user", "content": card}]
+    if ckpt is not None:
+        messages.append({"role": "user",
+                         "content": "【续跑】" + json.dumps(
+                             cp.resume_payload(ckpt), ensure_ascii=False)})
+    if not _supports_tools(provider):
+        # 老provider/桩：不支持就单轮跑，保持原有行为
+        resp = chat_with_yield_check(provider, card, budget, final_window)
+        return resp, 0
+
+    last: dict = {}
+    for step in range(1, max_steps + 1):
+        last = _chat_tools(provider, messages, budget, final_window, schemas)
+        calls = last.get("tool_calls") or []
+        if not calls:
+            return last, step - 1
+        messages.append({"role": "assistant",
+                         "content": last.get("content") or "",
+                         **({"tool_calls": _raw_calls(last)} if _raw_calls(last)
+                            else {})})
+        for c in calls:
+            try:
+                out = toolbox.execute(c["name"], c["arguments"])
+            except tools.ToolDenied as e:
+                messages.append({"role": "tool", "tool_call_id": c["id"],
+                                 "content": f"DENIED: {e}"})
+                raise
+            messages.append({"role": "tool", "tool_call_id": c["id"],
+                             "content": out})
+    return last, max_steps
+
+
+def _raw_calls(resp: dict) -> list[dict]:
+    """把统一后的 tool_calls 还原成 OpenAI 形状，回填给 messages。
+
+    多数兼容端点要求 assistant 消息里的 tool_calls 与随后的 tool 消息
+    id 对得上，所以这里必须原样带上 id。
+    """
+    out = []
+    for c in resp.get("tool_calls") or []:
+        out.append({"id": c["id"], "type": "function",
+                    "function": {"name": c["name"],
+                                 "arguments": json.dumps(c["arguments"],
+                                                         ensure_ascii=False)}})
+    return out
+
+
+def _supports_tools(provider) -> bool:
+    """桩provider（测试/冒烟）通常只接 (prompt, budget) 两个位置参数，
+    硬塞messages/tools会TypeError。这里先探签名再决定，不靠try/except
+    吞掉真实错误——那会把'provider真坏了'伪装成'它不支持工具'。"""
+    import inspect
+    try:
+        sig = inspect.signature(provider.chat)
+    except (TypeError, ValueError):
+        return False
+    return "tools" in sig.parameters or any(
+        p.kind is inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+
+
+def _chat_tools(provider, messages, budget, final_window, schemas) -> dict:
+    resp = provider.chat(messages[0]["content"], budget,
+                         messages=messages, tools=schemas)
+    over, detail = should_yield(resp.get("usage", {}), final_window)
+    if over:
+        raise SessionYield("context_full", detail)
+    return resp
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -39,7 +40,7 @@ class Orchestrator:
     def __init__(self, root: str | Path, executor_fn=None, owner: str = "orchestrator-main",
                  max_workers: int = 4, poll_normal_s: float = 10,
                  poll_fast_s: float = 2, run_once: bool = False,
-                 verify_pool=None):
+                 verify_pool=None, models: dict | None = None):
         self.root = Path(root)
         self.store = Store(self.root)
         self.executor_fn = executor_fn
@@ -55,6 +56,26 @@ class Orchestrator:
         cfg = _load_cfg(self.root)
         self.low_slot_reserve = int(cfg.get("workers", {})
                                     .get("reserved_low_slot", RESERVED_LOW_SLOTS))
+        # 模型注册表（{名字: provider}）与网关配置。留空则不注入provider，
+        # 执行器走无LLM的自检路径——冒烟/测试就是这个模式，不能被
+        # "配置读不到key"这种环境问题静默改掉。
+        self.models = models if models is not None else _load_models(self.root)
+        self.gw_cfg = _load_cfg(self.root, "gateway.yaml")
+        self._search_provider = _load_search(self.root)
+        # 编排侧检索签名是 search_fn(shard, task)，按任务决定检索式；
+        # 工具侧要的是 search_fn(query, max_results)。这里暴露前者，
+        # executor内部再包一层给ToolBox（见 executor._search_adapter）。
+        p = self._search_provider
+        top_k = int(_load_cfg(self.root, "search.yaml").get("top_k", 8))
+        self._search_fn = None
+        if p is not None:
+            def _by_shard(shard, task, _p=p, _k=top_k):
+                q = (shard or {}).get("query") or (shard or {}).get("objective") or ""
+                if not q:
+                    return []
+                res = _p.search(str(q), top_k=_k)
+                return [asdict(r) for r in res]
+            self._search_fn = _by_shard
 
     # ---------- 单实例锁（§2：全局单编排实例，DB行锁） ----------
 
@@ -265,11 +286,38 @@ class Orchestrator:
                          "payload": {"event": "DISPATCHED"}})
         try:
             self.executor_fn(self.store, plan_id, task_id, self._run_id(),
-                             owner=self.owner)
+                             owner=self.owner, **self._executor_kwargs(t))
         except Exception as e:
             jlog(self.root, "ERROR", "executor_raised", plan_id=plan_id,
                  task_id=task_id, error=str(e)[:300])
         return running
+
+    def _executor_kwargs(self, t: dict) -> dict:
+        """按任务复杂度选模型，把选中的provider注入执行器。
+
+        之前这里什么都不传，执行器收到 provider=None 直接走无LLM的
+        自检路径——于是 build_models/gateway.route 写好了一整套，
+        生产路径上从没被调用过。现在接上。
+
+        选不到模型时返回空dict（走自检路径），并记日志说明原因；
+        不能静默拿一个错的模型顶上，那会让"复杂任务用了4B"这种问题
+        只在事后从产物质量上体现。
+        """
+        if not self.models:
+            return {}
+        from core import gateway
+        ctx = gateway.build_ctx(self.gw_cfg)
+        r = gateway.route(t, ctx)
+        provider = gateway.resolve(r, self.models)
+        if provider is None:
+            jlog(self.root, "WARN", "model_unavailable", task_id=t["task_id"],
+                 model=r.get("model"), reason=r.get("reason"),
+                 known=sorted(self.models))
+            return {}
+        jlog(self.root, "INFO", "model_routed", task_id=t["task_id"],
+             model=r.get("model"), reason=r.get("reason"),
+             complexity=t.get("shard", {}).get("complexity"))
+        return {"provider": provider, "search_fn": self._search_fn}
 
     def promote_retries(self) -> list[dict]:
         """RETRY→READY：退避到点才重排（Phase2§2.1 指数退避 60*2^attempts）。
@@ -458,12 +506,42 @@ class Orchestrator:
             jlog(self.root, "INFO", "orchestrator_stopped", ticks=n)
 
 
-def _load_cfg(root: Path) -> dict:
+def _load_cfg(root: Path, name: str = "schedule.yaml") -> dict:
     try:
         import yaml
-        return yaml.safe_load((root / "config" / "schedule.yaml").read_text(
+        return yaml.safe_load((root / "config" / name).read_text(
             encoding="utf-8")) or {}
     except Exception:
+        return {}
+
+
+def _load_search(root: Path):
+    """按 config/search.yaml 造检索器，失败返回None。
+
+    返回None是允许的：没有检索能力的任务（needs_web=false）照常跑，
+    真需要检索时ToolBox会明确告诉模型"未配置检索"，而不是让它
+    凭记忆编事实。
+    """
+    try:
+        from core.search.base import build as build_search
+        return build_search(_load_cfg(root, "search.yaml"))
+    except Exception as e:
+        jlog(root, "WARN", "search_load_failed", error=str(e)[:200])
+        return None
+
+
+def _load_models(root: Path) -> dict:
+    """按 config/gateway.yaml 造模型注册表。
+
+    读不到配置或造不出模型时返回空 dict 而不是抛错：编排器还要能在
+    没有模型的环境里跑（自检路径、冒烟）。真要跑LLM时由 resolve 阶段
+    报"模型不可用"，那时能准确指出是哪个名字找不到。
+    """
+    try:
+        from core.providers import build_models
+        return build_models(_load_cfg(root, "gateway.yaml"))
+    except Exception as e:
+        jlog(root, "WARN", "gateway_load_failed", error=str(e)[:200])
         return {}
 
 

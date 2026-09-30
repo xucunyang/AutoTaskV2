@@ -31,6 +31,36 @@ class CircuitOpen(ProviderError):
     """熔断打开：直接拒绝，不再打模型。"""
 
 
+def _parse_tool_calls(raw) -> list[dict]:
+    """统一各家 tool_calls 形状 → [{id, name, arguments(dict)}]。
+
+    arguments 各家给法不一样：OpenAI 给JSON字符串，Ollama给dict，
+    有的还把名字塞在 function.name 里。执行器只认统一后的形状，
+    否则每接一个provider就要在执行器里加一次分支。
+    """
+    out: list[dict] = []
+    for i, tc in enumerate(raw or []):
+        if not isinstance(tc, dict):
+            continue
+        fn = tc.get("function") or tc
+        name = fn.get("name") or tc.get("name")
+        if not name:
+            continue
+        a = fn.get("arguments")
+        if a is None:
+            a = tc.get("arguments")
+        if isinstance(a, str):
+            try:
+                a = json.loads(a) if a.strip() else {}
+            except ValueError:
+                a = {"_raw": a}     # 保留原文，别把解析失败伪装成空参
+        if not isinstance(a, dict):
+            a = {}
+        out.append({"id": str(tc.get("id") or f"call_{i}"),
+                    "name": str(name), "arguments": a})
+    return out
+
+
 class BaseProvider:
     name = "base"
 
@@ -129,27 +159,39 @@ class OllamaProvider(BaseProvider):
                 f"(configured={sorted(self.models)})")
         return m
 
-    def chat(self, prompt: str, budget: dict, *, model: str | None = None,
+    def chat(self, prompt: str, budget: dict, *, messages: list | None = None,
+             tools: list | None = None, model: str | None = None,
              num_ctx: int | None = None) -> dict:
+        """Ollama /api/chat。
+
+        多轮用 messages（tool loop 需要），单轮可只给 prompt。
+        tools 传 OpenAI 那套 function schema，Ollama 原生吃这个格式。
+        """
         self._allow()
         t0 = time.monotonic()
         try:
             body = {"model": model or self.model_for(budget.get("complexity", "simple")),
                     "prompt": prompt, "stream": False}
+            if messages:
+                body.pop("prompt")            # 多轮时prompt字段会被messages覆盖
+                body["messages"] = messages
+            if tools:
+                body["tools"] = tools
             if num_ctx:
                 body["options"] = {"num_ctx": num_ctx}
             data = self._request(f"{self.base_url}/api/chat", body, {})
-            content = (data.get("message") or {}).get("content", "")
+            msg = data.get("message") or {}
             usage = {"prompt_tokens": int(data.get("prompt_eval_count") or 0),
                      "completion_tokens": int(data.get("eval_count") or 0)}
-            out = {"content": content, "usage": usage}
+            out = {"content": msg.get("content", "") or "", "usage": usage,
+                   "tool_calls": _parse_tool_calls(msg.get("tool_calls"))}
             self.calls += 1
             self.p50_ms.append((time.monotonic() - t0) * 1000)
             self._on_success()
             return out
         except Exception as e:      # noqa: BLE001
             self._on_failure()
-            raise ProviderError(f"ollama_failed:{e}") from e
+            raise ProviderError(f"{self.name}:failed:{e}") from e
         finally:
             self._sem.release()
 
@@ -180,30 +222,36 @@ class OpenAICompatProvider(BaseProvider):
         # 路径可配：DeepSeek是 /chat/completions，标准OpenAI兼容是 /v1/chat/completions
         self.path = path if path.startswith("/") else f"/{path}"
 
-    def chat(self, prompt: str, budget: dict, *, model: str | None = None) -> dict:
+    def chat(self, prompt: str, budget: dict, *, messages: list | None = None,
+             tools: list | None = None, model: str | None = None) -> dict:
+        """OpenAI 兼容 /chat/completions（DeepSeek、vLLM 都吃这套）。"""
         self._allow()
         t0 = time.monotonic()
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
         try:
-            body = {"model": model or self.model, "messages": [
-                        {"role": "user", "content": prompt}],
+            msgs = list(messages) if messages else [{"role": "user", "content": prompt}]
+            body = {"model": model or self.model, "messages": msgs,
                     "stream": False}
             if budget.get("max_tokens"):
                 body["max_tokens"] = int(budget["max_tokens"])
+            if tools:
+                body["tools"] = tools
+                body["tool_choice"] = budget.get("tool_choice", "auto")
             data = self._request(f"{self.base_url}{self.path}", body, headers)
             choices = data.get("choices") or [{}]
-            content = (choices[0].get("message") or {}).get("content", "")
+            msg = choices[0].get("message") or {}
             u = data.get("usage") or {}
-            out = {"content": content,
+            out = {"content": msg.get("content") or "",
                    "usage": {"prompt_tokens": int(u.get("prompt_tokens") or 0),
-                             "completion_tokens": int(u.get("completion_tokens") or 0)}}
+                             "completion_tokens": int(u.get("completion_tokens") or 0)},
+                   "tool_calls": _parse_tool_calls(msg.get("tool_calls"))}
             self.calls += 1
             self.p50_ms.append((time.monotonic() - t0) * 1000)
             self._on_success()
             return out
         except Exception as e:      # noqa: BLE001
             self._on_failure()
-            raise ProviderError(f"online_failed:{e}") from e
+            raise ProviderError(f"{self.name}:failed:{e}") from e
         finally:
             self._sem.release()
 
