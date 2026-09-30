@@ -90,18 +90,22 @@ class LatencyGuard(RoutePolicy):
         return None
 
 class CapabilityMatch(RoutePolicy):
-    """按**本地实际配了哪些模型**决定能不能本地跑，而不是写死档位表。
+    """复杂度→模型。**以 config 的 complexity_models 为准**。
 
-    之前是 `TIERS={simple:0,medium:1,complex:2}` + `LOCAL_MAX=1` 写死，
-    两个后果：
-    1. 本地只有4B时，medium 仍被判"本地能做"→ 拿小模型跑难任务，
-       质量掉了但没人知道（config/local_tiers 写了却没人读，是死配置）；
-    2. OllamaProvider.model_for 对未知复杂度会**静默回落到 simple**，
-       等于用4B悄悄跑medium。
+    之前这里是"本地能做就本地，本地做不了才查映射"，于是
+    complexity_models 只是个兜底：ollama 那条配了 simple，
+    simple 就永远走本地，用户在配置里写 simple:flash 也不起作用。
+    配置写了却不管用，比没这个配置更糟——改配置的人会以为改好了。
 
-    现在以 ctx["local_complexities"] 为准——它来自 gateway.yaml 里
-    local 这个 ollama 模型的 models 配了哪些 key。**没配就是本地做不了，
-    走配置里映射的在线模型**，不猜、不降级。
+    现在的顺序：
+    1. complexity_models 里有这个复杂度 → 就用它（配置即路由）
+    2. 没有显式映射 → 才退回"本地能力表"推断（老调用方兼容）
+    3. 隐私强制永远压过上面两条（secret 不外发）
+
+    原来的写死档位表（TIERS + LOCAL_MAX）已删除：它让"本地只有4B时
+    medium 仍被判本地能做"，拿小模型跑难任务，质量掉了没人知道。
+    本地能不能做某档只看 ollama 那条 models 里**实际配了哪些 key**，
+    没配就是做不了，不猜不降级。
     """
     name = "capability_match"
 
@@ -111,14 +115,20 @@ class CapabilityMatch(RoutePolicy):
             return {"model": ctx.get("secret_model")
                     or ctx.get("local_model_name") or "local",
                     "reason": "privacy_local_only"}
+        online = ctx.get("online_model_name") or ctx.get("default_model")
+        explicit = (ctx.get("complexity_models") or {}).get(complexity)
+        if explicit:
+            if explicit == ctx.get("local_model_name") and ctx.get("local_usable") is False:
+                return {"model": online, "reason": "local_window_insufficient"}
+            return {"model": explicit,
+                    "reason": f"configured_{complexity}"}
+        # 没有显式映射：退回本地能力推断（老调用方）
         local_ok = ctx.get("local_complexities")
-        if local_ok is None:          # 调用方没给（旧调用方/测试）→ 保守只认simple
+        if local_ok is None:
             local_ok = {"simple"}
         if complexity in local_ok and ctx.get("prefer_local", True):
             if ctx.get("local_usable") is False:
-                return {"model": ctx.get("online_model_name")
-                        or ctx.get("default_model"),
-                        "reason": "local_window_insufficient"}
+                return {"model": online, "reason": "local_window_insufficient"}
             return {"model": ctx.get("local_model_name") or "local",
                     "reason": f"local_has_{complexity}"}
         return {"model": _model_for(ctx, complexity),

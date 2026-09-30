@@ -32,9 +32,14 @@ def test_shipped_config_routes_complexity_to_named_models():
     """对着真实 config/gateway.yaml 验：复杂度→模型名的映射如配置所写。
     这条防止'改了 yaml 但路由没跟上'。"""
     ctx = gateway.build_ctx(CFG)
-    assert gateway.route(T("simple"), ctx)["model"] == "local"
+    for c in ("simple", "medium", "complex"):
+        assert gateway.route(T(c), ctx)["model"] in set(CFG["models"])
     assert gateway.route(T("medium"), ctx)["model"] == "flash"
     assert gateway.route(T("complex"), ctx)["model"] == "pro"
+    # 本地小模型跑不了tool loop（实测），所以simple不能路由到local。
+    # 这条是"配置与实测能力一致"的守卫：换了更强的本地模型就把这行删掉。
+    assert gateway.route(T("simple"), ctx)["model"] != "local", \
+        "本地4B生成坏JSON跑不了tool loop，simple回local会稳定失败"
 
 
 def test_shipped_config_model_entries_are_resolvable():
@@ -74,19 +79,52 @@ def test_complexity_mapping_is_config_driven():
     assert gateway.route(T("complex"), ctx2)["model"] == "local"
 
 
-def test_no_local_model_for_tier_goes_to_configured_model():
-    """本地没配 medium → 不能静默拿 simple 跑，也不能硬编码"online"。"""
+def test_configured_mapping_is_authoritative():
+    """complexity_models 写了就是它说了算——"配置即路由"。
+    之前是"本地能做就本地"，于是 ollama 配了 simple 之后，
+    用户在配置里写 simple:flash 也不起作用：配置写了却不管用，
+    比没这个配置更糟。"""
     ctx = gateway.build_ctx(CFG)
     r = gateway.route(T("medium"), ctx)
     assert r["model"] == "flash"
-    assert r["reason"] == "no_local_model_for_medium"
+    assert r["reason"] == "configured_medium"
+
+
+def test_explicit_mapping_beats_local_capability():
+    """本地配了某个复杂度，配置指向别处时，配置优先。"""
+    cfg = {"models": {"local": {"type": "ollama",
+                                "models": {"simple": "m4b", "medium": "m7b"}},
+                      "pro": {"type": "openai_compat"}},
+           "complexity_models": {"simple": "local", "medium": "pro",
+                                 "complex": "pro"}}
+    ctx = gateway.build_ctx(cfg)
+    # 本地明明有 medium，但配置说 pro -> pro
+    assert gateway.route(T("medium"), ctx)["model"] == "pro"
+
+
+def test_no_explicit_mapping_falls_back_to_local_capability():
+    """没有显式映射时才退回本地能力推断（老调用方兼容）。"""
+    cfg = {"models": {"local": {"type": "ollama",
+                                "models": {"simple": "m4b", "medium": "m7b"}},
+                      "flash": {"type": "openai_compat"}}}
+    ctx = gateway.build_ctx(cfg)          # 没配 complexity_models
+    assert gateway.route(T("simple"), ctx)["model"] == "local"
+    assert gateway.route(T("medium"), ctx)["model"] == "local"
+    assert gateway.route(T("complex"), ctx)["model"] == "flash"
 
 
 def test_local_usable_false_moves_to_online():
+    """本地窗口不够时，即使配置指向local也要移到在线。"""
     ctx = gateway.build_ctx(CFG, local_usable=False)
-    r = gateway.route(T("simple"), ctx)
+    cfg2 = {"models": CFG["models"],
+            "complexity_models": {"simple": "local", "medium": "flash",
+                                  "complex": "pro"},
+            "privacy_models": CFG.get("privacy_models")}
+    ctx2 = gateway.build_ctx(cfg2, local_usable=False)
+    r = gateway.route(T("simple"), ctx2)
     assert r["model"] == "flash"
     assert r["reason"] == "local_window_insufficient"
+    assert ctx["local_complexities"] == {"simple"}   # 原ctx未被污染
 
 
 def test_caller_without_local_complexities_is_conservative():

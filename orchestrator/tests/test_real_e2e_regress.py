@@ -29,14 +29,17 @@ def _shipped_ctx():
 
 def test_route_reads_complexity_from_plain_dict():
     """store.get_task() 返回的就是 dict。getattr(dict,...) 取不到属性，
-    会静默返回默认的simple——所有任务都去本地小模型。"""
+    会静默返回默认的simple——所有任务都去本地小模型。
+
+    注意断言用"同一份 ctx 下不同复杂度路由到**不同**模型"，而不是钉死
+    具体模型名：配置改了模型分配，这条断言应该照样成立（它验的是
+    "复杂度确实被读到了"），否则每次换模型分配都要改测试。
+    """
     ctx = _shipped_ctx()
-    assert gateway.route({"complexity": "medium", "privacy": "public"},
-                         ctx)["model"] == "flash"
-    assert gateway.route({"complexity": "complex", "privacy": "public"},
-                         ctx)["model"] == "pro"
-    assert gateway.route({"complexity": "simple", "privacy": "public"},
-                         ctx)["model"] == "local"
+    got = {c: gateway.route({"complexity": c, "privacy": "public"}, ctx)["model"]
+           for c in ("simple", "medium", "complex")}
+    assert got["medium"] != got["complex"], "复杂度没被读到，都路由到同一个模型"
+    assert got["medium"] == "flash" and got["complex"] == "pro"
 
 
 def test_route_reads_privacy_from_plain_dict():
@@ -70,14 +73,13 @@ def test_full_task_dict_routes_correctly():
     }
     assert gateway.route(task, ctx)["model"] == "pro"
     assert gateway.route({**task, "complexity": "medium"}, ctx)["model"] == "flash"
-    assert gateway.route({**task, "complexity": "simple"}, ctx)["model"] == "local"
 
 
-def test_dict_without_complexity_key_falls_back_to_simple():
-    """真的缺字段时退回simple是可以接受的（保守），但不能是'其实有
-    字段却读不到'——上面那条就是防后者。"""
+def test_dict_without_complexity_key_falls_back_to_default_model():
+    """真的缺字段时走 default_model（不指local，避免静默降级到小模型）。"""
     ctx = _shipped_ctx()
-    assert gateway.route({"privacy": "public"}, ctx)["model"] == "local"
+    r = gateway.route({"privacy": "public"}, ctx)
+    assert r["model"] == ctx["default_model"] != "local"
 
 
 # ---------------------------------------------------------------- Bug 2

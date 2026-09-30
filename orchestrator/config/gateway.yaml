@@ -60,7 +60,13 @@ models:
 # 复杂度 → 模型引用（改这两三行就能整体换模型分配）
 # ---------------------------------------------------------------------------
 complexity_models:
-  { simple: local, medium: flash, complex: pro }
+  # simple 也走 flash（2026-09-30 实测后调整）：
+  # 本地 qwen3.5:4b 短提示下 3/3 能正确调工具，但面对完整任务卡
+  # （4个工具schema + 多段约束）时生成的 tool call 参数是坏 JSON，
+  # ollama 直接 400；phi4-mini:3.8b 完全不会用工具（0/3）。
+  # 本地小模型目前跑不了 tool loop，留着 local 不接流量——
+  # 换到 tool-calling 可靠的本地模型后，把 simple 改回 local 即可。
+  { simple: flash, medium: flash, complex: pro }
 
 # 隐私强制覆盖：secret 任务不外发，无论复杂度都走这里指定的模型
 privacy_models:
