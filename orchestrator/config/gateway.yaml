@@ -23,11 +23,15 @@ models:
       type: ollama,
       base_url: http://localhost:11434,
       models: { simple: qwen3.5:4b },
+      # 思维模型关掉思考：实测同一任务卡 think=false 6.6s / 默认 21.4s，
+      # 正确性相同。simple 任务不需要长思考，延迟差3倍很值。
+      # （不写=按模型默认；写 true=强制思考）
+      think: false,
       context_window: null,
-      timeout_s: 60,
+      timeout_s: 120,
       enabled: true,
-      max_concurrency: 2,
-      slo_p50_ms: 8000,
+      max_concurrency: 1,
+      slo_p50_ms: 15000,
     }
   # 快模型：适合 medium 及以下的批量活
   flash:
@@ -60,13 +64,13 @@ models:
 # 复杂度 → 模型引用（改这两三行就能整体换模型分配）
 # ---------------------------------------------------------------------------
 complexity_models:
-  # simple 也走 flash（2026-09-30 实测后调整）：
-  # 本地 qwen3.5:4b 短提示下 3/3 能正确调工具，但面对完整任务卡
-  # （4个工具schema + 多段约束）时生成的 tool call 参数是坏 JSON，
-  # ollama 直接 400；phi4-mini:3.8b 完全不会用工具（0/3）。
-  # 本地小模型目前跑不了 tool loop，留着 local 不接流量——
-  # 换到 tool-calling 可靠的本地模型后，把 simple 改回 local 即可。
-  { simple: flash, medium: flash, complex: pro }
+  # 本地接 simple（2026-09-30 修正：之前误判为"本地跑不了 tool loop"）。
+  # 真实原因是**我们回填 assistant.tool_calls 时用了 OpenAI 形状**
+  # （arguments 是JSON字符串），而ollama要求dict——所以第一步正常、
+  # 文件也真写出来了，到第二步才400，看上去像"模型JSON生成坏了"。
+  # 修好方言后本地可用：qwen3.5:4b 能稳定产出并落盘。
+  # medium/complex 仍走在线：4B 的长文分析与多轮推理质量不够。
+  { simple: local, medium: flash, complex: pro }
 
 # 隐私强制覆盖：secret 任务不外发，无论复杂度都走这里指定的模型
 privacy_models:

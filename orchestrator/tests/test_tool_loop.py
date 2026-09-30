@@ -295,6 +295,109 @@ def test_provider_without_tools_kwarg_falls_back_to_single_chat(tmp_path):
     assert resp["content"] == "老路径" and steps == 0
 
 
+# ---------------------------------------------------------------- 方言
+
+def test_ollama_tool_call_arguments_are_dict_not_string():
+    """Ollama 要 arguments 是 **dict**。写成JSON字符串它会直接 400
+    （"Value looks like object, but can't find closing '}' symbol"）。
+
+    这个错误极难定位的原因：第一步不回填所以正常，产物也真的写出来了，
+    到第二步才炸——看起来像"模型生成的JSON坏了"，其实是我们回填错格式。
+    """
+    from core.providers import OllamaProvider
+    calls = [{"id": "c1", "name": "atomic_write",
+              "arguments": {"path": "a.md", "content": "x"}}]
+    got = OllamaProvider(base_url="http://x").encode_assistant_tool_calls(calls)
+    assert got[0]["function"]["arguments"] == {"path": "a.md", "content": "x"}
+    assert isinstance(got[0]["function"]["arguments"], dict)
+
+
+def test_openai_compat_arguments_are_json_string():
+    """OpenAI 兼容端点相反：要 JSON 字符串。"""
+    from core.providers import OpenAICompatProvider
+    calls = [{"id": "c1", "name": "atomic_write",
+              "arguments": {"path": "a.md", "content": "x"}}]
+    got = OpenAICompatProvider(base_url="http://x",
+                               model="m").encode_assistant_tool_calls(calls)
+    assert isinstance(got[0]["function"]["arguments"], str)
+    assert json.loads(got[0]["function"]["arguments"])["path"] == "a.md"
+
+
+def test_loop_uses_provider_dialect_when_echoing(tmp_path):
+    """循环回填 assistant 消息时必须走 provider 自己的编码，
+    不能写死 OpenAI 形状。"""
+    root = tmp_path / "root"
+    root.mkdir()
+    seen = {}
+
+    class DialectProvider:
+        def chat(self, prompt, budget, *, messages=None, tools=None, **kw):
+            seen["msgs"] = list(messages or [])
+            if len(seen["msgs"]) == 1:
+                return {"content": "", "usage": {"prompt_tokens": 5},
+                        "tool_calls": [{"id": "c1", "name": "atomic_write",
+                                        "arguments": {"path": "a.md", "content": "x"}}]}
+            return {"content": "done", "usage": {"prompt_tokens": 8},
+                    "tool_calls": []}
+
+        def encode_assistant_tool_calls(self, calls):
+            return [{"id": c["id"], "type": "function",
+                     "function": {"name": c["name"],
+                                  "arguments": dict(c["arguments"])}}
+                    for c in calls]
+
+    _tool_loop(DialectProvider(), "卡", None, tools.ToolBox(root), {}, 8192)
+    asst = [m for m in seen["msgs"] if m["role"] == "assistant"][0]
+    assert isinstance(asst["tool_calls"][0]["function"]["arguments"], dict)
+
+
+def test_stub_provider_without_encoder_falls_back_to_openai(tmp_path):
+    """没有 encode 方法的桩provider不能崩，退回OpenAI形状。"""
+    root = tmp_path / "root"
+    root.mkdir()
+    provider = ScriptedProvider([
+        {"tool_calls": [{"id": "1", "name": "atomic_write",
+                         "arguments": {"path": "a.md", "content": "x"}}]},
+        {"content": "done"},
+    ])
+    _tool_loop(provider, "卡", None, tools.ToolBox(root), {}, 8192)
+    asst = [m for m in provider.seen_messages if m["role"] == "assistant"][0]
+    assert isinstance(asst["tool_calls"][0]["function"]["arguments"], str)
+
+
+def test_ollama_think_flag_is_configurable(monkeypatch):
+    """think=false 是顶字段（不是options里），且可配置：
+    实测同一任务卡 think=false 6.6s / 默认 21.4s，正确性相同。"""
+    import json as _json
+    from core.providers import OllamaProvider
+    sent = {}
+
+    class R:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return _json.dumps({"message": {"content": "ok"},
+                                "prompt_eval_count": 1}).encode()
+
+    def fake_urlopen(req, timeout=None):
+        sent["body"] = _json.loads(req.data.decode("utf-8"))
+        return R()
+
+    monkeypatch.setattr("core.providers.urllib.request.urlopen", fake_urlopen)
+    OllamaProvider(base_url="http://x", models={"simple": "m"},
+                   think=False).chat("hi", {})
+    assert sent["body"].get("think") is False
+    assert "think" not in sent["body"].get("options", {})
+
+    OllamaProvider(base_url="http://x", models={"simple": "m"},
+                   think=None).chat("hi", {})
+    assert "think" not in sent["body"], "None时不该下发该字段"
+
+
 def test_resume_payload_is_passed_to_model(tmp_path):
     """续跑时checkpoint必须进messages，否则'断点续跑'只是状态机上的说法。"""
     from schemas.models import Checkpoint

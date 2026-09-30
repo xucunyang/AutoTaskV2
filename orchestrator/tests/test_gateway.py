@@ -36,10 +36,9 @@ def test_shipped_config_routes_complexity_to_named_models():
         assert gateway.route(T(c), ctx)["model"] in set(CFG["models"])
     assert gateway.route(T("medium"), ctx)["model"] == "flash"
     assert gateway.route(T("complex"), ctx)["model"] == "pro"
-    # 本地小模型跑不了tool loop（实测），所以simple不能路由到local。
-    # 这条是"配置与实测能力一致"的守卫：换了更强的本地模型就把这行删掉。
-    assert gateway.route(T("simple"), ctx)["model"] != "local", \
-        "本地4B生成坏JSON跑不了tool loop，simple回local会稳定失败"
+    # simple 回本地：qwen3.5:4b 实测能稳定产出并落盘（方言修好后）。
+    # medium/complex 不能回本地：4B 的长文分析与多轮推理质量不够。
+    assert gateway.route(T("simple"), ctx)["model"] == "local"
 
 
 def test_shipped_config_model_entries_are_resolvable():

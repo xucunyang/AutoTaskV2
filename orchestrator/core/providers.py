@@ -133,6 +133,23 @@ class BaseProvider:
     def chat(self, prompt: str, budget: dict) -> dict:
         raise NotImplementedError
 
+    def encode_assistant_tool_calls(self, calls: list) -> list[dict]:
+        """把统一后的 tool_calls 编成"本家方言"回填进 assistant 消息。
+
+        **不能一律按 OpenAI 形状回填**。OpenAI 兼容端点要
+        `arguments` 是JSON字符串；**Ollama 要的是dict**——把字符串喂给它，
+        它在解析时直接 400
+        （"Value looks like object, but can't find closing '}' symbol"）。
+        这个错误在真实跑本地模型时才暴露：第一步不回填所以正常，
+        文件也真的写出来了，到第二步才炸，看起来像"模型生成的JSON坏了"，
+        实际是我们回填的格式不对。查错方向会完全跑偏。
+        """
+        return [{"id": c["id"], "type": "function",
+                 "function": {"name": c["name"],
+                              "arguments": json.dumps(c["arguments"],
+                                                      ensure_ascii=False)}}
+                for c in calls]
+
     def _request(self, url: str, body: dict, headers: dict) -> dict:
         req = urllib.request.Request(
             url, data=json.dumps(body).encode("utf-8"),
@@ -158,14 +175,25 @@ class OllamaProvider(BaseProvider):
     name = "local-ollama"
 
     def __init__(self, base_url="http://localhost:11434", models=None,
-                 name: str | None = None, **kw):
+                 name: str | None = None, think: bool | None = None, **kw):
         super().__init__(base_url=base_url, **kw)
         if name:
             self.name = name            # 熔断/健康信息用注册表里的名字
-        # 不给默认模型：原来兜底 {"simple":qwen2.5:3b,"medium":qwen2.5:7b}
+        # think: 思维模型（qwen3.5等）在思考时token消耗和延迟都是数倍。
+        # 实测同一任务卡 think=false 6.6s / think默认 21.4s，正确性相同。
+        # None = 不下发该字段，由ollama按模型默认。
+        self.think = think
+        # 不给默认模型：原来兜底 {"simple":qwen2.5:3b, "medium":qwen2.5:7b"}
         # 会让"配置漏了models"变成静默跑一个谁都没指定的模型。空就是空，
         # 路由层会因此判"本地做不了"并走在线，配置错误立刻可见。
         self.models = dict(models or {})
+
+    def encode_assistant_tool_calls(self, calls: list) -> list[dict]:
+        """Ollama 方言：arguments 是 dict，不是JSON字符串。"""
+        return [{"id": c["id"], "type": "function",
+                 "function": {"name": c["name"],
+                              "arguments": dict(c["arguments"])}}
+                for c in calls]
 
     def model_for(self, complexity: str = "simple") -> str:
         """取本地模型。**没有对应档位就报错，不静默降级**。
@@ -207,6 +235,8 @@ class OllamaProvider(BaseProvider):
                     {"role": "user", "content": prompt or ""}]
             if tools:
                 body["tools"] = tools
+            if self.think is not None:
+                body["think"] = bool(self.think)     # 顶字段，不是options里
             if num_ctx:
                 body["options"] = {"num_ctx": num_ctx}
             data = None
@@ -338,7 +368,8 @@ def build_models(cfg: dict, env=None) -> dict:
             out[name] = OllamaProvider(
                 name=name, base_url=base,
                 models={k: _expand(v, env)
-                        for k, v in (p.get("models") or {}).items()}, **kw)
+                        for k, v in (p.get("models") or {}).items()},
+                think=p.get("think"), **kw)
         elif ptype == "openai_compat":
             akey = p.get("api_key_env")
             out[name] = OpenAICompatProvider(

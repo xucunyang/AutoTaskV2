@@ -394,10 +394,10 @@ def _tool_loop(provider, card: str, ckpt, toolbox, shard: dict,
         calls = last.get("tool_calls") or []
         if not calls:
             return last, step - 1
-        messages.append({"role": "assistant",
-                         "content": last.get("content") or "",
-                         **({"tool_calls": _raw_calls(last)} if _raw_calls(last)
-                            else {})})
+        if _raw_calls(last):
+            messages.append({"role": "assistant",
+                             "content": last.get("content") or "",
+                             "tool_calls": _encode_calls(provider, last)})
         for c in calls:
             try:
                 out = toolbox.execute(c["name"], c["arguments"])
@@ -410,12 +410,22 @@ def _tool_loop(provider, card: str, ckpt, toolbox, shard: dict,
     return last, max_steps
 
 
-def _raw_calls(resp: dict) -> list[dict]:
-    """把统一后的 tool_calls 还原成 OpenAI 形状，回填给 messages。
+def _encode_calls(provider, resp: dict) -> list[dict]:
+    """让 provider 自己决定 assistant 消息里 tool_calls 的形状。
 
-    多数兼容端点要求 assistant 消息里的 tool_calls 与随后的 tool 消息
-    id 对得上，所以这里必须原样带上 id。
+    OpenAI 兼容端点要 arguments 是JSON字符串，Ollama 要dict。
+    写死一种就会在另一家上第二步必炸——而且症状极具误导性
+    （"模型生成的JSON坏了"），实际是我们回填的格式不对。
+    没有该方法的桩provider退回OpenAI形状（兼容旧桩）。
     """
+    enc = getattr(provider, "encode_assistant_tool_calls", None)
+    if callable(enc):
+        return enc(resp.get("tool_calls") or [])
+    return _raw_calls(resp)
+
+
+def _raw_calls(resp: dict) -> list[dict]:
+    """OpenAI 形状（兼容端点用）。给没有 encode 方法的桩provider兜底。"""
     out = []
     for c in resp.get("tool_calls") or []:
         out.append({"id": c["id"], "type": "function",

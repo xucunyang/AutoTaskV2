@@ -41,7 +41,6 @@ def test_route_reads_complexity_from_plain_dict():
     assert got["medium"] != got["complex"], "复杂度没被读到，都路由到同一个模型"
     assert got["medium"] == "flash" and got["complex"] == "pro"
 
-
 def test_route_reads_privacy_from_plain_dict():
     ctx = _shipped_ctx()
     r = gateway.route({"complexity": "complex", "privacy": "secret"}, ctx)
@@ -75,11 +74,15 @@ def test_full_task_dict_routes_correctly():
     assert gateway.route({**task, "complexity": "medium"}, ctx)["model"] == "flash"
 
 
-def test_dict_without_complexity_key_falls_back_to_default_model():
-    """真的缺字段时走 default_model（不指local，避免静默降级到小模型）。"""
+def test_dict_without_complexity_key_is_treated_as_simple():
+    """真的缺 complexity 字段时按 simple 处理（保守），不是按在线兜底。
+    注意这与 default_model 无关：simple 在配置里本来就映射到 local。
+    """
     ctx = _shipped_ctx()
-    r = gateway.route({"privacy": "public"}, ctx)
-    assert r["model"] == ctx["default_model"] != "local"
+    got = gateway.route({"privacy": "public"}, ctx)
+    assert got["model"] == gateway.route(
+        {"complexity": "simple", "privacy": "public"}, ctx)["model"]
+    assert got["model"] == ctx["complexity_models"]["simple"]
 
 
 # ---------------------------------------------------------------- Bug 2
