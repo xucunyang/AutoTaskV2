@@ -71,9 +71,24 @@ def test_shipped_env_example_is_valid():
     text = ex.read_text(encoding="utf-8")
     keys = [ln.split("=", 1)[0].strip() for ln in text.splitlines()
             if "=" in ln and not ln.strip().startswith("#")]
-    for must in ("ONLINE_BASE_URL", "ONLINE_MODEL", "ONLINE_API_KEY",
-                 "TAVILY_API_KEY"):
+    # 键名必须和 config/gateway.yaml 里 ${VAR} 引用的一致：
+    # 模板写 ONLINE_MODEL 而 yaml 要 ONLINE_FLASH_MODEL 时，model 字段会被展开成
+    # 空字符串，表现为在线模型"不存在"——换设备的人第一个踩的坑。
+    for must in ("ONLINE_BASE_URL", "ONLINE_FLASH_MODEL", "ONLINE_PRO_MODEL",
+                 "ONLINE_API_KEY", "TAVILY_API_KEY"):
         assert must in keys, f".env.example 缺 {must}"
+    assert "ONLINE_MODEL" not in keys, "ONLINE_MODEL 已废弃，gateway.yaml 不引用它"
+
+    # 引用有两种写法：模型名用 ${VAR}，密钥用 api_key_env: VAR；密钥分属
+    # gateway.yaml（模型）和 search.yaml（检索）。ALERT_WEBHOOK_URL 由
+    # core/notifier.py 直接读环境变量，不走 config，所以不在此校验。
+    cfgs = "\n".join((root / "config" / n).read_text(encoding="utf-8")
+                     for n in ("gateway.yaml", "search.yaml"))
+    for var in keys:
+        if var == "ALERT_WEBHOOK_URL":
+            continue
+        assert (f"${{{var}}}" in cfgs or f"api_key_env: {var}" in cfgs), \
+            f"{var} 在 .env 里但没有任何 config 引用它"
     # 模板里不能写真 key
     assert "sk-sk" not in text and "tvly-tvly" not in text
 
