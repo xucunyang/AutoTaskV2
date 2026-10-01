@@ -26,4 +26,7 @@ orchestrator/artifacts/
 # 这不是产物，是垃圾——模型自己验产物时顺手造的。
 orchestrator/tools/
 # reports/ 不忽略：chaos_*.log 与 smoke_*.log 是验收证据，要留。
+# 但 alerts.jsonl 是运行时追加的日志，每次真跑都会变——它进仓库只会
+# 让每轮 diff 里混进噪音，不该入库。
+orchestrator/reports/alerts.jsonl
 # 只想忽略每日产物的话用 orchestrator/reports/*.md 精确规则。

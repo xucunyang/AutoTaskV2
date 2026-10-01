@@ -354,6 +354,17 @@ def test_build_rejects_unknown_provider():
         sb.build({"provider": "nope"})
 
 
+def test_removed_providers_are_truly_gone():
+    """Exa/Bing 曾以 NotImplementedError 桩的形式留着——配置里写
+    provider: bing 不会在启动时报错，而是运行时才炸。
+    用户确认只要 Tavily+博查两家，桩已删。这里钉住"删干净了"，
+    免得有人又把桩加回来。"""
+    assert sorted(sb.PROVIDERS) == ["bocha", "tavily"]
+    for ghost in ("exa", "bing"):
+        with pytest.raises(ValueError, match="unknown_search_provider"):
+            sb.build({"provider": ghost})
+
+
 def test_bocha_is_available_and_parsed(monkeypatch):
     """博查响应兼容Bing格式（data.webPages.value）。"""
     payload = {"data": {"webPages": {"value": [

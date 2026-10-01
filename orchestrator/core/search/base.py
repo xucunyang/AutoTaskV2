@@ -127,24 +127,11 @@ def _parse_bocha(data: dict, top_k: int) -> list[SearchResult]:
     return out
 
 
-class ExaProvider(SearchProvider):
-    """预留桩：接口已定，实现待接。"""
-    name = "exa"
-
-    def search(self, query: str, top_k: int = 8) -> list[SearchResult]:
-        raise NotImplementedError("exa_not_implemented")
-
-
-class BingProvider(SearchProvider):
-    """预留桩：接口已定，实现待接。"""
-    name = "bing"
-
-    def search(self, query: str, top_k: int = 8) -> list[SearchResult]:
-        raise NotImplementedError("bing_not_implemented")
-
-
-PROVIDERS = {p.name: p for p in (TavilyProvider, BochaProvider, ExaProvider,
-                                 BingProvider)}
+# 就两家，不留"以后再接"的桩。Exa/Bing 曾以 NotImplementedError 桩的形式
+# 留在 PROVIDERS 里——于是配置里写 provider: bing 不会报错，
+# 而是**运行时**才炸。配置里能选一个必崩的选项，本身就是个坑。
+# 将来真要第三家时再加类+注册，一共两处。
+PROVIDERS = {p.name: p for p in (TavilyProvider, BochaProvider)}
 
 
 def build(cfg: dict, env=None) -> SearchProvider:
@@ -177,7 +164,8 @@ def build(cfg: dict, env=None) -> SearchProvider:
     try:
         return cls(**kw)
     except TypeError:
-        # 桩provider（Exa/Bing）构造签名不同，退回只传timeout
+        # 兼容备用构造：只传 timeout。当前两家都支持全参数，
+        # 这条是保险丝不是主路。
         return cls(timeout_s=kw["timeout_s"])
 
 

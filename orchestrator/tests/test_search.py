@@ -280,12 +280,20 @@ def test_build_provider_from_config():
         build({"provider": "nope"})
 
 
-def test_stub_providers_raise_not_implemented():
-    from core.search.base import BingProvider, ExaProvider
-    with pytest.raises(NotImplementedError):
-        ExaProvider().search("q")
-    with pytest.raises(NotImplementedError):
-        BingProvider().search("q")
+def test_removed_stub_providers_stay_removed():
+    """Exa/Bing 桩已删（用户确认只留 Tavily+博查）。
+
+    原来这里断言的是"桩抛 NotImplementedError"——那等于给"配置里能选
+    一个必崩的选项"背书。现在断言反过来：它们必须**不存在**，
+    配置里写了也要在 build() 就明确报错，而不是运行时才炸。
+    """
+    import core.search.base as base
+    assert not hasattr(base, "ExaProvider"), "Exa桩回来了"
+    assert not hasattr(base, "BingProvider"), "Bing桩回来了"
+    with pytest.raises(ValueError, match="unknown_search_provider"):
+        base.build({"provider": "exa"})
+    with pytest.raises(ValueError, match="unknown_search_provider"):
+        base.build({"provider": "bing"})
 
 
 def test_tavily_requires_api_key(monkeypatch):
