@@ -460,7 +460,127 @@ def test_all_rules_pass_goes_done(tmp_path):
     assert s.get_task("p1", "t1")["status"] == "DONE"
 
 
+def test_coverage_matches_keywords_not_verbatim(tmp_path):
+    """coverage 按实质关键词重叠判，不要求逐字抄题。
+
+    之前要求"问题原文出现在报告里"或"标题以前12字开头"——
+    但 key_questions 是完整疑问句（77字、结尾是"是什么？"），
+    自然标题是陈述短语，两者天然对不上。按原文匹配等于奖励复制粘贴。
+    """
+    from core import verifier as vf
+    q = ("截至2026年9月30日，中国现行房贷相关政策（LPR、公积金利率、"
+         "存量房贷调整）的具体内容、生效时间与适用口径是什么？")
+    report = ("# 一、现行房贷政策内容\nLPR 维持 3.50%。"
+              "公积金利率 2.6%。存量房贷调整已落地。生效时间与适用口径见下表。")
+    keys = vf._question_keywords(q)
+    assert "LPR" in keys and "公积金利率" in keys
+    assert not any("是什么" in k for k in keys), f"疑问词没去掉: {keys}"
+    d = tmp_path / "artifacts" / "2026-09-30"
+    d.mkdir(parents=True)
+    (d / "t1.sources.json").write_text("[]", encoding="utf-8")
+    (d / "t1.claims.json").write_text("[]", encoding="utf-8")
+    (d / "t1.report.md").write_text(report, encoding="utf-8")
+    ctx = {"root": tmp_path, "date": "2026-09-30", "task_id": "t1", "shard": {}}
+    res = vf.h_coverage(ctx, {"type": "coverage", "rule_id": "c",
+                              "key_questions": [q]})
+    assert res["ok"] is True, f"实质覆盖却判失败: {res}"
+
+
+def test_coverage_rejects_truly_missing_question(tmp_path):
+    """放宽匹配不能变成"什么都过"：完全没提的必须挂。"""
+    from core import verifier as vf
+    d = tmp_path / "artifacts" / "2026-09-30"
+    d.mkdir(parents=True)
+    (d / "t1.sources.json").write_text("[]", encoding="utf-8")
+    (d / "t1.claims.json").write_text("[]", encoding="utf-8")
+    (d / "t1.report.md").write_text("# 报告\n今天天气不错。\n",
+                                    encoding="utf-8")
+    ctx = {"root": tmp_path, "date": "2026-09-30", "task_id": "t1", "shard": {}}
+    res = vf.h_coverage(ctx, {
+        "type": "coverage", "rule_id": "c",
+        "key_questions": ["房贷利率与公积金政策的内容是什么？"]})
+    assert res["ok"] is False
+    assert res["missing"], "没说缺哪个等于没验"
+
+
 def test_does_not_short_circuit(tmp_path):
+    """不短路：一条FAIL也要把剩下的跑完，否则不知道还错几处。"""
+    root = _root(tmp_path)
+    s = Store(root)
+    s.ensure_plan("p1")
+    rules = [{"type": "file_exists", "path": f"artifacts/{DATE}/a.csv", "rule_id": "r0"},
+             {"type": "file_exists", "path": f"artifacts/{DATE}/b.csv", "rule_id": "r1"},
+             {"type": "file_exists", "path": f"artifacts/{DATE}/c.csv", "rule_id": "r2"}]
+    _add(s, "t1", acceptance=rules)
+    _art(root, f"artifacts/{DATE}/b.csv")     # 只让r1过
+    _to_verifying(s, "p1", "t1")
+    vo.verify(s, "p1", "t1", "r", date=DATE)
+    t = s.get_task("p1", "t1")
+    results = t["verify_progress"]["last_results"]
+    assert len(results) == 3
+    assert {r["rule_id"] for r in results if r["ok"]} == {"r1"}
+
+
+def test_load_four_set_prefers_declared_outputs_over_date_dir(tmp_path):
+    """验收按任务声明的 outputs 找文件，不按 ctx 日期猜目录。
+
+    真实案例：补跑 2026-09-30 的 plan，outputs 里是 artifacts/2026-09-30/，
+    但任务今天入队，ctx date 是今天。按日期找会报 no_sources_json，
+    而文件明明就在声明的路径下。
+    """
+    from core import verifier as vf
+    d = tmp_path / "artifacts" / "2026-09-30"
+    d.mkdir(parents=True)
+    (d / "t1.sources.json").write_text(json.dumps([
+        {"source_id": "s1", "url": "https://a.com", "title": "T",
+         "tier": "A", "source_tier": "A", "tier_reason": "官方",
+         "published_at": "2026-09-01T00:00:00+00:00"}]), encoding="utf-8")
+    (d / "t1.claims.json").write_text(json.dumps([
+        {"claim_id": "c1", "text": "x", "source_ids": ["s1"]}]),
+        encoding="utf-8")
+    (d / "t1.report.md").write_text("# 报告\n", encoding="utf-8")
+    # ctx 日期是"今天"，与文件目录不同
+    ctx = {"root": tmp_path, "date": "2026-10-01", "task_id": "t1",
+           "shard": {"outputs": [
+               "artifacts/2026-09-30/t1.sources.json",
+               "artifacts/2026-09-30/t1.claims.json",
+               "artifacts/2026-09-30/t1.report.md"]}}
+    sources, claims, report = vf._load_four_set(ctx, "t1")
+    assert len(sources) == 1 and len(claims) == 1 and report.startswith("# 报告")
+
+
+def test_load_four_set_falls_back_to_date_dir(tmp_path):
+    """没有声明 outputs 时回退到惯例路径（老行为不能丢）。"""
+    from core import verifier as vf
+    d = tmp_path / "artifacts" / "2026-10-01"
+    d.mkdir(parents=True)
+    (d / "t1.sources.json").write_text(json.dumps([
+        {"source_id": "s1", "url": "https://a.com", "title": "T",
+         "tier": "A", "source_tier": "A", "tier_reason": "官方",
+         "published_at": "2026-09-01T00:00:00+00:00"}]), encoding="utf-8")
+    (d / "t1.claims.json").write_text(json.dumps([
+        {"claim_id": "c1", "text": "x", "source_ids": ["s1"]}]),
+        encoding="utf-8")
+    (d / "t1.report.md").write_text("# 报告\n", encoding="utf-8")
+    ctx = {"root": tmp_path, "date": "2026-10-01", "task_id": "t1",
+           "shard": {}}
+    sources, claims, report = vf._load_four_set(ctx, "t1")
+    assert len(sources) == 1 and len(claims) == 1
+
+
+def test_load_four_set_ignores_other_tasks_files(tmp_path):
+    """只认以 {task_id}.suffix 结尾的声明，避免把别的任务文件算进来。"""
+    from core import verifier as vf
+    d = tmp_path / "artifacts" / "2026-09-30"
+    d.mkdir(parents=True)
+    (d / "t2.sources.json").write_text(json.dumps([
+        {"source_id": "s9", "url": "https://z.com", "title": "Z",
+         "tier": "B", "published_at": "2026-09-01T00:00:00+00:00"}]),
+        encoding="utf-8")
+    ctx = {"root": tmp_path, "date": "2026-10-01", "task_id": "t1",
+           "shard": {"outputs": ["artifacts/2026-09-30/t2.sources.json"]}}
+    sources, _, _ = vf._load_four_set(ctx, "t1")
+    assert sources == [], f"读到了别的任务的文件: {sources}"
     """不短路：一条FAIL也要把剩下的跑完，否则不知道还错几处。"""
     root = _root(tmp_path)
     s = Store(root)

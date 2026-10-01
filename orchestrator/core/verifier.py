@@ -198,8 +198,28 @@ def h_business_rule(ctx: dict, rule: dict) -> dict:
 # ---------- 调研质量 4 handlers（§2.2b） ----------
 
 def _load_four_set(ctx: dict, task_id: str) -> tuple[list, list, str]:
-    d = Path(ctx["root"]) / "artifacts" / ctx["date"]
-    src, clm, rep = d / f"{task_id}.sources.json", d / f"{task_id}.claims.json", d / f"{task_id}.report.md"
+    """读四件套。路径优先按任务**声明的 outputs** 找，找不到才回退到惯例路径。
+
+    为什么不能只按 `artifacts/{date}/` 找：outputs 里的日期是 planner
+    填的**逻辑日期**（如补跑 2026-09-30 的 plan），而 ctx["date"] 是
+    任务入队日或今天。两者不一致时——补跑历史日期必现——验收会报
+    no_sources_json，而文件明明就在声明的路径下躺着。
+    按声明找是最直接的：模型就是往那些路径写的。
+    """
+    root = Path(ctx["root"])
+    declared = [str(o) for o in (ctx.get("shard") or {}).get("outputs") or []]
+
+    def _pick(suffix: str) -> Path:
+        want = f"{task_id}{suffix}"
+        for o in declared:
+            # 只认"以 task_id.suffix 结尾"的声明，避免把别的任务文件张冠李戴
+            if o.replace("\\", "/").endswith("/" + want) or o == want:
+                return root / o.replace("\\", "/")
+        d = Path(ctx["root"]) / "artifacts" / ctx["date"]
+        return d / want
+
+    src, clm, rep = (_pick(".sources.json"), _pick(".claims.json"),
+                     _pick(".report.md"))
     sources = json.loads(src.read_text(encoding="utf-8")) if src.exists() else []
     claims = json.loads(clm.read_text(encoding="utf-8")) if clm.exists() else []
     report = rep.read_text(encoding="utf-8", errors="ignore") if rep.exists() else ""
@@ -327,6 +347,36 @@ def h_source_quality(ctx: dict, rule: dict) -> dict:
                       f"{len(sources) - len(counted)})"}
 
 
+def _question_keywords(q: str) -> list[str]:
+    """从 key_question 提实质关键词。
+
+    原来要求"问题原文出现在报告里"或"标题以问题前12字开头"——
+    但 key_questions 是完整疑问句（77字、结尾是"是什么？"），
+    而自然的报告标题是陈述短语。两者**天然对不上**，除非模型逐字抄题。
+    按原文匹配等于在奖励"复制粘贴"，而不是"覆盖了问题"。
+    """
+    import re
+    s = str(q or "")
+    # 去掉时间状语前缀（截至...，/截至该时点，）
+    s = re.sub(r"^截至[^，,]*[，,]", "", s)
+    # 去掉疑问尾巴
+    s = re.sub(r"(是什么|是否一致|如何|吗|呢|什么|为什么|有哪些)[？?。]*$", "", s)
+    # 切出中英文词与数字词
+    toks = re.findall(r"[A-Za-z]+|[0-9]+(?:\.[0-9]+)?%?|[\u4e00-\u9fff]{2,}", s)
+    stop = {"中国", "的", "等", "及", "与", "和", "在", "对", "将", "已", "有",
+            "相关", "具体", "内容", "表现", "如何", "是否", "一致", "上述",
+            "该", "时点", "市场", "数据", "政策", "可能", "国家", "方面"}
+    out = []
+    for t in toks:
+        t = t.strip("，,。、；;：:（）()")
+        # 去掉黏着的虚词（"…的具体内容" → "具体内容"，再被 stop 滤掉）
+        t = re.sub(r"^(的|之|等|与|和|在|对|及)+", "", t)
+        t = re.sub(r"(的|等|与|和|情况|问题)+$", "", t)
+        if len(t) >= 2 and t not in stop and t not in out:
+            out.append(t)
+    return out
+
+
 def h_coverage(ctx: dict, rule: dict) -> dict:
     """key_questions逐条检查report.md有无对应非空section。"""
     task_id = ctx["task_id"]
@@ -342,9 +392,25 @@ def h_coverage(ctx: dict, rule: dict) -> dict:
         head = str(q).strip()
         if not head:
             continue
-        # 按标题或显式标注两种方式匹配
-        if head not in report and f"[{head}]" not in report and \
-                not re.search(r"^#{1,6}\s*.*" + re.escape(head[:12]), report, re.M):
+        # 1) 原文出现即算（模型逐字抄题的情况）
+        if head in report:
+            continue
+        # 2) 短问题（<=6字）只认原文或标题前缀：它们本身就是标题级别的短语，
+        # 关键词重叠对它们太粗——"要点2"和"要点1"共享"要点"，
+        # 按重叠算会误判为已覆盖。
+        if len(head) <= 6:
+            if not re.search(r"^#{1,6}\s*.*" + re.escape(head),
+                             report, re.M):
+                missing.append(head)
+            continue
+        # 3) 长问题按实质关键词重叠度（见 _question_keywords 的说明）
+        if re.search(r"^#{1,6}\s*.*" + re.escape(head[:12]), report, re.M):
+            continue
+        keys = _question_keywords(head)
+        if not keys:
+            continue
+        hit = sum(1 for k in keys if k in report)
+        if hit / len(keys) < 0.5:
             missing.append(head)
     return {"ok": not missing, "detail": f"unanswered={missing[:5]}",
             "missing": missing}
