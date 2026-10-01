@@ -29,21 +29,24 @@ CFG = yaml.safe_load((Path(__file__).resolve().parents[1]
 # ---------------------------------------------------------------- 已入库配置
 
 def test_shipped_config_routes_complexity_to_named_models():
-    """对着真实 config/gateway.yaml 验：复杂度→模型名的映射如配置所写。
-    这条防止'改了 yaml 但路由没跟上'。"""
+    """真实 config/gateway.yaml 三档都必须路由到已注册的东西，
+    防止"配置写了条路但没通"。"""
     ctx = gateway.build_ctx(CFG)
+    models = set(CFG["models"]) | set(CFG.get("chains") or {})
     for c in ("simple", "medium", "complex"):
-        assert gateway.route(T(c), ctx)["model"] in set(CFG["models"])
-    assert gateway.route(T("medium"), ctx)["model"] == "flash"
-    assert gateway.route(T("complex"), ctx)["model"] == "pro"
-    # simple 回本地：qwen3.5:4b 实测能稳定产出并落盘（方言修好后）。
-    # medium/complex 不能回本地：4B 的长文分析与多轮推理质量不够。
-    assert gateway.route(T("simple"), ctx)["model"] == "local"
+        assert gateway.route(T(c), ctx)["model"] in models
+    # 实际生效的那一跳（链头）必须与原逻辑一致：本地 / 在线快 / 在线强。
+    # MiniMax 默认关着，所以链头就是原来的 provider。
+    assert gateway.route(T("medium"), ctx)["model"] == "medium_chain"
+    assert gateway.route(T("complex"), ctx)["model"] == "complex_chain"
+    # simple 特别轻本地qwen3.5:4b 实测能稳定跑薄tool loop；
+    # medium/complex 仍走在线：4B 的长文分析与多轮推理质量不够。
+    assert gateway.route(T("simple"), ctx)["model"] == "simple_chain"
 
 
 def test_shipped_config_model_entries_are_resolvable():
-    """每个被路由到的模型名都必须在注册表里存在（拼错名字要炸出来）。"""
-    models = set(CFG.get("models") or {})
+    """每档路由结果都必须在注册表或降级链里，不能悬空解析。"""
+    models = set(CFG.get("models") or {}) | set(CFG.get("chains") or {})
     ctx = gateway.build_ctx(CFG)
     for c in ("simple", "medium", "complex"):
         assert gateway.route(T(c), ctx)["model"] in models
@@ -85,7 +88,12 @@ def test_configured_mapping_is_authoritative():
     比没这个配置更糟。"""
     ctx = gateway.build_ctx(CFG)
     r = gateway.route(T("medium"), ctx)
-    assert r["model"] == "flash"
+    # 真实配置下 medium 指向降级链。链的**声明顺序**头是 minimax
+    # （yaml 层），但 minimax 默认 enabled: false，build_models 不会注册它，
+    # 于是实际链塌缩成 [flash]——两层分工不同，这里只断言路由层。
+    assert r["model"] == "medium_chain"
+    assert r["chain"][0] == "minimax"
+    assert r["chain"][-1] == "flash"      # 兜底必须在，且是原来的在线快模型
     assert r["reason"] == "configured_medium"
 
 

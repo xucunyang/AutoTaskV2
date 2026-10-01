@@ -76,6 +76,9 @@ python -m core.orchestrator --root .
 | `ONLINE_FLASH_MODEL` | medium 档模型名 | `gateway.yaml` `flash.model` |
 | `ONLINE_PRO_MODEL` | complex 档模型名 | `gateway.yaml` `pro.model` |
 | `ONLINE_API_KEY` | 在线密钥 | `gateway.yaml` `api_key_env` |
+| `MINIMAX_BASE_URL` | MiniMax 端点（已含 `/v1`） | `gateway.yaml` `minimax.base_url` |
+| `MINIMAX_MODEL` | MiniMax 模型 ID，**区分大小写** | `gateway.yaml` `minimax.model` |
+| `MINIMAX_API_KEY` | MiniMax 密钥 | `gateway.yaml` `api_key_env` |
 | `TAVILY_API_KEY` | 检索源 | `search.yaml` `api_key_env` |
 | `BOCHA_API_KEY` | 博查检索（可选） | 启用时改 `search.yaml` `provider: bocha` |
 | `ALERT_WEBHOOK_URL` | 告警推送（可选） | `core/notifier.py` 直读环境变量 |
@@ -83,12 +86,50 @@ python -m core.orchestrator --root .
 > 填在线模型名时两个都要填。留空不会报错，而是把空串当模型名发出去，表现为"模型不存在"。
 > `tests/test_dotenv.py` 会校验模板与 yaml 的引用对得上，改配置时留意。
 
-### 配置文件
+### 降级链与 MiniMax
+
+`config/gateway.yaml` 的 `chains` 段给每一档配一条"按顺序试"的组合：
+
+```yaml
+chains:
+  simple_chain:  [minimax, local]
+  medium_chain:  [minimax, flash]
+  complex_chain: [minimax, pro]
+```
+
+语义：
+
+- **有额度时**优先走 MiniMax（一个模型吃三档，token 套餐比按量付费划算）
+- **额度耗尽时**自动回到原来的落点：simple→local、medium→flash、complex→pro
+- **每一跳各有独立熔断状态**，某一跳挂掉只影响它自己
+- **只有限流/配额类错误才降级**。模型名写错、上下文超长、鉴权失败**不降级**——换一家也是错的，白白把所有 provider 的熔断都打一遍
+
+MiniMax **默认 `enabled: false`**。没配 key 时它不会被注册，三条链自动塌缩成 `[local]` / `[flash]` / `[pro]`，行为与加它之前完全一致。要启用：
+
+```yaml
+# config/gateway.yaml
+models:
+  minimax:
+    { enabled: true, ... }
+```
+
+```bash
+# .env
+MINIMAX_BASE_URL=https://api.minimax.io/v1
+MINIMAX_MODEL=MiniMax-M3      # 模型 ID 区分大小写
+MINIMAX_API_KEY=<你的key>
+```
+
+降级会留痕：返回结果里带 `served_by`（实际服务的那一跳）和 `fell_from`（被跳过的），所以"这个产物其实是 4B 写的"查得到。
+
+`simple` 档配了 `extra_body: { thinking: { type: disabled } }`——简单任务不需要长思考。厂商特有参数只放行白名单键，yaml 不能变成任意 JSON 注入口。
+
+
 
 | 文件 | 管什么 |
 |---|---|
 | `config/schedule.yaml` | cron、并发档位、governor、租约 TTL、锁存活、老化策略 |
-| `config/gateway.yaml` | 模型注册表、复杂度映射、隐私路由、上下文窗口档位 |
+| `config/gateway.yaml` | 模型注册表、复杂度映射、**降级链**、隐私路由、上下文窗口档位 |
 | `config/search.yaml` | 检索 provider、来源分级 A/B/C 判据、每日额度 |
 | `config/report.yaml` | 报告渲染阈值与 SLA |
 
@@ -262,8 +303,8 @@ python scripts\check_coverage.py --min 85            # 提高门槛
 
 | 项 | 值 |
 |---|---|
-| 测试 | `654 passed` |
-| 覆盖率 | 25 模块平均 91.3%，门槛 80%，单模块也须过线 |
+| 测试 | `690 passed` |
+| 覆盖率 | 25 模块平均 91.4%，门槛 80%，单模块也须过线 |
 | 真实端到端 | `3/3 SUBMITTED`（simple→local / medium→flash / complex→pro） |
 | 200MB 大文件 | 3.44M 行 / 3.80s / 峰值内存增量 0.5MB / 任务卡 702 tokens |
 | 生产环境已修 bug | 18 |

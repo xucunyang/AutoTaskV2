@@ -48,6 +48,47 @@ class CircuitOpen(ProviderError):
     """熔断打开：直接拒绝，不再打模型。"""
 
 
+# 配额/限流类错误的识别。命中这些才允许换下一个 provider——
+# 判据太宽会把"模型名写错了""上下文超长"这类永久性错误也当成限流，
+# 于是一个配置错误被静默降级成"换个模型跑"，跑出来的结果没人知道降过级。
+#
+# 429 是标准限流。但配额型套餐经常不给 429，直接 400/403 + 文本说明，
+# 所以文本也要认。命中即**不重试当前 provider**，交给下一跳。
+LIMIT_STATUS = (429,)
+
+_LIMIT_TEXTS = (
+    "rate limit", "rate_limit", "ratelimit",
+    "too many requests",
+    "quota", "insufficient_quota", "insufficient balance",
+    "insufficient funds", "exceeded your current quota",
+    "package quota", "out of balance", "billing",
+    "resource_exhausted", "try again later",
+)
+
+
+def _norm(text) -> str:
+    return str(text or "").lower()
+
+
+def is_limit_error(err: Exception) -> bool:
+    """这个错误是不是"额度/限流"导致的（值得换下一个 provider）。
+
+    分三类：
+    - 429：标准限流，无条件认
+    - 5xx 之外的 400/402/403 且文本提到额度：配额型套餐的常见形态
+    - CircuitOpen：熔断已经打开 = 这个 provider 现在不可用，换下一跳同样合理
+    """
+    if isinstance(err, CircuitOpen):
+        return True
+    status = getattr(err, "status", None)
+    text = _norm(err)
+    if status in LIMIT_STATUS:
+        return True
+    if status in (400, 402, 403, 500, 502, 503, 529):
+        return any(t in text for t in _LIMIT_TEXTS)
+    return False
+
+
 def _is_cold_start(data: dict) -> bool:
     """ollama 冷启动特征：done_reason="load" 且没算过 prompt。
 
@@ -312,6 +353,10 @@ class OllamaProvider(BaseProvider):
         return self._request(f"{self.base_url}/api/show", {"model": model}, {})
 
 
+# 允许通过配置附加到请求体的厂商特有键。闭集，不接受任意键。
+_EXTRA_BODY_ALLOWLIST = {"thinking"}
+
+
 class OpenAICompatProvider(BaseProvider):
     """OpenAI兼容端点（vLLM/云API都吃这套）。
 
@@ -324,7 +369,7 @@ class OpenAICompatProvider(BaseProvider):
 
     def __init__(self, base_url="", api_key: str = "", model="gpt-4o-mini",
                  path: str = "/v1/chat/completions",
-                 name: str | None = None, **kw):
+                 name: str | None = None, extra_body: dict | None = None, **kw):
         kw.setdefault("max_concurrency", 8)
         super().__init__(base_url=base_url, **kw)
         if name:
@@ -333,6 +378,10 @@ class OpenAICompatProvider(BaseProvider):
         self.model = model
         # 路径可配：DeepSeek是 /chat/completions，标准OpenAI兼容是 /v1/chat/completions
         self.path = path if path.startswith("/") else f"/{path}"
+        # 厂商特有参数（如 MiniMax 的 thinking）。**只放行白名单键**：
+        # 这里是把配置原样拼进请求体，等于给了 yaml 一个任意 JSON 注入的口子。
+        self.extra_body = {k: v for k, v in (extra_body or {}).items()
+                           if k in _EXTRA_BODY_ALLOWLIST}
 
     def chat(self, prompt: str, budget: dict, *, messages: list | None = None,
              tools: list | None = None, model: str | None = None) -> dict:
@@ -349,6 +398,7 @@ class OpenAICompatProvider(BaseProvider):
             if tools:
                 body["tools"] = tools
                 body["tool_choice"] = budget.get("tool_choice", "auto")
+            body.update(self.extra_body)
             data = self._request(f"{self.base_url}{self.path}", body, headers)
             choices = data.get("choices") or [{}]
             msg = choices[0].get("message") or {}
@@ -372,6 +422,140 @@ class OpenAICompatProvider(BaseProvider):
             raise ProviderError(f"{self.name}:failed:{e}") from e
         finally:
             self._sem.release()
+
+
+class FallbackProvider(BaseProvider):
+    """按顺序试多个 provider，前一个额度/限流/熔断就换下一个。
+
+    为什么需要它：MiniMax 这类是**按 token 套餐计费**的通道，额度会
+    按小时/按天耗尽。额度耗尽时任务不该跟着一起死——原来的逻辑
+    （simple→local / medium→flash / complex→pro）本身是好的，
+    只需要在前面多插一个"能用就省钱的"选项。
+
+    三条硬约束：
+    1. **只对限流类错误降级**（见 is_limit_error）。模型名写错、上下文
+       超长、鉴权失败都不该换 provider——那些换过去也一样错，白白
+       把所有 provider 的熔断都打一遍。
+    2. **每一跳各自记账**：熔断/并发闸门留在各自的 provider 上。
+       在这里包一层共用信号量的话，local 的 max_concurrency=1 会
+       连带限死在付费通道上。
+    3. **降级必须留痕**：返回结果里带 served_by 和 fell_from，
+       否则"这个任务其实是用 4B 跑的"只有查日志才知道，
+       而产物质量下降恰恰就是这样发生的。
+
+    attempts 记录每个任务实际试过几跳，供告警与容量判断使用。
+    """
+
+    name = "fallback"
+
+    def __init__(self, chain: list, name: str | None = None):
+        # 刻意不调 super().__init__：自己的并发闸门会跨 provider 生效，
+        # 每跳的闸门已经各自存在了。这里只借它的属性名。
+        self.name = name or "fallback"
+        self.chain = [p for p in (chain or []) if p is not None]
+        if not self.chain:
+            raise ValueError("FallbackProvider 需要至少一个 provider")
+        self.calls = 0
+        self.failures = 0
+        self.p50_ms: list[float] = []
+        self.last_permanent = ""
+        self.attempts: list[dict] = []
+
+    @property
+    def primary(self):
+        return self.chain[0]
+
+    def _names(self) -> list[str]:
+        return [getattr(p, "name", "?") for p in self.chain]
+
+    def chat(self, prompt: str, budget: dict, **kw) -> dict:
+        tried: list[str] = []
+        last: Exception | None = None
+        for i, p in enumerate(self.chain):
+            tried.append(getattr(p, "name", "?"))
+            try:
+                out = p.chat(prompt, budget, **kw)
+            except Exception as e:      # noqa: BLE001
+                last = e
+                is_last = i == len(self.chain) - 1
+                if is_last or not is_limit_error(e):
+                    # 最后一跳或不可降级的错误：原样抛出，让上层按
+                    # 既有语义处理（RETRY/FAILED/死信），不做额外包装。
+                    self.attempts.append({"chain": self._names(),
+                                          "tried": tried,
+                                          "served_by": None,
+                                          "reason": "exhausted" if is_last
+                                          else "non_limit_error"})
+                    raise
+                continue
+            self.calls += 1
+            self.p50_ms.append(getattr(p, "p50_ms", [0.0])[-1]
+                               if getattr(p, "p50_ms", None) else 0.0)
+            self.attempts.append({"chain": self._names(), "tried": tried,
+                                  "served_by": getattr(p, "name", "?"),
+                                  "reason": "fallback" if i else "primary"})
+            out["served_by"] = getattr(p, "name", "?")
+            if i:
+                # 记清降级事实：产物是低档模型写的
+                out["fell_from"] = tried[:-1]
+            return out
+        raise ProviderError(f"{self.name}:no_provider_left:{last}")
+
+    def health(self) -> dict:
+        """熔断状态取**下一跳**的——它才是现在真正会接流量的那个。
+
+        用第一跳的健康度会有个具体的坏后果：额度耗尽后第一跳持续
+        熔断，于是 latency_guard 看到 fails 达标就把流量全切走，
+        而此时后面的 provider 明明是好的。
+        """
+        nxt = next((p for p in self.chain if not p.health().get("circuit_opened")),
+                   self.chain[-1])
+        h = dict(nxt.health())
+        h["ok"] = any(p.health().get("ok") for p in self.chain)
+        h["chain"] = self._names()
+        h["chain_health"] = {getattr(p, "name", "?"): p.health()
+                             for p in self.chain}
+        return h
+
+    def show(self, model: str) -> dict:
+        """动态窗口探测：谁支持 show() 就用谁。"""
+        for p in self.chain:
+            fn = getattr(p, "show", None)
+            if callable(fn):
+                return fn(model)
+        raise ProviderError(f"{self.name}:no_show_capability")
+
+    def encode_assistant_tool_calls(self, calls: list) -> list[dict]:
+        """按**实际服务的那一跳**的方言回填。
+
+        不能一律用 OpenAI 形状：链里混了 ollama 时 arguments 要 dict，
+        给字符串会 400（"can't find closing '}' symbol"），症状看起来
+        像"模型生成的 JSON 坏了"，查错方向完全跑偏。
+        降级发生时上一跳是谁已经变了，所以要问 provider 本人。
+        """
+        enc = getattr(self.primary, "encode_assistant_tool_calls", None)
+        if callable(enc):
+            return enc(calls)
+        return [{"id": c["id"], "type": "function",
+                 "function": {"name": c["name"],
+                              "arguments": json.dumps(c["arguments"],
+                                                      ensure_ascii=False)}}
+                for c in calls]
+
+    def __getattr__(self, item):
+        """把没定义的方法/属性转给当前服务的那一跳。
+
+        context.py 之类的地方会问 provider 要 model / name 之类的东西。
+        没有这个转发的话，链能 chat 但探测、报账就都断了——
+        而且报错是 AttributeError，看起来像 provider 写坏了。
+        只在正常属性查找失败时触发，不影响显式定义的方法。
+        """
+        if item.startswith("_"):
+            raise AttributeError(item)
+        primary = self.__dict__.get("chain", [None])[0]
+        if primary is None:
+            raise AttributeError(item)
+        return getattr(primary, item)
 
 
 def _expand(value, env) -> str:
@@ -421,12 +605,44 @@ def build_models(cfg: dict, env=None) -> dict:
                 think=p.get("think"), **kw)
         elif ptype == "openai_compat":
             akey = p.get("api_key_env")
+            api_key = env.get(akey, "") if akey else ""
+            # 没配 key 的在线 provider 直接不注册。注册一个 key 为空的
+            # provider 更糟：它会被路由选中，然后在第一次调用时 401，
+            # 熔断、退避、fallback 全部为一次"其实压根没配"的错误买单。
+            # 不注册 = 路由看不到它 = 直接走链上下一个，行为正确且安静。
+            if akey and not api_key:
+                continue
             out[name] = OpenAICompatProvider(
                 name=name, base_url=base,
-                api_key=env.get(akey, "") if akey else "",
+                api_key=api_key,
                 model=_expand(p.get("model"), env),
-                path=_expand(p.get("path", "/v1/chat/completions"), env), **kw)
+                path=_expand(p.get("path", "/v1/chat/completions"), env),
+                extra_body=p.get("extra_body") or None, **kw)
+
+    for cname, chain in (cfg.get("chains") or {}).items():
+        """chains: {名字: [优先…, 兜底…]}。按顺序试，限流就换下一跳。"""
+        if not chain:
+            continue
+        picked = [out[n] for n in chain if n in out]
+        # 链里点名要用的 provider 没能注册（缺 key / disabled）——必须记下来。
+        # 否则"链没生效"只能靠猜：现象是额度用完了却没回落到兜底那一跳，
+        # 而配置看上去完全正确。
+        # 注意拿 out 的**键**比对，别拿 provider 对象比字符串（那样永远不等，
+        # 已注册的成员也会被误报成 skip）。
+        skipped = [n for n in chain if n not in out]
+        if skipped:
+            import sys
+            print(f"[gateway] chain {cname}: skip {skipped} "
+                  f"(disabled or missing api key); effective={_chain_names(picked)}",
+                  file=sys.stderr)
+        if not picked:
+            continue
+        out[cname] = FallbackProvider(picked, name=cname)
     return out
+
+
+def _chain_names(providers: list) -> list[str]:
+    return [getattr(p, "name", "?") for p in providers]
 
 
 def build_models_from_config(root, env=None) -> dict:

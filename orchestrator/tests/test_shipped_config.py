@@ -97,17 +97,57 @@ def test_gateway_config_complexity_mapping_is_complete():
 
     少配一档会静默落到 default_model（而 default_model 不指 local，
     所以表现是"复杂任务用了便宜模型"而不是报错）。
+
+    指向可以是一个 provider，也可以是 chains 里的降级链名——但链上
+    每个成员都必须是已注册的 provider。链成员拼错不会在运行时立刻炸
+    （build_models 会跳过没注册的），而是整条链少一档兜底，属静默失真。
     """
     data = yaml.safe_load((CONFIG_DIR / "gateway.yaml").read_text(
         encoding="utf-8"))
     models = data.get("models") or {}
+    chains = data.get("chains") or {}
     cm = data.get("complexity_models") or {}
     for c in ("simple", "medium", "complex"):
         assert c in cm, f"complexity_models 缺 {c}（会静默落到 default_model）"
-        assert cm[c] in models, f"{c} 指向未注册的模型 {cm[c]!r}"
+        target = cm[c]
+        if target in chains:
+            for m in chains[target]:
+                assert m in models, \
+                    f"{c} 的链 {target!r} 里有未注册的成员 {m!r}（会被静默跳过）"
+            assert chains[target], f"{c} 的链 {target!r} 是空的"
+        else:
+            assert target in models, f"{c} 指向未注册的模型 {target!r}"
     assert data.get("default_model") in models
     assert data.get("default_model") != "local", \
         "default_model 指向 local = 静默降级到小模型"
+
+
+def test_gateway_chains_end_with_a_registered_fallback():
+    """每条链的**最后一跳**必须是已注册的 provider。
+
+    链尾没有兜底 = 额度耗尽时整批任务一起进死信，那就不叫降级链了。
+    """
+    data = yaml.safe_load((CONFIG_DIR / "gateway.yaml").read_text(
+        encoding="utf-8"))
+    models = data.get("models") or {}
+    chains = data.get("chains") or {}
+    assert chains, "降级链全空 = 配了 chains 却不起作用"
+    for name, chain in chains.items():
+        assert chain, f"链 {name!r} 是空的"
+        assert chain[-1] in models, \
+            f"链 {name!r} 最后一跳 {chain[-1]!r} 未注册 = 没有兜底"
+        assert len(chain) == len(set(chain)), f"链 {name!r} 有重复成员"
+
+
+def test_gateway_minimax_is_off_by_default():
+    """MiniMax 默认不启用：没配 key 时行为必须与加它之前完全一致。
+
+    它是"有额度就省钱"的优化通道，不该在用户还没主动配 key 时
+    就改变默认路由。
+    """
+    data = yaml.safe_load((CONFIG_DIR / "gateway.yaml").read_text(
+        encoding="utf-8"))
+    assert (data["models"].get("minimax") or {}).get("enabled") is False
 
 
 def test_load_cfg_does_not_swallow_silently(tmp_path):

@@ -33,6 +33,26 @@ models:
       max_concurrency: 1,
       slo_p50_ms: 15000,
     }
+  # MiniMax：按 token 套餐计费的通道，一个模型吃 simple/medium/complex 三档。
+  # 放在 chains 最前面 = 有额度时优先用它（套餐比按量付费划算）；
+  # 额度耗尽时熔断/限流，FallbackProvider 自动回到下面的 flash/pro/local。
+  #
+  # 默认 enabled: false —— 没配 MINIMAX_API_KEY 时不注册它，
+  # 行为与加它之前完全一致（见 build_models 里"缺 key 就不注册"）。
+  # 要启用改成 true 并在 .env 填 key。
+  minimax:
+    {
+      type: openai_compat,
+      base_url: "${MINIMAX_BASE_URL}",
+      api_key_env: MINIMAX_API_KEY,
+      model: "${MINIMAX_MODEL}",
+      path: /v1/chat/completions,   # base_url 已含 /v1，这里只补段
+      context_window: null,        # 走 context_profiles 按模型名估
+      timeout_s: 180,
+      enabled: false,
+      max_concurrency: 4,
+      extra_body: { thinking: { type: "disabled" } },  # 简单任务不需要长思考
+    }
   # 快模型：适合 medium 及以下的批量活
   flash:
     {
@@ -70,7 +90,30 @@ complexity_models:
   # 文件也真写出来了，到第二步才400，看上去像"模型JSON生成坏了"。
   # 修好方言后本地可用：qwen3.5:4b 能稳定产出并落盘。
   # medium/complex 仍走在线：4B 的长文分析与多轮推理质量不够。
-  { simple: local, medium: flash, complex: pro }
+  # 注意：这里指向的是下面 chains 里的链名，不是单个 provider。
+  # 链在 minimax 没配 key 时会自动塌缩成原来的 local/flash/pro，
+  # 所以启用 minimax 不需要改这一行——只改 chains 的成员顺序即可。
+  { simple: simple_chain, medium: medium_chain, complex: complex_chain }
+
+# ---------------------------------------------------------------------------
+# 降级链：每一档一个"按顺序试"的组合。第一个能用就用它，额度/限流/熔断
+# 就换下一个，最后一跳还不行才把错误抛给上层（走既有 RETRY/死信逻辑）。
+#
+# 下面这套配法等价于：**加了 MiniMax 之后的最终行为**
+#   minimax 关着 → 与改动前完全一致（链里缺 key 的成员自动被跳过）
+#   minimax 开着 → 三档都优先走 MiniMax，额度耗尽自动回到原逻辑
+#     simple : minimax → local  （原逻辑：本地）
+#     medium : minimax → flash  （原逻辑：在线快模型）
+#     complex: minimax → pro    （原逻辑：在线强模型）
+#
+# 为什么保留原 provider 而不是直接换成 MiniMax：套餐额度是按小时/按天
+# 耗尽的，耗尽时如果链上没有兜底，整批任务会一起进死信。
+# 链上每一跳都有独立的熔断状态，某一跳挂掉只影响它自己。
+# ---------------------------------------------------------------------------
+chains:
+  simple_chain:  [minimax, local]
+  medium_chain:  [minimax, flash]
+  complex_chain: [minimax, pro]
 
 # 隐私强制覆盖：secret 任务不外发，无论复杂度都走这里指定的模型
 privacy_models:

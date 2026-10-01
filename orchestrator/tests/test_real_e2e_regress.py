@@ -39,7 +39,10 @@ def test_route_reads_complexity_from_plain_dict():
     got = {c: gateway.route({"complexity": c, "privacy": "public"}, ctx)["model"]
            for c in ("simple", "medium", "complex")}
     assert got["medium"] != got["complex"], "复杂度没被读到，都路由到同一个模型"
-    assert got["medium"] == "flash" and got["complex"] == "pro"
+    assert got["medium"] == "medium_chain" and got["complex"] == "complex_chain"
+    # 链的兜底成员仍是原来的在线模型：换上游不该悄悄改掉降级后的落点
+    assert gateway.route({"complexity": "medium", "privacy": "public"},
+                         ctx)["chain"][-1] == "flash"
 
 def test_route_reads_privacy_from_plain_dict():
     ctx = _shipped_ctx()
@@ -52,7 +55,9 @@ def test_route_works_for_objects_too():
     class Shard:
         complexity = "complex"
         privacy = "public"
-    assert gateway.route(Shard(), _shipped_ctx())["model"] == "pro"
+    r = gateway.route(Shard(), _shipped_ctx())
+    assert r["model"] == "complex_chain"
+    assert r["chain"][-1] == "pro"     # 兜底仍是原来的在线强模型
 
 
 def test_full_task_dict_routes_correctly():
@@ -70,8 +75,10 @@ def test_full_task_dict_routes_correctly():
         "shard": {"complexity": "complex", "privacy": "public",
                   "objective": "x", "outputs": []},
     }
-    assert gateway.route(task, ctx)["model"] == "pro"
-    assert gateway.route({**task, "complexity": "medium"}, ctx)["model"] == "flash"
+    rc = gateway.route(task, ctx)
+    rm = gateway.route({**task, "complexity": "medium"}, ctx)
+    assert rc["model"] == "complex_chain" and rc["chain"][-1] == "pro"
+    assert rm["model"] == "medium_chain" and rm["chain"][-1] == "flash"
 
 
 def test_dict_without_complexity_key_is_treated_as_simple():

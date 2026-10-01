@@ -118,6 +118,19 @@ class CapabilityMatch(RoutePolicy):
         online = ctx.get("online_model_name") or ctx.get("default_model")
         explicit = (ctx.get("complexity_models") or {}).get(complexity)
         if explicit:
+            chain = (ctx.get("chains") or {}).get(explicit)
+            if chain:
+                # 链成员里含 local 且本地窗口不够 → 整条链换在线。
+                # 原来只判 `explicit == local_model_name`，链出现后这个
+                # 等式永远不成立，本地窗口不足就没人拦了：请求会带着
+                # 装不下的上下文打给 4B，然后超限失败——降级链解决的是
+                # 额度问题，不是上下文装不下的���题。
+                local_n = ctx.get("local_model_name")
+                if local_n and local_n in chain and ctx.get("local_usable") is False:
+                    return {"model": online, "reason": "local_window_insufficient"}
+                return {"model": explicit,
+                        "reason": f"configured_{complexity}",
+                        "chain": list(chain)}
             if explicit == ctx.get("local_model_name") and ctx.get("local_usable") is False:
                 return {"model": online, "reason": "local_window_insufficient"}
             return {"model": explicit,
@@ -180,6 +193,9 @@ def build_ctx(cfg: dict | None = None, **over) -> dict:
         ctx["local_model_name"] = local_name
         ctx["online_model_name"] = online_name
         ctx["complexity_models"] = dict(cfg.get("complexity_models") or {})
+        # 降级链原样带进 ctx：路由要判断"这条链里有没有 local"，
+        # 以便本地窗口不足时整条链换在线。
+        ctx["chains"] = {k: list(v or []) for k, v in (cfg.get("chains") or {}).items()}
         ctx["default_model"] = cfg.get("default_model") or online_name
         # 隐私强制模型：配置里没写就退回本地（不能外发）
         sec = dict(cfg.get("privacy_models") or {}).get("secret")
