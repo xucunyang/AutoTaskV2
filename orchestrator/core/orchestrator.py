@@ -321,7 +321,19 @@ class Orchestrator:
         return st
 
     def dispatch_split(self) -> list[dict]:
-        """高优N-1槽 + 低优预留1槽。分段内仍 ORDER BY priority,seq（不内存重排）。"""
+        """高优N-1槽 + 低优预留1槽。分段内仍 ORDER BY priority,seq（不内存重排）。
+
+        预留的含义是"低优至少有1个"，不是"高优最多只能拿 N-1 个"。
+        之前高优 lane 按 `high_quota = free - reserve` 硬切：
+        当 free=1（ACTIVE 档常态）且只有高优任务在等时，
+        高优 lane 配额是 0、低优 lane 又要 priority>=5——
+        一个 priority=0 的任务两头都够不着，**永远饿死**。
+        实测：planner 给管道任务 priority=0，t3_assessment 在 READY 上
+        挂了 110 个 tick。
+        修法：两 lane 跑完后若还有空槽，把配额饿死的高优任务补上。
+        （已派发的变成 RUNNING，不会再被 list_ready_ordered 捡回来，
+        所以补发不会重复。）
+        """
         if self.executor_fn is None:
             return []
         running = len(self.store.list_by_status("RUNNING"))
@@ -344,6 +356,17 @@ class Orchestrator:
             got = self._dispatch_one(t)
             if got:
                 dispatched.append(got)
+        # 溢出补发：配额饿死的高优任务（free 小到 reserve 吃掉全部时）。
+        # reserve 只在"低优真有任务在等且会被挤掉"时有意义；
+        # 低优 lane 没东西可派却占着配额，等于白白浪费槽位。
+        if len(dispatched) < free:
+            for t in self.store.list_ready_ordered(limit=free,
+                                                   priority_max=HIGH_PRIORITY_MAX):
+                if len(dispatched) >= free:
+                    break
+                got = self._dispatch_one(t)
+                if got:
+                    dispatched.append(got)
         return dispatched
 
     def _dispatch_one(self, t: dict) -> dict | None:

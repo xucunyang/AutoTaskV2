@@ -363,6 +363,55 @@ def test_request_shutdown_stops_the_loop(tmp_path):
     assert st.get("shutdown") is True, "关机后仍跑了一整轮"
 
 
+def test_high_priority_not_starved_when_free_equals_reserve(tmp_path):
+    """free=1 且只有高优任务在等时，必须派发——不能把唯一的槽空着。
+
+    真实案例：planner 给管道任务 priority=0，ACTIVE 档下 free=1、
+    low_slot_reserve=1，于是 high_quota=0（高优lane跳过）、
+    低优lane要 priority>=5（进不去）。t3_assessment 在 READY 上
+    挂了 110 个 tick，直到人工介入才派出去。
+    预留的含义是"低优至少有1个"，不是"高优最多拿 N-1 个"。
+    """
+    root = _root(tmp_path)
+    s = Store(root)
+    s.ensure_plan("p1", template="daily")
+    _task(root, "p1", "hi", priority=0)
+    o = Orchestrator(root, executor_fn=lambda *a, **k: None, run_once=True,
+                     max_workers=1)
+    o.low_slot_reserve = 1
+    # 关掉 governor，接管 max_workers（否则每tick会被采样覆盖）
+    o._governor = None
+    o.refresh_ready("p1")
+    assert s.get_task("p1", "hi")["status"] == "READY"
+    got = o.dispatch_split()
+    assert got, "唯一的槽被预留逻辑空耗，高优任务饿死"
+    assert s.get_task("p1", "hi")["status"] == "RUNNING"
+
+
+def test_reserve_still_protects_low_priority_under_flood(tmp_path):
+    """预留的本意不能丢：高优洪水时低优必须还能拿到槽。
+
+    free=2 时高优 lane 拿 1 个（2-1），低优 lane 拿剩下的 1 个。
+    """
+    root = _root(tmp_path)
+    s = Store(root)
+    s.ensure_plan("p1", template="daily")
+    for i in range(3):
+        _task(root, "p1", f"hi{i}", priority=0)
+    _task(root, "p1", "lo", priority=10)
+    o = Orchestrator(root, executor_fn=lambda *a, **k: None, run_once=True,
+                     max_workers=2)
+    o.low_slot_reserve = 1
+    o._governor = None
+    o.refresh_ready("p1")
+    o.dispatch_split()
+    statuses = {t["task_id"]: t["status"]
+                for t in s.list_plan_tasks("p1")}
+    running = [k for k, v in statuses.items() if v == "RUNNING"]
+    assert "lo" in running, f"低优被高优洪水淹没: {statuses}"
+    assert len(running) == 2
+
+
 def test_wait_wakeup_uses_flag(tmp_path):
     """enqueue 会 touch wakeup.flag 提前唤醒主循环，省掉一个轮询周期。"""
     root = _root(tmp_path)
