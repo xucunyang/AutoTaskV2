@@ -42,7 +42,7 @@
     }
   },
   "plan_id": "autotask_bootstrap",
-  "updated_at": "2026-10-01T11:30:00Z",
+  "updated_at": "2026-10-01T12:00:00Z",
   "decisions_2026_09_29": {
     "review": "Phase0-4 阶段设计稿全部评审通过",
     "delete_master_json": "master.json 是V1/V2 task.md的遗留，V7纲领全文不再提。用户确认删除。现在只留 state/export/plans/{plan_id}.json；跨plan全局视图走 Store.daily_summary() 从DB聚合，不在导出目录里再存一份可能不一致的事实。",
@@ -176,14 +176,25 @@
         "loader最小容忍：解包+改名，但不代写tier_reason/脑补日期",
         "派发饿死：priority=0在free=1时两头够不着，READY挂110tick→溢出补发"
       ]
+    },
+    "china_mortgage_run": {
+      "run": "runs/china_20260930/",
+      "topic": "中国2026年9月30日的房贷贴息政策的影响",
+      "flow": "planner真拆分→3任务→派发→真模型→验收→日报",
+      "result": "t1 DONE / t2 DONE / t3 DONE（t2经一次重跑）",
+      "key_finding": "财金〔2026〕95号（9-29发布，10-01生效）：首套≤120㎡≤150万，贴息1pp≤5年≤100万贷款，中央90%/地方10%。此前只有地方贴息（南京/广州/上海1%，泰州2%/年，芜湖利息50%）。",
+      "bugs_fixed": [
+        "验收按声明outputs找文件（planner逻辑日期与入队日错位→no_sources_json）",
+        "coverage按关键词重叠判（77字疑问句vs陈述标题天然对不上；短问题仍严格）"
+      ]
     }
   },
   "phase4_status": {
-    "pytest": "648 passed",
+    "pytest": "651 passed",
     "coverage": "25模块平均 91.2%（门槛80%，单模块也须过线）",
     "real_e2e": "3/3 SUBMITTED（simple→local / medium→flash / complex→pro）",
     "bigfile_200mb": "3.80s / 峰值内存增量 0.5MB / 任务卡 702 tokens",
-    "production_bugs_found_and_fixed": 16,
+    "production_bugs_found_and_fixed": 18,
     "note": "详见 design/phases/Phase4-verification-chaos-design.md §6.0、§6.0.1 与 §10"
   }
 }
