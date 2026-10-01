@@ -1,0 +1,35 @@
+{
+  "plan_id": "adhoc_b9a1c8b8717c6719",
+  "planner_run_id": "planner-jp-0",
+  "planner_model": "flash",
+  "planner_prompt_version": "planner-v1",
+  "key_questions": [
+    "日本房贷贴息具体指哪项政策，其原文、实施时间、适用条件与执行细节是什么？",
+    "贴息政策实施后，日本房价、交易量、利率、GDP、通胀等指标如何变化，口径与来源是否可比？",
+    "综合政策机制、宏观周期与房地产市场数据，日本经济与房地产后续走势应如何判断？"
+  ],
+  "plan_title": "日本房贷贴息后经济与房地产市场走势分析任务DAG",
+  "tasks": [
+    {
+      "task_id": "t1_policy",
+      "slice_rationale": "先锁定政策定义、时间线与机制，避免后续把房贷贴息与一般货币政策、住宅贷款减税等概念混淆。",
+      "depends_on": []
+    },
+    {
+      "task_id": "t2_indicators",
+      "slice_rationale": "政策机制明确后，按统一时间窗口和口径拉取市场与宏观指标，为走势判断提供可比证据。",
+      "depends_on": [
+        "t1_policy"
+      ]
+    },
+    {
+      "task_id": "t3_assessment",
+      "slice_rationale": "前两卡提供政策事实与指标证据，最后综合判断，确保结论可追溯、避免无来源推断。",
+      "depends_on": [
+        "t1_policy",
+        "t2_indicators"
+      ]
+    }
+  ],
+  "created_at": "2026-10-01T03:37:06.798888+00:00"
+}

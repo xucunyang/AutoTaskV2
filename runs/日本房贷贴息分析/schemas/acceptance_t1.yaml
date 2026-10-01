@@ -1,0 +1,5 @@
+- type: file_exists
+  path: artifacts/{date}/t1_collect.csv
+- type: row_count
+  path: artifacts/{date}/t1_collect.csv
+  min: 1

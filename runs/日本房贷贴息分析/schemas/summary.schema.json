@@ -1,0 +1,1 @@
+{"$schema": "http://json-schema.org/draft-07/schema#", "properties": {"date": {"type": "string"}, "rows": {"type": "integer"}}, "required": ["date", "rows"], "type": "object"}

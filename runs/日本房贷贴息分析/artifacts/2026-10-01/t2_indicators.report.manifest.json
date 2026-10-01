@@ -1,0 +1,12 @@
+{
+  "sha256": "63196796033d41ecc164f01203ac702d2c2a317ef06d1a18c887885f777874f6",
+  "bytes": 21190,
+  "rows": null,
+  "preview": [
+    "# 日本房贷贴息政策与房地产·宏观经济指标：证据整理报告",
+    "",
+    "- 任务：t2_indicators（plan=adhoc_b9a1c8b8717c6719, run=run-1790825827）",
+    "- 幂等键：adhoc_b9a1c8b8717c6719/t2_indicators/b9a1c8b8",
+    "- 性质：本报告**仅基于检索资料**撰写，所有数值均指向 `t2_indicators.sources.json` 中的 source_id；检索资料未覆盖的部分一律标注 `[未覆盖]`，不使用模型内部知识补全。"
+  ]
+}

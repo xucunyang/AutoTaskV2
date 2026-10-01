@@ -1,0 +1,35 @@
+{
+  "plan_id": "adhoc_15435401f4b85f2e",
+  "planner_run_id": "planner-cn-0",
+  "planner_model": "flash",
+  "planner_prompt_version": "planner-v1",
+  "key_questions": [
+    "截至2026年9月30日，中国现行房贷相关政策（LPR、公积金利率、存量房贷调整、首付比例、各地购房补贴及房贷贴息）的具体内容、生效时间与适用口径是什么？",
+    "截至该时点，房价、成交量、居民杠杆率等市场数据表现如何，来源与统计口径是否一致？",
+    "在上述政策与市场证据下，房贷贴息政策的效果如何，未来市场走势可能如何？"
+  ],
+  "plan_title": "中国2026年9月30日房贷贴息政策影响分析任务DAG",
+  "tasks": [
+    {
+      "task_id": "t1_policy_scan",
+      "slice_rationale": "政策端是判断房贷贴息影响的制度约束和基准利率环境，必须先固定政策事实与生效口径，供后续市场数据对齐和综合判断引用。",
+      "depends_on": []
+    },
+    {
+      "task_id": "t2_market_data",
+      "slice_rationale": "市场数据是评估政策效果的基准，需在政策事实确定后按同一口径对齐，避免政策与市场指标错配。",
+      "depends_on": [
+        "t1_policy_scan"
+      ]
+    },
+    {
+      "task_id": "t3_impact_assessment",
+      "slice_rationale": "综合判断需要整合政策文本与市场数据，形成可追溯的因果论证和走势预判，不宜与检索任务混在一起。",
+      "depends_on": [
+        "t1_policy_scan",
+        "t2_market_data"
+      ]
+    }
+  ],
+  "created_at": "2026-10-01T04:09:26.324771+00:00"
+}

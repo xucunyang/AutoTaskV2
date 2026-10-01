@@ -1,0 +1,11 @@
+{
+  "task_id": "pipe_example",
+  "plan_id": "pipeline",
+  "source": "pipeline",
+  "objective": "示例：填写具体目标",
+  "inputs": [],
+  "priority": 0,
+  "max_attempts": 3,
+  "needs_web": false,
+  "freshness": "none"
+}

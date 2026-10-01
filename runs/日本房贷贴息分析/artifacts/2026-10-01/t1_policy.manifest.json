@@ -1,0 +1,12 @@
+{
+  "sha256": "06c69d6d9abff1da17ec23a782ea6b0a067a9febeb6fa9ffc10a04f1ac9b6bfd",
+  "bytes": 8751,
+  "rows": null,
+  "preview": [
+    "# 日本房贷贴息政策：关键条款摘录与核对（t1_policy）",
+    "",
+    "> 时效性要求：strict。全部结论均来自本轮检索所得资料；检索未覆盖处标注 [未覆盖]。",
+    "> 证据清单见 `t1_policy.sources.json`，结论—来源映射见 `t1_policy.claims.json`。",
+    ""
+  ]
+}

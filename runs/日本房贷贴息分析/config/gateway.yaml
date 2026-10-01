@@ -1,0 +1,123 @@
+default_policy: privacy_first
+
+# ---------------------------------------------------------------------------
+# 模型注册表
+# ---------------------------------------------------------------------------
+# 想加模型/换模型，只改这一块；想改"哪个复杂度用哪个模型"，
+# 只改下面 complexity_models。两件事分开，以后接多个厂商/多个额度包
+# （比如不同token套餐给不同key）就是往 models 里加条目，不动代码。
+#
+# 每个条目统一字段：
+#   type          ollama | openai_compat
+#   base_url      ${VAR} 会从 .env 取值（真实环境变量优先于.env）
+#   api_key_env   密钥的变量名（值不进仓库，只在.env里）
+#   model         模型名（openai_compat 必填）
+#   path          URL 后缀。DeepSeek 是 /chat/completions，
+#                 标准OpenAI是 /v1/chat/completions，不统一，所以要能配
+#   context_window null = 走动态计算（见 context_profiles）
+#   models        仅 ollama：复杂度→模型名。配了哪些 key 就决定本地能做哪些
+#                 复杂度，没配的复杂度自动走在线，不猜不降级
+models:
+  local:
+    {
+      type: ollama,
+      base_url: http://localhost:11434,
+      models: { simple: qwen3.5:4b },
+      # 思维模型关掉思考：实测同一任务卡 think=false 6.6s / 默认 21.4s，
+      # 正确性相同。simple 任务不需要长思考，延迟差3倍很值。
+      # （不写=按模型默认；写 true=强制思考）
+      think: false,
+      context_window: null,
+      timeout_s: 120,
+      enabled: true,
+      max_concurrency: 1,
+      slo_p50_ms: 15000,
+    }
+  # 快模型：适合 medium 及以下的批量活
+  flash:
+    {
+      type: openai_compat,
+      base_url: "${ONLINE_BASE_URL}",
+      api_key_env: ONLINE_API_KEY,
+      model: "${ONLINE_FLASH_MODEL}",
+      path: /chat/completions,
+      context_window: null,
+      timeout_s: 90,
+      enabled: true,
+      max_concurrency: 8,
+    }
+  # 强模型：只给 complex 用
+  pro:
+    {
+      type: openai_compat,
+      base_url: "${ONLINE_BASE_URL}",
+      api_key_env: ONLINE_API_KEY,
+      model: "${ONLINE_PRO_MODEL}",
+      path: /chat/completions,
+      context_window: null,
+      timeout_s: 180,
+      enabled: true,
+      max_concurrency: 4,
+    }
+
+# ---------------------------------------------------------------------------
+# 复杂度 → 模型引用（改这两三行就能整体换模型分配）
+# ---------------------------------------------------------------------------
+complexity_models:
+  # 本地接 simple（2026-09-30 修正：之前误判为"本地跑不了 tool loop"）。
+  # 真实原因是**我们回填 assistant.tool_calls 时用了 OpenAI 形状**
+  # （arguments 是JSON字符串），而ollama要求dict——所以第一步正常、
+  # 文件也真写出来了，到第二步才400，看上去像"模型JSON生成坏了"。
+  # 修好方言后本地可用：qwen3.5:4b 能稳定产出并落盘。
+  # medium/complex 仍走在线：4B 的长文分析与多轮推理质量不够。
+  { simple: local, medium: flash, complex: pro }
+
+# 隐私强制覆盖：secret 任务不外发，无论复杂度都走这里指定的模型
+privacy_models:
+  { secret: local }
+
+# 复杂度没配时的兜底模型（不要指向 local，否则会静默降级）
+default_model: flash
+
+policies: [privacy_guard, latency_guard, capability_match]
+# 能力分档参考表（仅供人看，不参与路由；路由只看 complexity_models）
+local_tiers:
+  {
+    3B: { max_complexity: simple },
+    4B: { max_complexity: simple },
+    7B: { max_complexity: medium },
+  }
+routing:
+  {
+    secret: { allow: [local], fallback: local-retry-then-human },
+    public-simple: { allow: [local, flash, pro], prefer: local },
+    public-complex: { allow: [flash, pro], fallback: online-retry-then-deadletter },
+  }
+# 网关层成本预算（与TaskShard执行限制不同层面）
+budgets: { per_task_tokens: 8000, per_day_online_tokens: 200000 }
+latency_guard:
+  {
+    queue_threshold: 4,
+    fail_threshold: 3,
+    cooldown_s: 300,
+    local_simple_timeout: 20,
+    local_medium_timeout: 60,
+  }
+# V7§8: 隐私默认关闭，只留扩展接口（classify/redact/PrivacyGuard保留，enqueue/route/日志跳过扫描与脱敏）
+privacy: { enabled: false }
+# V7§10: session切换判定阈值（context_window的80%触发让出）
+session_yield: { context_ratio: 0.8 }
+# V7动态窗口分档：建议值是上限非固定值，最终取min(架构上限,档位建议,显存可撑,配置覆盖)
+# 原因：Ollama默认4096且架构上限因模型而异（Qwen2.5-7B是128K/Qwen3-14B只有40K），写死必错；
+# KV随层数×头数增长快于参数量，14B@64K要12G所以L档给64K而XL只给32K
+context_profiles:
+  - { max_params_b: 4, context_window: 32768 }
+  - { max_params_b: 7, context_window: 65536 }
+  - { max_params_b: 14, context_window: 65536 }
+  - { max_params_b: 999, context_window: 32768 }
+# 系统提示+工具定义+completion预留（粗值不拆细，32K窗口下占25%）
+context_reserved: 8192
+# 本地可用门禁：usable低于此值→本地不可用→路由走在线
+min_usable: 16384
+memory:
+  { system_reserved_gb: 5, fallback_local: 65536, fallback_online: 262144 }

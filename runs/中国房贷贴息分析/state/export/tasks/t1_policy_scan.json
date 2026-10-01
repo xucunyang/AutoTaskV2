@@ -1,0 +1,129 @@
+{
+  "plan_id": "adhoc_15435401f4b85f2e",
+  "task_id": "t1_policy_scan",
+  "status": "DONE",
+  "version": 40,
+  "fencing_token": 16,
+  "owner": "orchestrator-main",
+  "lease_until": "2026-10-01T04:27:15.768633+00:00",
+  "idempotency_key": "adhoc_15435401f4b85f2e/t1_policy_scan/15435401",
+  "inputs_hash": "15435401f4b85f2ed4d1a3beb45ce4f09375faae9dcd50b4717cd7ac2901212d",
+  "last_success_hash": null,
+  "attempts": 3,
+  "max_attempts": 3,
+  "session_switch_total": 0,
+  "priority": 0,
+  "source": "pipeline",
+  "seq": 1,
+  "cancel_requested": 0,
+  "privacy": "public",
+  "complexity": "medium",
+  "needs_web": 1,
+  "freshness": "recent",
+  "enqueued_at": "2026-10-01T04:09:24.342460+00:00",
+  "shard_json": "{\"task_id\": \"t1_policy_scan\", \"plan_id\": \"adhoc_15435401f4b85f2e\", \"status\": \"PENDING\", \"idempotency_key\": \"adhoc_15435401f4b85f2e/t1_policy_scan/15435401\", \"inputs_hash\": \"15435401f4b85f2ed4d1a3beb45ce4f09375faae9dcd50b4717cd7ac2901212d\", \"objective\": \"检索并整理截至2026年9月30日中国现行房贷相关政策，包括LPR、公积金利率、存量房贷调整、首付比例、各地购房补贴及房贷贴息政策；记录政策名称、生效日期、适用地区、核心条款、文号或官方来源URL。若目标日期尚未到达，则检索截至最新可得日期并显式标注实际数据截止日。\", \"depends_on\": [], \"outputs\": [\"artifacts/2026-09-30/t1_policy_scan.md\", \"artifacts/2026-09-30/t1_policy_scan.sources.json\", \"artifacts/2026-09-30/t1_policy_scan.claims.json\", \"artifacts/2026-09-30/t1_policy_scan.report.md\"], \"complexity\": \"medium\", \"needs_web\": true, \"freshness\": \"recent\", \"key_questions\": [\"截至2026年9月30日，中国现行房贷相关政策（LPR、公积金利率、存量房贷调整、首付比例、各地购房补贴及房贷贴息）的具体内容、生效时间与适用口径是什么？\", \"截至该时点，房价、成交量、居民杠杆率等市场数据表现如何，来源与统计口径是否一致？\", \"在上述政策与市场证据下，房贷贴息政策的效果如何，未来市场走势可能如何？\"], \"slice_rationale\": \"政策端是判断房贷贴息影响的制度约束和基准利率环境，必须先固定政策事实与生效口径，供后续市场数据对齐和综合判断引用。\", \"long_running\": false, \"priority\": 0, \"source\": \"pipeline\", \"acceptance\": [{\"type\": \"source_traceable\", \"rule_id\": \"r_trace\"}, {\"type\": \"source_quality\", \"rule_id\": \"r_qual\", \"source_tier_min_ratio\": {\"A\": 0.4}}, {\"type\": \"freshness\", \"rule_id\": \"r_fresh\", \"freshness_days\": 365}, {\"type\": \"coverage\", \"rule_id\": \"r_cover\", \"key_questions\": [\"截至2026年9月30日，中国现行房贷相关政策（LPR、公积金利率、存量房贷调整、首付比例、各地购房补贴及房贷贴息）的具体内容、生效时间与适用口径是什么？\", \"截至该时点，房价、成交量、居民杠杆率等市场数据表现如何，来源与统计口径是否一致？\", \"在上述政策与市场证据下，房贷贴息政策的效果如何，未来市场走势可能如何？\"]}], \"handoff\": {\"done\": true, \"summary\": \"r_trace:ok deferred_to_verifier; r_qual:ok deferred_to_verifier; r_fresh:ok deferred_to_verifier; r_cover:ok deferred_to_verifier\", \"artifact_refs\": [\"artifacts/2026-09-30/t1_policy_scan.md\", \"artifacts/2026-09-30/t1_policy_scan.sources.json\", \"artifacts/2026-09-30/t1_policy_scan.claims.json\", \"artifacts/2026-09-30/t1_policy_scan.report.md\"], \"tests_passed\": true, \"tokens_used\": 0, \"open_issues\": []}}",
+  "updated_at": "2026-10-01T04:25:30.186828+00:00",
+  "verify_progress_json": "{\"verified_rules\": [\"r_cover\", \"r_fresh\", \"r_qual\", \"r_trace\"], \"last_results\": [{\"ok\": true, \"detail\": \"claims=39 sources=36\", \"rule_id\": \"r_trace\", \"type\": \"source_traceable\"}, {\"ok\": true, \"detail\": \"stale=6/36 ratio=0.17 limit=0.3 no_date=0\", \"rule_id\": \"r_fresh\", \"type\": \"freshness\"}, {\"ok\": true, \"detail\": \"A=15/36 ratio=0.42 bar=0.4 (excluded_no_reason=0)\", \"rule_id\": \"r_qual\", \"type\": \"source_quality\"}, {\"ok\": true, \"detail\": \"unanswered=[]\", \"rule_id\": \"r_cover\", \"type\": \"coverage\"}], \"updated_at\": \"2026-10-01T04:25:29.779241+00:00\"}",
+  "shard": {
+    "task_id": "t1_policy_scan",
+    "plan_id": "adhoc_15435401f4b85f2e",
+    "status": "PENDING",
+    "idempotency_key": "adhoc_15435401f4b85f2e/t1_policy_scan/15435401",
+    "inputs_hash": "15435401f4b85f2ed4d1a3beb45ce4f09375faae9dcd50b4717cd7ac2901212d",
+    "objective": "检索并整理截至2026年9月30日中国现行房贷相关政策，包括LPR、公积金利率、存量房贷调整、首付比例、各地购房补贴及房贷贴息政策；记录政策名称、生效日期、适用地区、核心条款、文号或官方来源URL。若目标日期尚未到达，则检索截至最新可得日期并显式标注实际数据截止日。",
+    "depends_on": [],
+    "outputs": [
+      "artifacts/2026-09-30/t1_policy_scan.md",
+      "artifacts/2026-09-30/t1_policy_scan.sources.json",
+      "artifacts/2026-09-30/t1_policy_scan.claims.json",
+      "artifacts/2026-09-30/t1_policy_scan.report.md"
+    ],
+    "complexity": "medium",
+    "needs_web": true,
+    "freshness": "recent",
+    "key_questions": [
+      "截至2026年9月30日，中国现行房贷相关政策（LPR、公积金利率、存量房贷调整、首付比例、各地购房补贴及房贷贴息）的具体内容、生效时间与适用口径是什么？",
+      "截至该时点，房价、成交量、居民杠杆率等市场数据表现如何，来源与统计口径是否一致？",
+      "在上述政策与市场证据下，房贷贴息政策的效果如何，未来市场走势可能如何？"
+    ],
+    "slice_rationale": "政策端是判断房贷贴息影响的制度约束和基准利率环境，必须先固定政策事实与生效口径，供后续市场数据对齐和综合判断引用。",
+    "long_running": false,
+    "priority": 0,
+    "source": "pipeline",
+    "acceptance": [
+      {
+        "type": "source_traceable",
+        "rule_id": "r_trace"
+      },
+      {
+        "type": "source_quality",
+        "rule_id": "r_qual",
+        "source_tier_min_ratio": {
+          "A": 0.4
+        }
+      },
+      {
+        "type": "freshness",
+        "rule_id": "r_fresh",
+        "freshness_days": 365
+      },
+      {
+        "type": "coverage",
+        "rule_id": "r_cover",
+        "key_questions": [
+          "截至2026年9月30日，中国现行房贷相关政策（LPR、公积金利率、存量房贷调整、首付比例、各地购房补贴及房贷贴息）的具体内容、生效时间与适用口径是什么？",
+          "截至该时点，房价、成交量、居民杠杆率等市场数据表现如何，来源与统计口径是否一致？",
+          "在上述政策与市场证据下，房贷贴息政策的效果如何，未来市场走势可能如何？"
+        ]
+      }
+    ],
+    "handoff": {
+      "done": true,
+      "summary": "r_trace:ok deferred_to_verifier; r_qual:ok deferred_to_verifier; r_fresh:ok deferred_to_verifier; r_cover:ok deferred_to_verifier",
+      "artifact_refs": [
+        "artifacts/2026-09-30/t1_policy_scan.md",
+        "artifacts/2026-09-30/t1_policy_scan.sources.json",
+        "artifacts/2026-09-30/t1_policy_scan.claims.json",
+        "artifacts/2026-09-30/t1_policy_scan.report.md"
+      ],
+      "tests_passed": true,
+      "tokens_used": 0,
+      "open_issues": []
+    }
+  },
+  "verify_progress": {
+    "verified_rules": [
+      "r_cover",
+      "r_fresh",
+      "r_qual",
+      "r_trace"
+    ],
+    "last_results": [
+      {
+        "ok": true,
+        "detail": "claims=39 sources=36",
+        "rule_id": "r_trace",
+        "type": "source_traceable"
+      },
+      {
+        "ok": true,
+        "detail": "stale=6/36 ratio=0.17 limit=0.3 no_date=0",
+        "rule_id": "r_fresh",
+        "type": "freshness"
+      },
+      {
+        "ok": true,
+        "detail": "A=15/36 ratio=0.42 bar=0.4 (excluded_no_reason=0)",
+        "rule_id": "r_qual",
+        "type": "source_quality"
+      },
+      {
+        "ok": true,
+        "detail": "unanswered=[]",
+        "rule_id": "r_cover",
+        "type": "coverage"
+      }
+    ],
+    "updated_at": "2026-10-01T04:25:29.779241+00:00"
+  }
+}

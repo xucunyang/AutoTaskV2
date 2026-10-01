@@ -1,0 +1,23 @@
+plan_template: daily_report
+tasks:
+  - id: t1_collect
+    name: 采集数据
+    objective: 采集数据，输出 collect.csv（含id,value两列，>=3行）
+    depends_on: []
+    outputs: ["artifacts/{date}/t1_collect.csv"]
+    acceptance_ref: schemas/acceptance_t1.yaml
+    max_attempts: 3
+  - id: t2_clean
+    name: 清洗数据
+    objective: 清洗采集数据去空行，输出 clean.csv
+    depends_on: [t1_collect]
+    outputs: ["artifacts/{date}/t2_clean.csv"]
+    acceptance_ref: schemas/acceptance_t2.yaml
+    max_attempts: 3
+  - id: t3_report
+    name: 生成日报
+    objective: 基于clean.csv生成 summary.json + report.md
+    depends_on: [t2_clean]
+    outputs: ["artifacts/{date}/summary.json", "artifacts/{date}/report.md"]
+    acceptance_ref: schemas/acceptance_t3.yaml
+    max_attempts: 3

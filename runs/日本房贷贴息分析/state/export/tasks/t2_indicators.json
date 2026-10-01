@@ -1,0 +1,131 @@
+{
+  "plan_id": "adhoc_b9a1c8b8717c6719",
+  "task_id": "t2_indicators",
+  "status": "DONE",
+  "version": 12,
+  "fencing_token": 6,
+  "owner": "orchestrator-main",
+  "lease_until": "2026-10-01T03:44:22.957259+00:00",
+  "idempotency_key": "adhoc_b9a1c8b8717c6719/t2_indicators/b9a1c8b8",
+  "inputs_hash": "b9a1c8b8717c6719fb9316087b7656fb89d0b97f1d16d85583d5358cf568b710",
+  "last_success_hash": null,
+  "attempts": 0,
+  "max_attempts": 3,
+  "session_switch_total": 0,
+  "priority": 0,
+  "source": "pipeline",
+  "seq": 2,
+  "cancel_requested": 0,
+  "privacy": "public",
+  "complexity": "medium",
+  "needs_web": 1,
+  "freshness": "recent",
+  "enqueued_at": "2026-10-01T03:37:05.336082+00:00",
+  "shard_json": "{\"task_id\": \"t2_indicators\", \"plan_id\": \"adhoc_b9a1c8b8717c6719\", \"status\": \"PENDING\", \"idempotency_key\": \"adhoc_b9a1c8b8717c6719/t2_indicators/b9a1c8b8\", \"inputs_hash\": \"b9a1c8b8717c6719fb9316087b7656fb89d0b97f1d16d85583d5358cf568b710\", \"objective\": \"在明确政策时间窗口后，检索并整理日本房价、交易量、房贷利率、政策利率、GDP、通胀等指标的时间序列，标明统计口径、频率、单位与来源。\", \"depends_on\": [\"t1_policy\"], \"outputs\": [\"artifacts/2026-10-01/t2_indicators.md\", \"artifacts/2026-10-01/t2_indicators.sources.json\", \"artifacts/2026-10-01/t2_indicators.claims.json\", \"artifacts/2026-10-01/t2_indicators.report.md\"], \"complexity\": \"medium\", \"needs_web\": true, \"freshness\": \"recent\", \"key_questions\": [\"日本房贷贴息具体指哪项政策，其原文、实施时间、适用条件与执行细节是什么？\", \"贴息政策实施后，日本房价、交易量、利率、GDP、通胀等指标如何变化，口径与来源是否可比？\", \"综合政策机制、宏观周期与房地产市场数据，日本经济与房地产后续走势应如何判断？\"], \"slice_rationale\": \"政策机制明确后，按统一时间窗口和口径拉取市场与宏观指标，为走势判断提供可比证据。\", \"long_running\": false, \"priority\": 0, \"source\": \"pipeline\", \"acceptance\": [{\"type\": \"source_traceable\", \"rule_id\": \"r_trace\"}, {\"type\": \"source_quality\", \"rule_id\": \"r_qual\", \"source_tier_min_ratio\": {\"A\": 0.4}}, {\"type\": \"freshness\", \"rule_id\": \"r_fresh\", \"freshness_days\": 365}, {\"type\": \"coverage\", \"rule_id\": \"r_cover\", \"key_questions\": [\"日本房贷贴息具体指哪项政策，其原文、实施时间、适用条件与执行细节是什么？\", \"贴息政策实施后，日本房价、交易量、利率、GDP、通胀等指标如何变化，口径与来源是否可比？\", \"综合政策机制、宏观周期与房地产市场数据，日本经济与房地产后续走势应如何判断？\"]}], \"handoff\": {\"done\": true, \"summary\": \"r_trace:ok deferred_to_verifier; r_qual:ok deferred_to_verifier; r_fresh:ok deferred_to_verifier; r_cover:ok deferred_to_verifier\", \"artifact_refs\": [\"artifacts/2026-10-01/t2_indicators.md\", \"artifacts/2026-10-01/t2_indicators.sources.json\", \"artifacts/2026-10-01/t2_indicators.claims.json\", \"artifacts/2026-10-01/t2_indicators.report.md\"], \"tests_passed\": true, \"tokens_used\": 0, \"open_issues\": []}}",
+  "updated_at": "2026-10-01T03:42:33.499053+00:00",
+  "verify_progress_json": "{\"verified_rules\": [\"r_cover\", \"r_fresh\", \"r_qual\", \"r_trace\"], \"last_results\": [{\"ok\": true, \"detail\": \"claims=22 sources=25\", \"rule_id\": \"r_trace\", \"type\": \"source_traceable\"}, {\"ok\": true, \"detail\": \"stale=1/25 ratio=0.04 limit=0.3 no_date=0\", \"rule_id\": \"r_fresh\", \"type\": \"freshness\"}, {\"ok\": true, \"detail\": \"A=13/25 ratio=0.52 bar=0.4 (excluded_no_reason=0)\", \"rule_id\": \"r_qual\", \"type\": \"source_quality\"}, {\"ok\": true, \"detail\": \"unanswered=[]\", \"rule_id\": \"r_cover\", \"type\": \"coverage\"}], \"updated_at\": \"2026-10-01T03:42:33.173171+00:00\"}",
+  "shard": {
+    "task_id": "t2_indicators",
+    "plan_id": "adhoc_b9a1c8b8717c6719",
+    "status": "PENDING",
+    "idempotency_key": "adhoc_b9a1c8b8717c6719/t2_indicators/b9a1c8b8",
+    "inputs_hash": "b9a1c8b8717c6719fb9316087b7656fb89d0b97f1d16d85583d5358cf568b710",
+    "objective": "在明确政策时间窗口后，检索并整理日本房价、交易量、房贷利率、政策利率、GDP、通胀等指标的时间序列，标明统计口径、频率、单位与来源。",
+    "depends_on": [
+      "t1_policy"
+    ],
+    "outputs": [
+      "artifacts/2026-10-01/t2_indicators.md",
+      "artifacts/2026-10-01/t2_indicators.sources.json",
+      "artifacts/2026-10-01/t2_indicators.claims.json",
+      "artifacts/2026-10-01/t2_indicators.report.md"
+    ],
+    "complexity": "medium",
+    "needs_web": true,
+    "freshness": "recent",
+    "key_questions": [
+      "日本房贷贴息具体指哪项政策，其原文、实施时间、适用条件与执行细节是什么？",
+      "贴息政策实施后，日本房价、交易量、利率、GDP、通胀等指标如何变化，口径与来源是否可比？",
+      "综合政策机制、宏观周期与房地产市场数据，日本经济与房地产后续走势应如何判断？"
+    ],
+    "slice_rationale": "政策机制明确后，按统一时间窗口和口径拉取市场与宏观指标，为走势判断提供可比证据。",
+    "long_running": false,
+    "priority": 0,
+    "source": "pipeline",
+    "acceptance": [
+      {
+        "type": "source_traceable",
+        "rule_id": "r_trace"
+      },
+      {
+        "type": "source_quality",
+        "rule_id": "r_qual",
+        "source_tier_min_ratio": {
+          "A": 0.4
+        }
+      },
+      {
+        "type": "freshness",
+        "rule_id": "r_fresh",
+        "freshness_days": 365
+      },
+      {
+        "type": "coverage",
+        "rule_id": "r_cover",
+        "key_questions": [
+          "日本房贷贴息具体指哪项政策，其原文、实施时间、适用条件与执行细节是什么？",
+          "贴息政策实施后，日本房价、交易量、利率、GDP、通胀等指标如何变化，口径与来源是否可比？",
+          "综合政策机制、宏观周期与房地产市场数据，日本经济与房地产后续走势应如何判断？"
+        ]
+      }
+    ],
+    "handoff": {
+      "done": true,
+      "summary": "r_trace:ok deferred_to_verifier; r_qual:ok deferred_to_verifier; r_fresh:ok deferred_to_verifier; r_cover:ok deferred_to_verifier",
+      "artifact_refs": [
+        "artifacts/2026-10-01/t2_indicators.md",
+        "artifacts/2026-10-01/t2_indicators.sources.json",
+        "artifacts/2026-10-01/t2_indicators.claims.json",
+        "artifacts/2026-10-01/t2_indicators.report.md"
+      ],
+      "tests_passed": true,
+      "tokens_used": 0,
+      "open_issues": []
+    }
+  },
+  "verify_progress": {
+    "verified_rules": [
+      "r_cover",
+      "r_fresh",
+      "r_qual",
+      "r_trace"
+    ],
+    "last_results": [
+      {
+        "ok": true,
+        "detail": "claims=22 sources=25",
+        "rule_id": "r_trace",
+        "type": "source_traceable"
+      },
+      {
+        "ok": true,
+        "detail": "stale=1/25 ratio=0.04 limit=0.3 no_date=0",
+        "rule_id": "r_fresh",
+        "type": "freshness"
+      },
+      {
+        "ok": true,
+        "detail": "A=13/25 ratio=0.52 bar=0.4 (excluded_no_reason=0)",
+        "rule_id": "r_qual",
+        "type": "source_quality"
+      },
+      {
+        "ok": true,
+        "detail": "unanswered=[]",
+        "rule_id": "r_cover",
+        "type": "coverage"
+      }
+    ],
+    "updated_at": "2026-10-01T03:42:33.173171+00:00"
+  }
+}

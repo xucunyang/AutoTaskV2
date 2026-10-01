@@ -1,0 +1,31 @@
+{
+  "plan_id": "adhoc_b9a1c8b8717c6719",
+  "plan": {
+    "plan_id": "adhoc_b9a1c8b8717c6719",
+    "template": "planner",
+    "status": "ACTIVE",
+    "created_at": "2026-10-01T03:37:04.166045+00:00",
+    "updated_at": "2026-10-01T03:37:04.166045+00:00"
+  },
+  "tasks": [
+    {
+      "task_id": "t1_policy",
+      "status": "DONE",
+      "priority": 0,
+      "seq": 1
+    },
+    {
+      "task_id": "t2_indicators",
+      "status": "DONE",
+      "priority": 0,
+      "seq": 2
+    },
+    {
+      "task_id": "t3_assessment",
+      "status": "READY",
+      "priority": 0,
+      "seq": 3
+    }
+  ],
+  "rebuilt_at": "2026-10-01T03:47:34.298622+00:00"
+}

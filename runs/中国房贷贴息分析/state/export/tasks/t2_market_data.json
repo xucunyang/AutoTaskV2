@@ -1,0 +1,113 @@
+{
+  "plan_id": "adhoc_15435401f4b85f2e",
+  "task_id": "t2_market_data",
+  "status": "DONE",
+  "version": 41,
+  "fencing_token": 19,
+  "owner": "orchestrator-main",
+  "lease_until": "2026-10-01T06:15:26.706965+00:00",
+  "idempotency_key": "adhoc_15435401f4b85f2e/t2_market_data/15435401",
+  "inputs_hash": "15435401f4b85f2ed4d1a3beb45ce4f09375faae9dcd50b4717cd7ac2901212d",
+  "last_success_hash": null,
+  "attempts": 3,
+  "max_attempts": 3,
+  "session_switch_total": 0,
+  "priority": 0,
+  "source": "pipeline",
+  "seq": 2,
+  "cancel_requested": 0,
+  "privacy": "public",
+  "complexity": "medium",
+  "needs_web": 1,
+  "freshness": "recent",
+  "enqueued_at": "2026-10-01T04:09:24.905284+00:00",
+  "shard_json": "{\"task_id\": \"t2_market_data\", \"plan_id\": \"adhoc_15435401f4b85f2e\", \"status\": \"PENDING\", \"idempotency_key\": \"adhoc_15435401f4b85f2e/t2_market_data/15435401\", \"inputs_hash\": \"15435401f4b85f2ed4d1a3beb45ce4f09375faae9dcd50b4717cd7ac2901212d\", \"objective\": \"基于t1政策清单，检索并整理房价、成交量、居民杠杆率等数据，按全国及重点城市、时间序列和统计口径整理；标注每项数据的来源、发布日期、统计范围，并与t1中的政策节点对齐。\", \"depends_on\": [\"t1_policy_scan\"], \"outputs\": [\"artifacts/2026-09-30/t2_market_data.md\", \"artifacts/2026-09-30/t2_market_data.sources.json\", \"artifacts/2026-09-30/t2_market_data.claims.json\", \"artifacts/2026-09-30/t2_market_data.report.md\"], \"complexity\": \"medium\", \"needs_web\": true, \"freshness\": \"recent\", \"key_questions\": [\"截至2026年9月30日，中国现行房贷相关政策（LPR、公积金利率、存量房贷调整、首付比例、各地购房补贴及房贷贴息）的具体内容、生效时间与适用口径是什么？\", \"截至该时点，房价、成交量、居民杠杆率等市场数据表现如何，来源与统计口径是否一致？\", \"在上述政策与市场证据下，房贷贴息政策的效果如何，未来市场走势可能如何？\"], \"slice_rationale\": \"市场数据是评估政策效果的基准，需在政策事实确定后按同一口径对齐，避免政策与市场指标错配。\", \"long_running\": false, \"priority\": 0, \"source\": \"pipeline\", \"acceptance\": [{\"type\": \"source_traceable\", \"rule_id\": \"r_trace\"}, {\"type\": \"source_quality\", \"rule_id\": \"r_qual\", \"source_tier_min_ratio\": {\"A\": 0.4}}, {\"type\": \"freshness\", \"rule_id\": \"r_fresh\", \"freshness_days\": 365}, {\"type\": \"coverage\", \"rule_id\": \"r_cover\", \"key_questions\": [\"截至2026年9月30日，中国现行房贷相关政策（LPR、公积金利率、存量房贷调整、首付比例、各地购房补贴及房贷贴息）的具体内容、生效时间与适用口径是什么？\", \"截至该时点，房价、成交量、居民杠杆率等市场数据表现如何，来源与统计口径是否一致？\", \"在上述政策与市场证据下，房贷贴息政策的效果如何，未来市场走势可能如何？\"]}], \"handoff\": {\"done\": true, \"summary\": \"r_trace:ok deferred_to_verifier; r_qual:ok deferred_to_verifier; r_fresh:ok deferred_to_verifier; r_cover:ok deferred_to_verifier\", \"artifact_refs\": [\"artifacts/2026-09-30/t2_market_data.md\", \"artifacts/2026-09-30/t2_market_data.sources.json\", \"artifacts/2026-09-30/t2_market_data.claims.json\", \"artifacts/2026-09-30/t2_market_data.report.md\"], \"tests_passed\": true, \"tokens_used\": 0, \"open_issues\": []}}",
+  "updated_at": "2026-10-01T06:13:44.839601+00:00",
+  "verify_progress_json": "{\"verified_rules\": [\"r_cover\", \"r_fresh\", \"r_qual\", \"r_trace\"], \"last_results\": [{\"ok\": true, \"detail\": \"unanswered=[]\", \"rule_id\": \"r_cover\", \"type\": \"coverage\"}], \"updated_at\": \"2026-10-01T06:13:44.487939+00:00\"}",
+  "shard": {
+    "task_id": "t2_market_data",
+    "plan_id": "adhoc_15435401f4b85f2e",
+    "status": "PENDING",
+    "idempotency_key": "adhoc_15435401f4b85f2e/t2_market_data/15435401",
+    "inputs_hash": "15435401f4b85f2ed4d1a3beb45ce4f09375faae9dcd50b4717cd7ac2901212d",
+    "objective": "基于t1政策清单，检索并整理房价、成交量、居民杠杆率等数据，按全国及重点城市、时间序列和统计口径整理；标注每项数据的来源、发布日期、统计范围，并与t1中的政策节点对齐。",
+    "depends_on": [
+      "t1_policy_scan"
+    ],
+    "outputs": [
+      "artifacts/2026-09-30/t2_market_data.md",
+      "artifacts/2026-09-30/t2_market_data.sources.json",
+      "artifacts/2026-09-30/t2_market_data.claims.json",
+      "artifacts/2026-09-30/t2_market_data.report.md"
+    ],
+    "complexity": "medium",
+    "needs_web": true,
+    "freshness": "recent",
+    "key_questions": [
+      "截至2026年9月30日，中国现行房贷相关政策（LPR、公积金利率、存量房贷调整、首付比例、各地购房补贴及房贷贴息）的具体内容、生效时间与适用口径是什么？",
+      "截至该时点，房价、成交量、居民杠杆率等市场数据表现如何，来源与统计口径是否一致？",
+      "在上述政策与市场证据下，房贷贴息政策的效果如何，未来市场走势可能如何？"
+    ],
+    "slice_rationale": "市场数据是评估政策效果的基准，需在政策事实确定后按同一口径对齐，避免政策与市场指标错配。",
+    "long_running": false,
+    "priority": 0,
+    "source": "pipeline",
+    "acceptance": [
+      {
+        "type": "source_traceable",
+        "rule_id": "r_trace"
+      },
+      {
+        "type": "source_quality",
+        "rule_id": "r_qual",
+        "source_tier_min_ratio": {
+          "A": 0.4
+        }
+      },
+      {
+        "type": "freshness",
+        "rule_id": "r_fresh",
+        "freshness_days": 365
+      },
+      {
+        "type": "coverage",
+        "rule_id": "r_cover",
+        "key_questions": [
+          "截至2026年9月30日，中国现行房贷相关政策（LPR、公积金利率、存量房贷调整、首付比例、各地购房补贴及房贷贴息）的具体内容、生效时间与适用口径是什么？",
+          "截至该时点，房价、成交量、居民杠杆率等市场数据表现如何，来源与统计口径是否一致？",
+          "在上述政策与市场证据下，房贷贴息政策的效果如何，未来市场走势可能如何？"
+        ]
+      }
+    ],
+    "handoff": {
+      "done": true,
+      "summary": "r_trace:ok deferred_to_verifier; r_qual:ok deferred_to_verifier; r_fresh:ok deferred_to_verifier; r_cover:ok deferred_to_verifier",
+      "artifact_refs": [
+        "artifacts/2026-09-30/t2_market_data.md",
+        "artifacts/2026-09-30/t2_market_data.sources.json",
+        "artifacts/2026-09-30/t2_market_data.claims.json",
+        "artifacts/2026-09-30/t2_market_data.report.md"
+      ],
+      "tests_passed": true,
+      "tokens_used": 0,
+      "open_issues": []
+    }
+  },
+  "verify_progress": {
+    "verified_rules": [
+      "r_cover",
+      "r_fresh",
+      "r_qual",
+      "r_trace"
+    ],
+    "last_results": [
+      {
+        "ok": true,
+        "detail": "unanswered=[]",
+        "rule_id": "r_cover",
+        "type": "coverage"
+      }
+    ],
+    "updated_at": "2026-10-01T06:13:44.487939+00:00"
+  }
+}

@@ -1,8 +1,8 @@
 # 抖音爆款视频：中日房贷贴息对比（文稿 + 剪辑建议）
 
-> 素材来源：`runs/japan_20261001/artifacts/2026-10-01/t3_assessment.md`、
-> `runs/china_20260930/artifacts/2026-09-30/t3_impact_assessment.md`、
-> `runs/comparison_20261001/cn_jp_mortgage_comparison.md`
+> 素材来源：`runs/日本房贷贴息分析/artifacts/2026-10-01/t3_assessment.md`、
+> `runs/中国房贷贴息分析/artifacts/2026-09-30/t3_impact_assessment.md`、
+> `runs/中日房贷贴息对比/cn_jp_mortgage_comparison.md`
 > 全部数据来自系统产出的带来源报告（t1 19 来源、t2 31 来源，A 类占比 47–52%）。
 > 视频定位：**知识科普 + 情绪共鸣**，目标人群：25–40 岁有购房焦虑的刚需/改善客群。
 

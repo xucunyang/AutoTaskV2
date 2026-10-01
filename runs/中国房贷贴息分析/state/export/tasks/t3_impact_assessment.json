@@ -1,0 +1,85 @@
+{
+  "plan_id": "adhoc_15435401f4b85f2e",
+  "task_id": "t3_impact_assessment",
+  "status": "DONE",
+  "version": 9,
+  "fencing_token": 3,
+  "owner": "orchestrator-main",
+  "lease_until": "2026-10-01T06:16:49.816402+00:00",
+  "idempotency_key": "adhoc_15435401f4b85f2e/t3_impact_assessment/15435401",
+  "inputs_hash": "15435401f4b85f2ed4d1a3beb45ce4f09375faae9dcd50b4717cd7ac2901212d",
+  "last_success_hash": null,
+  "attempts": 0,
+  "max_attempts": 3,
+  "session_switch_total": 0,
+  "priority": 0,
+  "source": "pipeline",
+  "seq": 3,
+  "cancel_requested": 0,
+  "privacy": "public",
+  "complexity": "complex",
+  "needs_web": 0,
+  "freshness": "none",
+  "enqueued_at": "2026-10-01T04:09:25.422929+00:00",
+  "shard_json": "{\"task_id\": \"t3_impact_assessment\", \"plan_id\": \"adhoc_15435401f4b85f2e\", \"status\": \"PENDING\", \"idempotency_key\": \"adhoc_15435401f4b85f2e/t3_impact_assessment/15435401\", \"inputs_hash\": \"15435401f4b85f2ed4d1a3beb45ce4f09375faae9dcd50b4717cd7ac2901212d\", \"objective\": \"基于t1政策证据和t2市场数据，分析房贷贴息政策对购房成本、需求、房价、成交量、居民杠杆的影响，给出政策效果与市场走势判断；所有事实、数据和结论均须附来源。\", \"depends_on\": [\"t1_policy_scan\", \"t2_market_data\"], \"outputs\": [\"artifacts/2026-09-30/t3_impact_assessment.md\"], \"complexity\": \"complex\", \"needs_web\": false, \"freshness\": \"none\", \"key_questions\": [\"截至2026年9月30日，中国现行房贷相关政策（LPR、公积金利率、存量房贷调整、首付比例、各地购房补贴及房贷贴息）的具体内容、生效时间与适用口径是什么？\", \"截至该时点，房价、成交量、居民杠杆率等市场数据表现如何，来源与统计口径是否一致？\", \"在上述政策与市场证据下，房贷贴息政策的效果如何，未来市场走势可能如何？\"], \"slice_rationale\": \"综合判断需要整合政策文本与市场数据，形成可追溯的因果论证和走势预判，不宜与检索任务混在一起。\", \"long_running\": false, \"priority\": 0, \"source\": \"pipeline\", \"acceptance\": [{\"type\": \"file_exists\", \"path\": \"artifacts/2026-09-30/t3_impact_assessment.md\", \"rule_id\": \"rule_0\"}], \"handoff\": {\"done\": true, \"summary\": \"rule_0:ok\", \"artifact_refs\": [\"artifacts/2026-09-30/t3_impact_assessment.md\"], \"tests_passed\": true, \"tokens_used\": 0, \"open_issues\": []}}",
+  "updated_at": "2026-10-01T06:15:07.421628+00:00",
+  "verify_progress_json": "{\"verified_rules\": [\"rule_0\"], \"last_results\": [{\"ok\": true, \"detail\": \"\", \"rule_id\": \"rule_0\", \"type\": \"file_exists\"}], \"updated_at\": \"2026-10-01T06:15:06.984865+00:00\"}",
+  "shard": {
+    "task_id": "t3_impact_assessment",
+    "plan_id": "adhoc_15435401f4b85f2e",
+    "status": "PENDING",
+    "idempotency_key": "adhoc_15435401f4b85f2e/t3_impact_assessment/15435401",
+    "inputs_hash": "15435401f4b85f2ed4d1a3beb45ce4f09375faae9dcd50b4717cd7ac2901212d",
+    "objective": "基于t1政策证据和t2市场数据，分析房贷贴息政策对购房成本、需求、房价、成交量、居民杠杆的影响，给出政策效果与市场走势判断；所有事实、数据和结论均须附来源。",
+    "depends_on": [
+      "t1_policy_scan",
+      "t2_market_data"
+    ],
+    "outputs": [
+      "artifacts/2026-09-30/t3_impact_assessment.md"
+    ],
+    "complexity": "complex",
+    "needs_web": false,
+    "freshness": "none",
+    "key_questions": [
+      "截至2026年9月30日，中国现行房贷相关政策（LPR、公积金利率、存量房贷调整、首付比例、各地购房补贴及房贷贴息）的具体内容、生效时间与适用口径是什么？",
+      "截至该时点，房价、成交量、居民杠杆率等市场数据表现如何，来源与统计口径是否一致？",
+      "在上述政策与市场证据下，房贷贴息政策的效果如何，未来市场走势可能如何？"
+    ],
+    "slice_rationale": "综合判断需要整合政策文本与市场数据，形成可追溯的因果论证和走势预判，不宜与检索任务混在一起。",
+    "long_running": false,
+    "priority": 0,
+    "source": "pipeline",
+    "acceptance": [
+      {
+        "type": "file_exists",
+        "path": "artifacts/2026-09-30/t3_impact_assessment.md",
+        "rule_id": "rule_0"
+      }
+    ],
+    "handoff": {
+      "done": true,
+      "summary": "rule_0:ok",
+      "artifact_refs": [
+        "artifacts/2026-09-30/t3_impact_assessment.md"
+      ],
+      "tests_passed": true,
+      "tokens_used": 0,
+      "open_issues": []
+    }
+  },
+  "verify_progress": {
+    "verified_rules": [
+      "rule_0"
+    ],
+    "last_results": [
+      {
+        "ok": true,
+        "detail": "",
+        "rule_id": "rule_0",
+        "type": "file_exists"
+      }
+    ],
+    "updated_at": "2026-10-01T06:15:06.984865+00:00"
+  }
+}

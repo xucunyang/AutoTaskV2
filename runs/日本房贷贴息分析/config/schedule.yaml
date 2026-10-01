@@ -1,0 +1,31 @@
+jobs:
+  - id: daily_report
+    cron: "0 8 * * *"
+    timezone: Asia/Shanghai
+    template: templates/daily_plan.yaml
+    coalesce: true
+    max_instances: 1
+    misfire_grace_time: 3600
+    catchup: true
+    max_workers: 4
+    poll_interval_s: 30
+# V6§7 V5值：两档配额 + governor阈值（ACTIVE约1/8共享1槽，IDLE约85%）
+# 注意：下面这些都是**顶层键**，不要缩进到 workers: 里去——
+# workers 是 flow mapping（{...}），挂不了子键，缩进会让整个文件解析失败。
+# 而 core.orchestrator._load_cfg 会吞掉解析异常（现在会记 config_parse_failed），
+# 于是配置静默变成默认值（governor不生效/租约参数全部回落）。
+workers: {executor_active: 1, verifier_active: 0, local_active: 0, executor_idle: 4, verifier_idle: 2, local_idle: 1, shared_active_slot: 1, reserved_low_slot: 1}
+# 动态算力总督：每tick采样，写进 max_workers。手动override用
+# `python -m core.governor --mode idle|active|auto`。
+governor: {enabled: true, idle_after_s: 300, confirm_samples: 2, mem_headroom_gb: 2, high_burst: 1}
+# V6§10定版 + 评审B2收敛：租约/心跳/取消宽限/轮询集中于此，不散落魔法数字
+lease: {ttl_s: 120, heartbeat_s: 30, cancel_grace_high_s: 30, cancel_grace_default_s: 60}
+# 单实例锁的存活期：心跳超过这个时间未刷新即允许接管。
+# 必须远大于 poll.normal_s（10s），否则一个卡住的tick就会让别人以为它死了。
+# 两个编排器短暂并行的代价小（派发靠 expect_version 幂等），
+# 而一次 kill -9 导致系统永久起不来的代价极大——不划算。
+lock: {ttl_s: 90}
+poll: {normal_s: 10, fast_s: 2}
+aging: {step1_after_s: 600, step1_to: 5, step2_after_s: 1200, step2_to: 3}
+# 让出熔断上限（单任务切换超K次改走FAILED，Phase1§2.2）
+session_switch_limit: 5

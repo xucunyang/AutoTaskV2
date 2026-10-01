@@ -1,0 +1,3 @@
+{"ts": "2026-10-01T04:11:30.587278+00:00", "priority": "P1", "kind": "task_failed", "plan_id": "adhoc_15435401f4b85f2e", "task_id": "t1_policy_scan", "run_id": "verify-cn", "body": "r_trace:no_claims_json; r_fresh:no_sources_json; r_qual:no_sources_json; r_cover:no_report_md"}
+{"ts": "2026-10-01T04:17:28.913860+00:00", "priority": "P1", "kind": "task_failed", "plan_id": "adhoc_15435401f4b85f2e", "task_id": "t1_policy_scan", "run_id": "verify-cn", "body": "r_trace:no_claims_json; r_fresh:no_sources_json; r_qual:no_sources_json; r_cover:no_report_md"}
+{"ts": "2026-10-01T04:27:29.253103+00:00", "priority": "P1", "kind": "task_failed", "plan_id": "adhoc_15435401f4b85f2e", "task_id": "t2_market_data", "run_id": "verify-cn", "body": "r_cover:no_report_md"}

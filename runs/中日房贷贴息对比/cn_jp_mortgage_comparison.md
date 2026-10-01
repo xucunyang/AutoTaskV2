@@ -1,8 +1,8 @@
 # 中日房贷贴息政策对比与中国地产/经济趋势再判断
 
 - **性质**：二次综合分析。底层事实来自系统产出的两份调研报告
-  （`runs/japan_20261001/artifacts/2026-10-01/t3_assessment.md`、
-  `runs/china_20260930/artifacts/2026-09-30/t3_impact_assessment.md`），
+  （`runs/日本房贷贴息分析/artifacts/2026-10-01/t3_assessment.md`、
+  `runs/中国房贷贴息分析/artifacts/2026-09-30/t3_impact_assessment.md`），
   对比与判断为人工综合，不是系统任务链产出。
 - **日期**：2026-10-01
 - **数据截止**：日本侧截至 2026-10-01；中国侧政策截至 2026-09-30、

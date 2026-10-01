@@ -1,0 +1,103 @@
+{
+  "plan_id": "adhoc_b9a1c8b8717c6719",
+  "date": "2026-10-01",
+  "total": 3,
+  "counts": {
+    "DONE": 3
+  },
+  "tasks": [
+    {
+      "task_id": "t1_policy",
+      "status": "DONE",
+      "priority": 0,
+      "attempts": 0,
+      "max_attempts": 3,
+      "session_switch_total": 0,
+      "source": "pipeline",
+      "seq": 1,
+      "objective": "检索并核对日本房贷贴息相关政策原文、法律或税制文件、实施时间、适用条件、补贴或抵扣机制、执行主体与预算安排，整理关键条款并附来源链接。",
+      "needs_web": true,
+      "outputs": [
+        "artifacts/2026-10-01/t1_policy.md",
+        "artifacts/2026-10-01/t1_policy.sources.json",
+        "artifacts/2026-10-01/t1_policy.claims.json",
+        "artifacts/2026-10-01/t1_policy.report.md"
+      ],
+      "depends_on": [],
+      "slice_rationale": "先锁定政策定义、时间线与机制，避免后续把房贷贴息与一般货币政策、住宅贷款减税等概念混淆。",
+      "enqueued_at": "2026-10-01T03:37:04.846289+00:00",
+      "updated_at": "2026-10-01T03:39:43.259927+00:00",
+      "artifacts_date": "2026-10-01"
+    },
+    {
+      "task_id": "t2_indicators",
+      "status": "DONE",
+      "priority": 0,
+      "attempts": 0,
+      "max_attempts": 3,
+      "session_switch_total": 0,
+      "source": "pipeline",
+      "seq": 2,
+      "objective": "在明确政策时间窗口后，检索并整理日本房价、交易量、房贷利率、政策利率、GDP、通胀等指标的时间序列，标明统计口径、频率、单位与来源。",
+      "needs_web": true,
+      "outputs": [
+        "artifacts/2026-10-01/t2_indicators.md",
+        "artifacts/2026-10-01/t2_indicators.sources.json",
+        "artifacts/2026-10-01/t2_indicators.claims.json",
+        "artifacts/2026-10-01/t2_indicators.report.md"
+      ],
+      "depends_on": [
+        "t1_policy"
+      ],
+      "slice_rationale": "政策机制明确后，按统一时间窗口和口径拉取市场与宏观指标，为走势判断提供可比证据。",
+      "enqueued_at": "2026-10-01T03:37:05.336082+00:00",
+      "updated_at": "2026-10-01T03:42:33.499053+00:00",
+      "artifacts_date": "2026-10-01"
+    },
+    {
+      "task_id": "t3_assessment",
+      "status": "DONE",
+      "priority": 0,
+      "attempts": 0,
+      "max_attempts": 3,
+      "session_switch_total": 0,
+      "source": "pipeline",
+      "seq": 3,
+      "objective": "基于t1政策事实与t2指标数据，分析日本房贷贴息后整体经济与房地产市场走势，区分政策效应、货币与宏观周期、人口与供给等其他因素，给出有来源支撑的走势判断与风险情景。",
+      "needs_web": false,
+      "outputs": [
+        "artifacts/2026-10-01/t3_assessment.md"
+      ],
+      "depends_on": [
+        "t1_policy",
+        "t2_indicators"
+      ],
+      "slice_rationale": "前两卡提供政策事实与指标证据，最后综合判断，确保结论可追溯、避免无来源推断。",
+      "enqueued_at": "2026-10-01T03:37:05.825077+00:00",
+      "updated_at": "2026-10-01T03:51:50.762788+00:00",
+      "artifacts_date": "2026-10-01"
+    }
+  ],
+  "metrics": {
+    "dispatch_wait": {
+      "n": 3,
+      "avg": 124.07966666666668,
+      "max": 365.557
+    },
+    "execute": {
+      "n": 3,
+      "avg": 124245.99713333494,
+      "max": 159390.93100000173
+    },
+    "transition": {
+      "n": 15,
+      "avg": 1.6753133425178628,
+      "max": 3.0927000334486365
+    },
+    "verify": {
+      "n": 3,
+      "avg": 4.247266663393627,
+      "max": 7.297899981494993
+    }
+  }
+}

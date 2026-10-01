@@ -1,0 +1,12 @@
+{
+  "sha256": "5b3fc9d9697741480aedc4b6778eed99a2e2014164e2f37bed562cedb87f805c",
+  "bytes": 14028,
+  "rows": null,
+  "preview": [
+    "# t2_indicators — 日本房价·交易量·房贷利率·政策利率·GDP·通胀 指标时间序列",
+    "",
+    "- task: t2_indicators（plan=adhoc_b9a1c8b8717c6719, run=run-1790825827）",
+    "- 幂等键: adhoc_b9a1c8b8717c6719/t2_indicators/b9a1c8b8",
+    "- 政策时间窗口（本文件所有\"政策后\"读数的时间锚点）:"
+  ]
+}

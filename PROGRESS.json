@@ -165,11 +165,11 @@
       "decision": "只留 Tavily + 博查。Exa/Bing 以 NotImplementedError 桩留着——配置里写 provider:bing 不报错，运行时才炸。已删除，PROVIDERS 只剩两家，未知名字在 build() 就明确报错。"
     },
     "japan_mortgage_run": {
-      "run": "runs/japan_20261001/（独立目录，不污染生产状态）",
+      "run": "runs/日本房贷贴息分析/（独立目录，不污染生产状态）",
       "topic": "日本在房贷贴息之后，整体经济跟房地产市场的走势分析",
       "flow": "planner真拆分(flash)→3任务→编排派发→真模型执行→验收→日报，全部真实",
       "result": "t1_policy DONE / t2_indicators DONE / t3_assessment DONE",
-      "report": "runs/japan_20261001/artifacts/2026-10-01/t3_assessment.md（5179字）",
+      "report": "runs/日本房贷贴息分析/artifacts/2026-10-01/t3_assessment.md（5179字）",
       "bugs_fixed": [
         "写压力：flash连调12次search零产出→连续4轮未写即提醒（只一次）",
         "四件套schema进任务卡：形状全靠猜→模型自创schema→验收全挂",
@@ -178,7 +178,7 @@
       ]
     },
     "china_mortgage_run": {
-      "run": "runs/china_20260930/",
+      "run": "runs/中国房贷贴息分析/",
       "topic": "中国2026年9月30日的房贷贴息政策的影响",
       "flow": "planner真拆分→3任务→派发→真模型→验收→日报",
       "result": "t1 DONE / t2 DONE / t3 DONE（t2经一次重跑）",
