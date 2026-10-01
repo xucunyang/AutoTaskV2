@@ -629,11 +629,23 @@ def _age_s(ts: str | None) -> float | None:
 
 
 def _load_cfg(root: Path, name: str = "schedule.yaml") -> dict:
+    """读配置。**解析失败要留痕**，不能静默返回 {}。
+
+    运行时容忍坏配置是对的（一个坏文件不该让编排器起不来），但代价是
+    配置错误会**完全隐形**：governor 不启用、租约参数全部回落默认值、
+    锁存活期回落，而没有任何报错。我本人就踩过——给 schedule.yaml
+    加一个键时多缩进两格，整个文件解析失败，而 612 个测试全绿
+    （因为几乎没有测试解析**生产的** schedule.yaml）。
+    """
+    import yaml
+    p = Path(root) / "config" / name
+    if not p.exists():
+        return {}
     try:
-        import yaml
-        return yaml.safe_load((root / "config" / name).read_text(
-            encoding="utf-8")) or {}
-    except Exception:
+        return yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    except Exception as e:
+        jlog(root, "ERROR", "config_parse_failed", file=str(p),
+             error=str(e)[:300])
         return {}
 
 

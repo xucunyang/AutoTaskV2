@@ -15,7 +15,8 @@ import yaml
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 
-from core.store import Store, AlreadyExists, Conflict, IllegalTransition
+from core.store import (Store, AlreadyExists, Conflict, IllegalTransition,
+                        StoreError)
 from core.utils import jlog, now_utc_iso
 
 SHANGHAI = timezone(timedelta(hours=8))
@@ -232,6 +233,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--lookback-days", type=int, default=3)
     ap.add_argument("--dry-run", action="store_true", help="只打印计划不启动")
     ap.add_argument("--rerun", default=None, help="重跑指定任务ID（需配合--date）")
+    ap.add_argument("--reason", default=None,
+                    help="重跑理由；死信reopen时必填（无理由的重开等于无限循环）")
     ap.add_argument("--root", default=None, help="orchestrator根目录（默认本包上级）")
     args = ap.parse_args(argv)
     root = Path(args.root) if args.root else Path(__file__).resolve().parent.parent
@@ -247,25 +250,49 @@ def main(argv: list[str] | None = None) -> int:
         status, n = ensure_plan(store, args.date, tpl)
         print(json.dumps({"date": args.date, "result": status, "tasks": n},
                          ensure_ascii=False))
-        if args.rerun:
-            pid = plan_id_for(args.date)
-            t = store.get_task(pid, args.rerun)
-            if t is None:
-                print(json.dumps({"error": "task_not_found", "task_id": args.rerun}))
-                return 2
-            try:
-                reset = store.transition(pid, args.rerun, "RETRY", agent="cli",
-                                         run_id="manual_rerun",
-                                         expect_version=t["version"],
-                                         payload={"reason": "manual_cli_rerun",
-                                                  "manual_rerun": True})
-            except (IllegalTransition, Conflict) as e:
-                # 只允许状态机允许的边（当前态→RETRY），否则明确报错而非静默改状态
-                print(json.dumps({"error": type(e).__name__, "detail": str(e),
-                                  "from_status": t["status"]}, ensure_ascii=False))
-                return 2
-            print(json.dumps({"rerun": reset["task_id"], "status": reset["status"]},
+        if not args.rerun:
+            return 0          # 只展开plan，不启动常驻调度器
+    if args.rerun:
+        if not args.date:
+            print(json.dumps({"error": "rerun_requires_date",
+                              "detail": "--rerun 必须配合 --date（要知道是哪个plan）"},
                              ensure_ascii=False))
+            return 2
+        pid = plan_id_for(args.date)
+        t = store.get_task(pid, args.rerun)
+        if t is None:
+            print(json.dumps({"error": "task_not_found", "task_id": args.rerun}))
+            return 2
+        # 死信没有普通转移边（TERMINAL），必须走显式的 reopen：
+        # 它会重置 attempts，否则重开等于白开（跑一次失败又立刻升级死信）。
+        if t["status"] == "DEAD_LETTER":
+            try:
+                task = store.reopen_dead_letter(
+                    pid, args.rerun, reason=args.reason or "manual_cli_rerun",
+                    operator="cli", run_id="manual_rerun")
+                print(json.dumps({"task_id": args.rerun, "from": "DEAD_LETTER",
+                                  "to": task["status"],
+                                  "attempts": task["attempts"],
+                                  "reopened": True}, ensure_ascii=False))
+            except (IllegalTransition, Conflict, StoreError) as e:
+                print(json.dumps({"error": "reopen_failed",
+                                  "task_id": args.rerun, "detail": str(e)[:200]},
+                                 ensure_ascii=False))
+                return 2
+            return 0
+        try:
+            reset = store.transition(pid, args.rerun, "RETRY", agent="cli",
+                                     run_id="manual_rerun",
+                                     expect_version=t["version"],
+                                     payload={"reason": "manual_cli_rerun",
+                                              "manual_rerun": True})
+        except (IllegalTransition, Conflict) as e:
+            # 只允许状态机允许的边（当前态→RETRY），否则明确报错而非静默改状态
+            print(json.dumps({"error": type(e).__name__, "detail": str(e),
+                              "from_status": t["status"]}, ensure_ascii=False))
+            return 2
+        print(json.dumps({"rerun": reset["task_id"], "status": reset["status"]},
+                         ensure_ascii=False))
         return 0
     if args.dry_run:
         print(json.dumps({"jobs": [

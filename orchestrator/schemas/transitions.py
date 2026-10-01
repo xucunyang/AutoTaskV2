@@ -10,7 +10,22 @@ ALLOWED = {
     "WAITING_APPROVAL": {"DONE", "RETRY", "CANCELLED"},
     "RETRY": {"READY", "CANCELLED"},
     "FAILED": {"RETRY", "DEAD_LETTER"},
+    # DEAD_LETTER→RETRY：**只有显式的运维动作会走这条边**
+    # （Store.reopen_dead_letter / `scheduler --rerun`），必须带 reason+sop_ref
+    # 且重置 attempts。
+    #
+    # 为什么不留成"完全无出边"：那样死信就**无法恢复**——只能手工改库，
+    # 而改库会让 version 与 events 对不上，replay 一致性校验随即失败
+    # （SOP §5 明确禁止）。也就是说"无出边"实际上等于"死信是永久的"，
+    # 除非有人去破坏数据完整性。
+    #
+    # 为什么这不破坏"终态"语义：TERMINAL 的含义是**系统不会自动再处理它**
+    # （escalate 只扫 FAILED、promote_retries 只扫 RETRY、
+    #  refresh_ready 只处理 PENDING/BLOCKED）——没有任何自动路径离开死信。
+    # 离开它的只有一个：人明确说"我修好了，重来"。
+    "DEAD_LETTER": {"RETRY"},
 }
+# TERMINAL = 终态：**没有自动出边**。可以有显式的运维 reopen（见上）。
 TERMINAL = {"DONE", "DEAD_LETTER", "CANCELLED", "SKIPPED", "SKIPPED_CACHED"}
 # 权限矩阵：仅orchestrator可写系统跃迁，子Agent仅RUNNING->SUBMITTED/FAILED/READY(让出)
 SYSTEM_ONLY = {"VERIFYING"}

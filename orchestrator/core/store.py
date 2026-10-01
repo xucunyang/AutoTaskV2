@@ -658,6 +658,71 @@ class Store:
         return notifier.send(priority, kind, plan_id=plan_id, task_id=task_id,
                              run_id=run_id, body=body)
 
+    def reopen_dead_letter(self, plan_id: str, task_id: str, *, reason: str,
+                           sop_ref: str = "docs/sop/dead-letter.md",
+                           operator: str = "cli", run_id: str = "manual_reopen",
+                           expect_version: int | None = None) -> dict:
+        """把死信重开成 RETRY。**唯一的显式出死信路径**。
+
+        为什么需要它：死信原本**没有任何出边**，于是"死信无法恢复"——
+        唯一的办法是手工改 state.db，而那会让 version 与 events 对不上，
+        `replay` 一致性校验随即失败（SOP §5 又明确禁止改库）。
+        换句话说，"无出边"实际上等于"死信是永久的，除非有人破坏数据完整性"。
+        一份死信三必填里强制填 `sop_ref` 指向处理文档，而那份文档给的却是
+        一条不存在的边——照着做只会失败。
+
+        **必须重置 attempts**：`escalate_dead_letters` 的判据是
+        `attempts >= max_attempts`，而 RETRY→READY 每次还会 +1。
+        不重置的话重开等于白开：跑一次、失败、立刻又升级成死信。
+
+        必须带 reason：没有理由的重开等于"我看着办重试"，
+        而死信是系统**主动放弃**的结果，随手重开会变成无限循环。
+        """
+        if not reason:
+            raise StoreError("reopen_requires_reason")
+        t = self.get_task(plan_id, task_id)
+        if t is None:
+            raise StoreError(f"task_not_found:{plan_id}/{task_id}")
+        if t["status"] != "DEAD_LETTER":
+            raise StoreError(
+                f"not_dead_letter:{t['status']}（只有死信需要reopen，"
+                "其他状态用 scheduler --rerun）")
+        ver = t["version"] if expect_version is None else expect_version
+
+        def _fn(con):
+            now = now_utc_iso()
+            cur = con.execute(
+                "SELECT attempts, fencing_token FROM tasks"
+                " WHERE plan_id=? AND task_id=?", (plan_id, task_id)).fetchone()
+            attempts, fen = cur[0], cur[1]
+            con.execute(
+                "UPDATE tasks SET status='RETRY', attempts=0, owner=NULL,"
+                " lease_until=NULL, version=?, updated_at=?"
+                " WHERE plan_id=? AND task_id=?",
+                (ver + 1, now, plan_id, task_id))
+            con.execute(
+                "INSERT INTO events(ts,plan_id,task_id,from_s,to_s,run_id,"
+                "agent,payload) VALUES (?,?,?,?,?,?,?,?)",
+                (now, plan_id, task_id, "DEAD_LETTER", "RETRY", run_id,
+                 operator,
+                 json.dumps({"reason": reason, "sop_ref": sop_ref,
+                             "attempts_reset_from": attempts,
+                             "operator": operator,
+                             "reopened": True}, ensure_ascii=False)))
+            return con.execute(
+                "SELECT * FROM tasks WHERE plan_id=? AND task_id=?",
+                (plan_id, task_id)).fetchone()
+
+        row = self._write_txn(_fn)
+        task = self._row_to_task(row)
+        # 死信是系统主动放弃的结果，人工重开必须留痕且可见
+        self.alert("P1", "dead_letter_reopened", plan_id=plan_id,
+                   task_id=task_id, reason=reason[:200], operator=operator,
+                   attempts_reset_from=t["attempts"])
+        self.record_metric("dead_letter_reopened", 1,
+                           plan_id=plan_id, task_id=task_id, run_id=run_id)
+        return task
+
     def list_by_status(self, status: str) -> list[dict]:
         """按状态列候选（供lease回收扫描用；排序固定seq保证可重放）。"""
         con = self._connect()
