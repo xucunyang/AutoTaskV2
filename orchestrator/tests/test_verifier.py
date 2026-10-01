@@ -478,6 +478,73 @@ def test_does_not_short_circuit(tmp_path):
     assert {r["rule_id"] for r in results if r["ok"]} == {"r1"}
 
 
+def test_load_four_set_unwraps_sources_wrapper(tmp_path):
+    """模型常把数组包一层 {"sources": [...]}。结构明确、无歧义，应该收敛。
+
+    但只收敛结构，不代做判断：缺 tier_reason 的条目照样按"无理由"排除，
+    不会有人替它编理由。
+    """
+    from core import verifier as vf
+    d = tmp_path / "artifacts" / "2026-10-01"
+    d.mkdir(parents=True)
+    (d / "t1.sources.json").write_text(json.dumps({
+        "meta": {"note": "模型自带的外包装"},
+        "sources": [
+            {"id": "s1", "url": "https://a.com", "title": "T",
+             "tier": "A", "source_tier": "A", "tier_reason": "官方",
+             "published_at": "2026-09-01T00:00:00+00:00"},
+        ]}), encoding="utf-8")
+    (d / "t1.claims.json").write_text(json.dumps({
+        "claims": [{"id": "c1", "text": "结论", "source_ids": ["s1"]}]}),
+        encoding="utf-8")
+    ctx = {"root": tmp_path, "date": "2026-10-01", "task_id": "t1"}
+    sources, claims, _ = vf._load_four_set(ctx, "t1")
+    assert len(sources) == 1 and sources[0]["source_id"] == "s1"
+    assert len(claims) == 1 and claims[0]["claim_id"] == "c1"
+
+
+def test_load_four_set_does_not_invent_tier_reason(tmp_path):
+    """容忍止于结构：tier_reason 缺了就是缺了，验收按无理由排除。
+
+    代写理由等于伪造分级依据——那比直接失败更糟。
+    """
+    from core import verifier as vf
+    d = tmp_path / "artifacts" / "2026-10-01"
+    d.mkdir(parents=True)
+    (d / "t1.sources.json").write_text(json.dumps([
+        {"source_id": "s1", "url": "https://a.com", "title": "T",
+         "tier": "A", "published_at": "2026-09-01T00:00:00+00:00"},
+    ]), encoding="utf-8")
+    (d / "t1.claims.json").write_text(json.dumps([
+        {"claim_id": "c1", "text": "x", "source_ids": ["s1"]}]),
+        encoding="utf-8")
+    ctx = {"root": tmp_path, "date": "2026-10-01", "task_id": "t1"}
+    sources, _, _ = vf._load_four_set(ctx, "t1")
+    assert sources[0].get("tier_reason") in (None, ""), \
+        "loader 给条目补了 tier_reason——那是伪造分级依据"
+    res = vf.h_source_quality(
+        {**ctx, "shard": {}}, {"type": "source_quality", "rule_id": "q",
+                               "source_tier_min_ratio": {"A": 0.5}})
+    assert res["ok"] is False, f"无理由条目竟通过了: {res}"
+    assert "tier_reason" in res["detail"] or "no_tier" in res["detail"], \
+        f"失败原因应指向缺tier_reason: {res['detail']}"
+    """不短路：一条FAIL也要把剩下的跑完，否则不知道还错几处。"""
+    root = _root(tmp_path)
+    s = Store(root)
+    s.ensure_plan("p1")
+    rules = [{"type": "file_exists", "path": f"artifacts/{DATE}/a.csv", "rule_id": "r0"},
+             {"type": "file_exists", "path": f"artifacts/{DATE}/b.csv", "rule_id": "r1"},
+             {"type": "file_exists", "path": f"artifacts/{DATE}/c.csv", "rule_id": "r2"}]
+    _add(s, "t1", acceptance=rules)
+    _art(root, f"artifacts/{DATE}/b.csv")     # 只让r1过
+    _to_verifying(s, "p1", "t1")
+    vo.verify(s, "p1", "t1", "r", date=DATE)
+    t = s.get_task("p1", "t1")
+    results = t["verify_progress"]["last_results"]
+    assert len(results) == 3
+    assert {r["rule_id"] for r in results if r["ok"]} == {"r1"}
+
+
 # ---------- 异步池（评审M7） ----------
 
 def test_async_pool_does_not_block(tmp_path):

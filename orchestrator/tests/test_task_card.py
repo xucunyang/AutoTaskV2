@@ -70,6 +70,32 @@ def test_card_token_budget_under_2k_with_checkpoint_and_web():
     assert estimate_tokens(c) < 2000
 
 
+def test_needs_web_card_contains_four_set_schema():
+    """needs_web 的任务卡必须写明四件套的精确形状。
+
+    之前卡上只说"写到 outputs"，形状全靠模型猜——结果模型包了一层
+    {"sources":...}、用 id 不用 source_id，验收全挂。
+    契约不能只存在代码里。
+    """
+    from core.task_card import render_task_card
+    card = _card(
+        task_id="t1", objective="调研",
+        outputs=["artifacts/2026-10-01/t1.report.md"],
+        needs_web=True, freshness="recent",
+        key_questions=["问题一"])
+    assert "source_id" in card
+    assert "tier_reason" in card
+    assert "顶层数组" in card
+    assert "source_ids" in card
+
+
+def test_non_web_card_has_no_four_set_schema():
+    """不需要检索的任务卡不该有四件套说明——多余的约束只会干扰模型。"""
+    c = _card(needs_web=False)
+    assert "四件套" not in c
+    assert "source_id" not in c
+
+
 def test_card_never_leaks_forbidden_fields():
     """禁给master全文/其他任务分片/全量events/大文件内容。
     模板里"禁止：读master全量…"是禁令文本本身，不是泄漏的数据。"""

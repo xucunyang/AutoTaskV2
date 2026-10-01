@@ -31,6 +31,9 @@
 
 {% if needs_web %}
 【检索约束】时效性要求={{ freshness }}；关键问题：{{ key_questions | join("；") }}
+
+【四件套 JSON 形状（验收按这个读，写错形状等于没写）】
+{{ four_set_schema }}
 {% endif %}
 输出要求：
 1. 用 atomic_write 把产物写到 {{ outputs }}

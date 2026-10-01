@@ -295,6 +295,63 @@ def test_provider_without_tools_kwarg_falls_back_to_single_chat(tmp_path):
     assert resp["content"] == "老路径" and steps == 0
 
 
+def test_write_pressure_reminder_after_idle_rounds(tmp_path):
+    """连续只检索不写 → 必须注入写提醒，且提醒只出现一次。
+
+    真实案例：flash 曾连调 12 次 search，一个字没写，把整轮预算烧光。
+    任务卡的文字约束压不住，需要结构性的推力。
+    """
+    root = tmp_path / "root"
+    root.mkdir()
+    provider = ScriptedProvider([
+        {"tool_calls": [{"id": str(i), "name": "search",
+                         "arguments": {"query": f"q{i}"}}]}
+        for i in range(12)
+    ])
+    tb = tools.ToolBox(root, search_fn=lambda q, max_results=5: [])
+    shard = {"outputs": ["artifacts/out.md"]}
+    _resp, steps = _tool_loop(provider, "卡", None, tb, shard, 8192)
+    assert steps == MAX_TOOL_STEPS
+    reminders = [m for m in provider.seen_messages
+                 if "执行提醒" in str(m.get("content") or "")]
+    assert len(reminders) == 1, f"提醒应恰好出现一次: {len(reminders)}"
+    assert "artifacts/out.md" in reminders[0]["content"]
+
+
+def test_no_reminder_when_model_writes(tmp_path):
+    """正常写产物的流程不应被打扰。"""
+    root = tmp_path / "root"
+    root.mkdir()
+    provider = ScriptedProvider([
+        {"tool_calls": [{"id": "1", "name": "search",
+                         "arguments": {"query": "q"}}]},
+        {"tool_calls": [{"id": "2", "name": "atomic_write",
+                         "arguments": {"path": "out.md", "content": "x"}}]},
+        {"content": "done"},
+    ])
+    tb = tools.ToolBox(root, search_fn=lambda q, max_results=5: [])
+    _tool_loop(provider, "卡", None, tb, {"outputs": ["out.md"]}, 8192)
+    reminders = [m for m in provider.seen_messages
+                 if "执行提醒" in str(m.get("content") or "")]
+    assert not reminders
+
+
+def test_no_reminder_without_declared_outputs(tmp_path):
+    """没有声明产物时不提醒——没东西可写，提醒只会污染上下文。"""
+    root = tmp_path / "root"
+    root.mkdir()
+    provider = ScriptedProvider([
+        {"tool_calls": [{"id": str(i), "name": "search",
+                         "arguments": {"query": f"q{i}"}}]}
+        for i in range(6)
+    ])
+    tb = tools.ToolBox(root, search_fn=lambda q, max_results=5: [])
+    _tool_loop(provider, "卡", None, tb, {}, 8192)
+    reminders = [m for m in provider.seen_messages
+                 if "执行提醒" in str(m.get("content") or "")]
+    assert not reminders
+
+
 # ---------------------------------------------------------------- 方言
 
 def test_ollama_tool_call_arguments_are_dict_not_string():

@@ -373,11 +373,17 @@ def _tool_loop(provider, card: str, ckpt, toolbox, shard: dict,
     3. **工具失败不抛异常打断循环**：把错误文本回填给模型让它自己改。
        只有路径越界/命令越权（ToolDenied）才停——那是安全问题，
        让模型重试等于教它怎么绕过。
+    4. **写压力**：连续多次只调非写入工具（search/read_range/run_cmd）
+       而不写产物时，注入一条提醒。任务卡里写了"先产出再验证"，
+       但那只是文字——实测 flash 曾连调 12 次 search，一个字没写，
+       把整轮预算烧光。文字约束压不住，必须有结构性的推力。
+       提醒只进 messages，不占 step，不改变循环语义。
     """
     budget = shard.get("budget") or {}
     max_steps = int(budget.get("max_steps") or MAX_TOOL_STEPS)
     max_steps = max(1, min(max_steps, MAX_TOOL_STEPS))
     schemas = toolbox.schemas()
+    declared = [str(o) for o in shard.get("outputs") or []]
     messages: list[dict] = [{"role": "user", "content": card}]
     if ckpt is not None:
         messages.append({"role": "user",
@@ -389,6 +395,8 @@ def _tool_loop(provider, card: str, ckpt, toolbox, shard: dict,
         return resp, 0
 
     last: dict = {}
+    idle_writes = 0                # 连续未写入轮数
+    reminded = False
     for step in range(1, max_steps + 1):
         last = _chat_tools(provider, messages, budget, final_window, schemas)
         calls = last.get("tool_calls") or []
@@ -398,6 +406,7 @@ def _tool_loop(provider, card: str, ckpt, toolbox, shard: dict,
             messages.append({"role": "assistant",
                              "content": last.get("content") or "",
                              "tool_calls": _encode_calls(provider, last)})
+        wrote = False
         for c in calls:
             try:
                 out = toolbox.execute(c["name"], c["arguments"])
@@ -407,6 +416,20 @@ def _tool_loop(provider, card: str, ckpt, toolbox, shard: dict,
                 raise
             messages.append({"role": "tool", "tool_call_id": c["id"],
                              "content": out})
+            if c["name"] == "atomic_write" and out.startswith("OK"):
+                wrote = True
+        idle_writes = 0 if wrote else idle_writes + 1
+        # 写压力：连续4轮没落盘就推一把。阈值4是因为正常流程是
+        # "查1-2轮→写"，4轮还没写基本就是在空转。
+        if idle_writes >= 4 and declared and not reminded:
+            reminded = True        # 只推一次，避免每轮都唠叨污染上下文
+            messages.append({
+                "role": "user",
+                "content": ("【执行提醒】你已连续多轮只检索/读取，没有写入任何产物。"
+                            f"本任务声明的产物是：{', '.join(declared[:6])}。"
+                            "检索到的信息如果不用 atomic_write 落盘就等于没做。"
+                            "请现在就用 atomic_write 写出产物（可先写初版，"
+                            "后面再补充），不要再发起新的检索。")})
     return last, max_steps
 
 

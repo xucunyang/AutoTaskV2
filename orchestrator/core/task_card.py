@@ -37,6 +37,31 @@ def build_manifest(artifact: dict) -> dict:
             "preview": (artifact.get("preview") or [])[:5]}
 
 
+# 四件套的精确形状说明，只在 needs_web 的任务卡里出现。
+# 它必须和 verifier._load_four_set 实际读的形状一致——这是同一份契约的
+# 两面（"卡上承诺的" vs "验收检查的"）。改了一边必须改另一边，
+# 否则会出现"按卡写了却过不了验收"，而模型完全不知道为什么。
+FOUR_SET_SCHEMA = """\
+`{task_id}.sources.json` 必须是**顶层数组**（不要包在 {"sources":...} 里），
+每个元素：
+{"source_id": "s1", "url": "https://...", "title": "...",
+ "snippet": "摘要（search 返回的原文，不要自己编）",
+ "published_at": "2026-09-15T00:00:00+00:00（完整日期；只写年份会被判无日期）",
+ "source_tier": "A", "tier": "A",
+ "tier_reason": "为什么是A（一句话，不写会被排除出A类统计）"}
+字段名必须用 source_id（不是 id），tier_reason 不能为空。
+A = 官方机构/政府公告/持牌金融机构；B = 主流媒体；C = 个人号/论坛。
+
+`{task_id}.claims.json` 必须是**顶层数组**，每个元素：
+{"claim_id": "c1", "text": "一句话结论", "source_ids": ["s1", "s2"]}
+每条 claim 的 source_ids 必须非空且指向 sources.json 里存在的 source_id。
+没有来源支撑的结论不要写进 claims（写了会被判幻觉）。
+
+`{task_id}.report.md` 是给人看的正文，按 key_questions 分节，
+每节标题必须包含对应问题的关键词（coverage 验收按标题匹配）。
+"""
+
+
 def render_task_card(root: str | Path, *, task_id: str, plan_id: str, run_id: str,
                      objective: str, idempotency_key: str, outputs: list,
                      acceptance: list, budget: dict, inputs: list | None = None,
@@ -73,6 +98,7 @@ def render_task_card(root: str | Path, *, task_id: str, plan_id: str, run_id: st
         "needs_web": needs_web, "freshness": freshness,
         "key_questions": key_questions or [],
         "cmd_allowlist": cmd_allowlist,
+        "four_set_schema": FOUR_SET_SCHEMA.replace("{task_id}", task_id),
     }
     if needs_web and freshness == "none":
         # 与TaskShard._needs_web_requires_freshness同一条约束，只是提前到渲染口

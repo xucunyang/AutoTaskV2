@@ -203,7 +203,60 @@ def _load_four_set(ctx: dict, task_id: str) -> tuple[list, list, str]:
     sources = json.loads(src.read_text(encoding="utf-8")) if src.exists() else []
     claims = json.loads(clm.read_text(encoding="utf-8")) if clm.exists() else []
     report = rep.read_text(encoding="utf-8", errors="ignore") if rep.exists() else ""
-    return sources, claims, report
+    return _normalize_sources(sources), _normalize_claims(claims), report
+
+
+def _normalize_sources(raw) -> list[dict]:
+    """把模型常写的两种变形收敛到标准形状。
+
+    容忍的（结构明确、无歧义）：
+    - 顶层包一层 {"sources": [...]} → 取出数组
+    - 条目用 "id" 而不是 "source_id" → 改名（同一含义）
+    不容忍的（需要判断，不能代做）：
+    - 缺 tier_reason → 留空，让 source_quality 按"无理由"排除。
+      代写理由等于伪造分级依据。
+    - published_at 只有年份 → 留原样，让 freshness 按"无日期"计。
+      脑补月份等于伪造时效。
+    """
+    if isinstance(raw, dict):
+        for key in ("sources", "results", "items"):
+            if isinstance(raw.get(key), list):
+                raw = raw[key]
+                break
+        else:
+            return []
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for s in raw:
+        if not isinstance(s, dict):
+            continue
+        s = dict(s)
+        if "source_id" not in s and "id" in s:
+            s["source_id"] = s["id"]
+        out.append(s)
+    return out
+
+
+def _normalize_claims(raw) -> list[dict]:
+    if isinstance(raw, dict):
+        for key in ("claims", "results", "items"):
+            if isinstance(raw.get(key), list):
+                raw = raw[key]
+                break
+        else:
+            return []
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for c in raw:
+        if not isinstance(c, dict):
+            continue
+        c = dict(c)
+        if "claim_id" not in c and "id" in c:
+            c["claim_id"] = c["id"]
+        out.append(c)
+    return out
 
 
 def h_source_traceable(ctx: dict, rule: dict) -> dict:
