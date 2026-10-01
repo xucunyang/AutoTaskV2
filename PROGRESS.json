@@ -42,7 +42,7 @@
     }
   },
   "plan_id": "autotask_bootstrap",
-  "updated_at": "2026-10-01T10:00:00Z",
+  "updated_at": "2026-10-01T11:30:00Z",
   "decisions_2026_09_29": {
     "review": "Phase0-4 阶段设计稿全部评审通过",
     "delete_master_json": "master.json 是V1/V2 task.md的遗留，V7纲领全文不再提。用户确认删除。现在只留 state/export/plans/{plan_id}.json；跨plan全局视图走 Store.daily_summary() 从DB聚合，不在导出目录里再存一份可能不一致的事实。",
@@ -163,14 +163,27 @@
     ],
     "search_cleanup": {
       "decision": "只留 Tavily + 博查。Exa/Bing 以 NotImplementedError 桩留着——配置里写 provider:bing 不报错，运行时才炸。已删除，PROVIDERS 只剩两家，未知名字在 build() 就明确报错。"
+    },
+    "japan_mortgage_run": {
+      "run": "runs/japan_20261001/（独立目录，不污染生产状态）",
+      "topic": "日本在房贷贴息之后，整体经济跟房地产市场的走势分析",
+      "flow": "planner真拆分(flash)→3任务→编排派发→真模型执行→验收→日报，全部真实",
+      "result": "t1_policy DONE / t2_indicators DONE / t3_assessment DONE",
+      "report": "runs/japan_20261001/artifacts/2026-10-01/t3_assessment.md（5179字）",
+      "bugs_fixed": [
+        "写压力：flash连调12次search零产出→连续4轮未写即提醒（只一次）",
+        "四件套schema进任务卡：形状全靠猜→模型自创schema→验收全挂",
+        "loader最小容忍：解包+改名，但不代写tier_reason/脑补日期",
+        "派发饿死：priority=0在free=1时两头够不着，READY挂110tick→溢出补发"
+      ]
     }
   },
   "phase4_status": {
-    "pytest": "640 passed",
+    "pytest": "648 passed",
     "coverage": "25模块平均 91.2%（门槛80%，单模块也须过线）",
     "real_e2e": "3/3 SUBMITTED（simple→local / medium→flash / complex→pro）",
     "bigfile_200mb": "3.80s / 峰值内存增量 0.5MB / 任务卡 702 tokens",
-    "production_bugs_found_and_fixed": 12,
+    "production_bugs_found_and_fixed": 16,
     "note": "详见 design/phases/Phase4-verification-chaos-design.md §6.0、§6.0.1 与 §10"
   }
 }
