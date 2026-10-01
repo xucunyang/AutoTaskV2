@@ -42,7 +42,7 @@
     }
   },
   "plan_id": "autotask_bootstrap",
-  "updated_at": "2026-10-01T00:30:00Z",
+  "updated_at": "2026-10-01T10:00:00Z",
   "decisions_2026_09_29": {
     "review": "Phase0-4 阶段设计稿全部评审通过",
     "delete_master_json": "master.json 是V1/V2 task.md的遗留，V7纲领全文不再提。用户确认删除。现在只留 state/export/plans/{plan_id}.json；跨plan全局视图走 Store.daily_summary() 从DB聚合，不在导出目录里再存一份可能不一致的事实。",
@@ -107,7 +107,7 @@
       "少样本不能推系统性结论：qwen3.5:4b 一次400就被判成'本地模型不行'，实际是我回填方言错了。定性结论至少5~10个样本。"
     ],
     "still_pending": [
-      "2.6 唯一剩余：Mac真机验证（core/governor.py:_idle_mac 依赖 macOS 专有的 ioreg，Windows 上无法执行）—— 需要在 Mac 上跑 python -c 'from core import governor; print(governor._idle_mac())' 确认返回值 >0 且量级合理"
+      "Mac真机验证（core/governor.py:_idle_mac 依赖 macOS 专有的 ioreg，Windows 无法执行）—— 用户已确认放一边"
     ],
     "coverage_blindspots": {
       "gate": "orchestrator/scripts/check_coverage.py（6模块 → 25模块）",
@@ -148,14 +148,29 @@
       },
       "conclusion": "内存与文件体积无关；原混沌5只造20万行(≈5MB)，离200MB差40倍，这个结论此前从没在真实体积上验过",
       "why_two_sizes": "单看绝对内存会被解释器底噪淹没，且说明不了问题——代码改成整读时小档可能侥幸过关。两档对比下整读会让内存增量同步暴涨10倍，比值立刻拉开。比'内存<100MB'这种阈值抗得住重构。"
+    },
+    "dead_letter_reopen": {
+      "status": "done",
+      "problem": "死信原本没有任何出边，于是'死信无法恢复'——只能手工改库，而改库会破坏 replay 一致性（SOP又禁止改库）。`scheduler --rerun` 做的正是 DEAD_LETTER→RETRY，所以它对死信必然失败——而死信正是它的主题。",
+      "fix": "schemas/transitions.py 加 DEAD_LETTER→RETRY（只走显式运维动作）；Store.reopen_dead_letter()：进RETRY + attempts重置为0 + 审计事件 + P1告警；scheduler --rerun 对死信用 reopen，其余走普通转移。",
+      "sop": "docs/sop/dead-letter.md 重写为全部实测过的命令。旧版四个问题：--status不存在；'改回RETRY（见下）'无下文且当时无此边；ALERTS.jsonl大小写错；查local-ollama.models（已改名）。",
+      "tests": "orchestrator/tests/test_dead_letter_reopen.py（15例）"
+    },
+    "self_inflicted_this_round": [
+      "scheduler.py 丢了一个 return 0（dedent --rerun 块时）：--date 单独跑掉进 BlockingScheduler 无限 sleep，test_cli_date_and_catchup 挂住。补回并让裸 --rerun 明确报错'必须配 --date'。",
+      "schedule.yaml 被改出缩进错位（governor/lease/lock/poll 挂进 flow mapping workers: {...}），整个文件解析失败；而 _load_cfg 吞异常返回 {}，于是生产配置静默变成默认值，612 个测试全绿都没发现。已修复并加回被误删的 jobs: 块；_load_cfg 解析失败现在记 config_parse_failed 留痕。",
+      "reopen_dead_letter 的 UPDATE 漏了 status='RETRY'——只重置attempts不改状态。"
+    ],
+    "search_cleanup": {
+      "decision": "只留 Tavily + 博查。Exa/Bing 以 NotImplementedError 桩留着——配置里写 provider:bing 不报错，运行时才炸。已删除，PROVIDERS 只剩两家，未知名字在 build() 就明确报错。"
     }
   },
   "phase4_status": {
-    "pytest": "612 passed",
+    "pytest": "640 passed",
     "coverage": "25模块平均 91.2%（门槛80%，单模块也须过线）",
     "real_e2e": "3/3 SUBMITTED（simple→local / medium→flash / complex→pro）",
     "bigfile_200mb": "3.80s / 峰值内存增量 0.5MB / 任务卡 702 tokens",
-    "production_bugs_found_and_fixed": 10,
+    "production_bugs_found_and_fixed": 12,
     "note": "详见 design/phases/Phase4-verification-chaos-design.md §6.0、§6.0.1 与 §10"
   }
 }
