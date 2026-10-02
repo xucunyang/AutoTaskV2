@@ -1,11 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350"><defs>
-  <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0%" stop-color="#12151c"/><stop offset="100%" stop-color="#0f1115"/>
-  </linearGradient>
-</defs>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#12151c"/><stop offset="100%" stop-color="#0f1115"/></linearGradient></defs>
 <rect width="1080" height="1350" fill="url(#bg)"/>
-<text x="70" y="120" font-family="Source Han Sans SC, Microsoft YaHei, sans-serif"
-      font-size="52" font-weight="bold" fill="#ffffff">政策到期 = 一波抢购</text>
-<text x="70" y="175" font-family="Source Han Sans SC, sans-serif" font-size="30" fill="#8b93a1">锯齿状，不是趋势</text><rect x="90" y="280" width="900" height="120" rx="16" fill="#1b1f28" stroke="#ffb020" stroke-width="2"/><text x="130" y="352" font-family="Source Han Sans SC, sans-serif" font-size="38" fill="#8b93a1">到期前</text><text x="950" y="358" text-anchor="end" font-family="Source Han Sans SC, sans-serif" font-size="46" font-weight="bold" fill="#ffb020">抢购升温</text><rect x="90" y="430" width="900" height="120" rx="16" fill="#1b1f28" stroke="#ffb020" stroke-width="2"/><text x="130" y="502" font-family="Source Han Sans SC, sans-serif" font-size="38" fill="#8b93a1">到期当月</text><text x="950" y="508" text-anchor="end" font-family="Source Han Sans SC, sans-serif" font-size="46" font-weight="bold" fill="#ffb020">集中成交</text><rect x="90" y="580" width="900" height="120" rx="16" fill="#1b1f28" stroke="#ffb020" stroke-width="2"/><text x="130" y="652" font-family="Source Han Sans SC, sans-serif" font-size="38" fill="#8b93a1">到期后 1–2 季</text><text x="950" y="658" text-anchor="end" font-family="Source Han Sans SC, sans-serif" font-size="46" font-weight="bold" fill="#ffb020">回落</text><text x="70" y="1290" font-family="Source Han Sans SC, sans-serif" font-size="24" fill="#8b93a1">数据来源：公开政策文件与统计</text>
+<rect x="90" y="280" width="900" height="120" fill="#1b1f28" rx="16"/>
+<rect x="90" y="280" width="6" height="120" fill="#ffb020" rx="3"/>
+<rect x="90" y="430" width="900" height="120" fill="#1b1f28" rx="16"/>
+<rect x="90" y="430" width="6" height="120" fill="#ffb020" rx="3"/>
+<rect x="90" y="580" width="900" height="120" fill="#1b1f28" rx="16"/>
+<rect x="90" y="580" width="6" height="120" fill="#ffb020" rx="3"/>
+<text x="70" y="120" font-family="Source Han Sans SC, Microsoft YaHei, sans-serif" font-size="52" font-weight="bold" fill="#ffffff">政策到期 = 一波抢购</text>
+<text x="70" y="175" font-family="Source Han Sans SC, Microsoft YaHei, sans-serif" font-size="30" fill="#8b93a1">锯齿状，不是趋势</text>
+<text x="130" y="352" font-family="Source Han Sans SC, Microsoft YaHei, sans-serif" font-size="38" fill="#8b93a1">到期前</text>
+<text x="950" y="358" text-anchor="end" font-family="Source Han Sans SC, Microsoft YaHei, sans-serif" font-size="46" font-weight="bold" fill="#ffb020">抢购升温</text>
+<text x="130" y="502" font-family="Source Han Sans SC, Microsoft YaHei, sans-serif" font-size="38" fill="#8b93a1">到期当月</text>
+<text x="950" y="508" text-anchor="end" font-family="Source Han Sans SC, Microsoft YaHei, sans-serif" font-size="46" font-weight="bold" fill="#ffb020">集中成交</text>
+<text x="130" y="652" font-family="Source Han Sans SC, Microsoft YaHei, sans-serif" font-size="38" fill="#8b93a1">到期后 1–2 季</text>
+<text x="950" y="658" text-anchor="end" font-family="Source Han Sans SC, Microsoft YaHei, sans-serif" font-size="46" font-weight="bold" fill="#ffb020">回落</text>
+<text x="70" y="1290" font-family="Source Han Sans SC, Microsoft YaHei, sans-serif" font-size="24" fill="#8b93a1">数据来源：公开政策文件与统计</text>
 </svg>

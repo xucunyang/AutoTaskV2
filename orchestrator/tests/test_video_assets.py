@@ -17,7 +17,8 @@ from pathlib import Path
 import pytest
 
 VIDEO = Path(__file__).resolve().parents[2] / "video" / "中日房贷贴息对比"
-CHARTS = VIDEO / "charts"
+CHART_DIR = VIDEO / "charts"
+CHARTS = CHART_DIR          # 旧名保留，避免下面的用例全改
 GEN = VIDEO / "scripts" / "make_charts.py"
 CHECK = VIDEO / "scripts" / "check_charts.py"
 
@@ -58,6 +59,79 @@ def test_every_chart_has_readable_text():
     """不能有空图——全是非文字元素意味着观众看到一片空白。"""
     for f in sorted(CHARTS.glob("*.svg")):
         assert _texts(f), f"{f.name} 没有任何文字"
+
+
+def test_png_files_exist_for_every_chart():
+    """剪映吃不了 SVG，必须有 PNG。
+
+    这条是真实踩过的：render_png 建完 Image 忘了 img.save()，
+    脚本照样打印"共 16 张"、退出码 0，而 charts/ 里一个 PNG 都没有。
+    所以校验必须落到"文件真的在磁盘上"，不能信生成脚本的自述。
+    """
+    names = sorted(f.stem for f in CHARTS.glob("*.svg"))
+    assert names, "没有 SVG 可查"
+    for n in names:
+        p = CHARTS / f"{n}.png"
+        assert p.exists(), f"{n}.png 不存在（剪映无法导入）"
+        assert p.stat().st_size > 0, f"{n}.png 是空文件"
+
+
+def test_png_has_correct_size_and_is_not_blank():
+    """尺寸必须是 1080x1350，且不能是一张纯色图。"""
+    from PIL import Image
+    for f in sorted(CHARTS.glob("*.png")):
+        im = Image.open(f)
+        assert im.size == (1080, 1350), f"{f.name} 尺寸 {im.size} 不对"
+        im.load()
+        # 纯色/空白 = 渲染失败。多种颜色说明有抗锯齿文字或图形。
+        colors = im.convert("RGB").getcolors(maxcolors=1 << 20)
+        assert colors and len(colors) > 20, \
+            f"{f.name} 只有 {len(colors) if colors else 0} 种颜色，疑似空白图"
+
+
+def test_svg_and_png_are_generated_from_one_layout():
+    """两种格式必须来自同一份 Scene，排版才可能一致。
+
+    布局只写一遍是刻意的：SVG 与 PNG 各写一份画图逻辑的话，
+    字号、坐标、基线换算迟早会漂（SVG 的 y 是基线、PIL 是顶边，
+    差一个 ascender，不换算整段字会低一大截）。
+    """
+    sys.path.insert(0, str(VIDEO / "scripts"))
+    import make_charts as mc
+    scenes = mc.build_all()
+    assert len(scenes) >= 10
+    for name, sc in scenes.items():
+        assert sc.texts, f"{name} 场景里没有任何文字"
+        assert (CHART_DIR / f"{name}.svg").exists()
+        assert (CHART_DIR / f"{name}.png").exists()
+
+
+def test_labels_stay_inside_canvas_and_clear_of_axis_labels():
+    """数值标签不得越出画布、也不得压住轴标签。
+
+    两类都是**静默**失败：文字画到 y<0 会被 Pillow 直接丢弃
+    （最高柱的数值标签整段消失，脚本退出码仍是 0）；标签与轴标签
+    同高则两串字糊成一团。都必须靠检查发现，肉眼逐张数不可靠。
+    """
+    sys.path.insert(0, str(VIDEO / "scripts"))
+    import make_charts as mc
+    for name, sc in mc.build_all().items():
+        for x, y, s, size, fill, anchor, bold in sc.texts:
+            assert 0 <= y <= sc.h, f"{name}: 文字 {s!r} y={y} 越出画布"
+            assert 0 <= x <= sc.w, f"{name}: 文字 {s!r} x={x} 越出画布"
+        if not sc.rects:
+            continue
+        bottom = max(r[1] + r[3] for r in sc.rects)
+        axis = [t for t in sc.texts if t[1] > bottom]
+        vals = [t for t in sc.texts if t[5] == "middle" and t[6]
+                and t[4] != mc.MUTED]
+        for v in vals:
+            for a in axis:
+                if v is a:
+                    continue
+                if abs(v[1] - a[1]) < 24 and abs(v[0] - a[0]) < 90:
+                    raise AssertionError(
+                        f"{name}: 数值标签 {v[2]!r} 压住轴标签 {a[2]!r}")
 
 
 def test_generator_is_reproducible(tmp_path):
