@@ -121,7 +121,7 @@ def test_no_explicit_mapping_falls_back_to_local_capability():
 
 
 def test_local_usable_false_moves_to_online():
-    """本地窗口不够时，即使配置指向local也要移到在线。"""
+    """没有降级链的旧配置：窗口不够时仍退回裸在线 provider。"""
     ctx = gateway.build_ctx(CFG, local_usable=False)
     cfg2 = {"models": CFG["models"],
             "complexity_models": {"simple": "local", "medium": "flash",
@@ -129,9 +129,33 @@ def test_local_usable_false_moves_to_online():
             "privacy_models": CFG.get("privacy_models")}
     ctx2 = gateway.build_ctx(cfg2, local_usable=False)
     r = gateway.route(T("simple"), ctx2)
-    assert r["model"] == "flash"
+    assert r["model"] == "minimax"       # 该 cfg 无 chains → 回退到第一个在线
     assert r["reason"] == "local_window_insufficient"
     assert ctx["local_complexities"] == {"simple"}   # 原ctx未被污染
+
+
+def test_local_window_insufficient_drops_local_from_chain():
+    """窗口装不下时走链的 __online 变体：**去掉 local 那一跳**。
+
+    "本地不可用"有两种，不能混为一谈：
+    - 过载/冷却 → 整条链照走（minimax 不行还能回落本地，不必付钱）
+    - 窗口装不下 → 把 local 摘掉，否则兜底那跳必然超限失败
+    """
+    ctx = gateway.build_ctx(CFG, local_usable=False)
+    r = gateway.route(T("simple"), ctx)
+    assert r["model"] == "simple_chain__online"
+    assert r["reason"] == "local_window_insufficient"
+    assert "local" not in r["chain"]
+    assert r["chain"][0] == "minimax"          # 仍按顺序，不是随便挑
+
+
+def test_local_overload_keeps_the_whole_chain():
+    """过载不该摘掉 local：额度耗尽时本地是免费兜底，没必要付钱。"""
+    ctx = gateway.build_ctx(CFG, local_health={"queue_depth": 99})
+    r = gateway.route(T("simple"), ctx)
+    assert r["model"] == "simple_chain"
+    assert r["reason"] == "local_overload"
+    assert "local" in r["chain"]
 
 
 def test_caller_without_local_complexities_is_conservative():
@@ -163,7 +187,9 @@ def test_secret_model_is_configurable():
 def test_secret_beats_latency_guard():
     """本地过载时公开任务切走，secret 任务不许切走。"""
     ctx = gateway.build_ctx(CFG, local_health={"queue_depth": 99})
-    assert gateway.route(T("simple", "public"), ctx)["model"] == "flash"
+    # 公开任务走链（链里仍保留 local 作免费兜底），而不是裸的在线 provider——
+    # 裸 provider 会绕过降级链，minimax 额度耗尽时就没有下一跳了。
+    assert gateway.route(T("simple", "public"), ctx)["model"] == "simple_chain"
     assert gateway.route(T("simple", "secret"), ctx)["model"] == "local"
 
 

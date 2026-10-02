@@ -64,6 +64,31 @@ def _model_for(ctx: dict, complexity: str) -> str:
         return (ctx.get("complexity_models") or {}).get(complexity, fallback)
     return (ctx.get("complexity_models") or {}).get(complexity, fallback)
 
+
+def _online_target(ctx: dict, complexity: str, *, reason: str = "local_offline",
+                   drop_local: bool = False) -> dict:
+    """"这件事现在得走在线" → 路由结果。
+
+    必须回**降级链**，不能回裸的 online_model_name：
+    直接指 minimax 等于绕过链，于是 minimax 额度耗尽时没有兜底，
+    任务直接进 RETRY/死信——恰恰是引入降级链要避免的情况。
+
+    drop_local=True 用于"本地窗口装不下"：那种情况不是换一家就好，
+    而是不能把装不下的请求发给本地那条链成员，所以走去掉 local 的
+    变体（build_models 会为含 local 的链预建 __online 变体）。
+    """
+    chains = ctx.get("chains") or {}
+    target = (ctx.get("complexity_models") or {}).get(complexity)
+    if target in chains:
+        if drop_local:
+            onl = f"{target}__online"
+            if onl in chains:
+                return {"model": onl, "reason": reason,
+                        "chain": list(chains[onl])}
+        return {"model": target, "reason": reason, "chain": list(chains[target])}
+    return {"model": ctx.get("online_model_name") or ctx.get("default_model"),
+            "reason": reason}
+
 class PrivacyGuard(RoutePolicy):
     name = "privacy_guard"
     def decide(self, task, ctx):
@@ -80,13 +105,14 @@ class LatencyGuard(RoutePolicy):
         import time
         st = ctx.get("local_health", {})
         privacy = _field(task, "privacy", "public")
-        online = ctx.get("online_model_name") or ctx.get("default_model")
+        complexity = _field(task, "complexity", "simple")
         if time.time() < self.muted_until:
             if privacy != "secret":
-                return {"model": online, "reason": "local_cooldown"}
+                return _online_target(ctx, complexity, reason="local_cooldown")
             return None
         if st.get("queue_depth", 0) > ctx.get("queue_threshold", 4) or st.get("fails", 0) >= 3:
-            return {"model": online, "reason": "local_overload"} if privacy != "secret" else None
+            return _online_target(ctx, complexity, reason="local_overload") \
+                if privacy != "secret" else None
         return None
 
 class CapabilityMatch(RoutePolicy):
@@ -120,14 +146,16 @@ class CapabilityMatch(RoutePolicy):
         if explicit:
             chain = (ctx.get("chains") or {}).get(explicit)
             if chain:
-                # 链成员里含 local 且本地窗口不够 → 整条链换在线。
+                # 链成员里含 local 且本地窗口不够 → 整条链换在线，且**去掉 local**。
                 # 原来只判 `explicit == local_model_name`，链出现后这个
                 # 等式永远不成立，本地窗口不足就没人拦了：请求会带着
                 # 装不下的上下文打给 4B，然后超限失败——降级链解决的是
-                # 额度问题，不是上下文装不下的���题。
+                # 额度问题，不是上下文装不下的问题。
                 local_n = ctx.get("local_model_name")
                 if local_n and local_n in chain and ctx.get("local_usable") is False:
-                    return {"model": online, "reason": "local_window_insufficient"}
+                    return _online_target(ctx, complexity,
+                                          reason="local_window_insufficient",
+                                          drop_local=True)
                 return {"model": explicit,
                         "reason": f"configured_{complexity}",
                         "chain": list(chain)}
@@ -154,6 +182,11 @@ def route(task, ctx: dict | None = None, policies: list[RoutePolicy] | None = No
         if r:
             return r
     return {"model": ctx.get("default_model") or "flash", "reason": "default"}
+
+
+def models_of(cfg: dict) -> dict:
+    """配置里的模型注册表（区别于真正 build 出来的 provider 实例）。"""
+    return cfg.get("models") or {}
 
 
 def _first_ollama(cfg: dict) -> tuple[str | None, dict]:
@@ -195,7 +228,16 @@ def build_ctx(cfg: dict | None = None, **over) -> dict:
         ctx["complexity_models"] = dict(cfg.get("complexity_models") or {})
         # 降级链原样带进 ctx：路由要判断"这条链里有没有 local"，
         # 以便本地窗口不足时整条链换在线。
-        ctx["chains"] = {k: list(v or []) for k, v in (cfg.get("chains") or {}).items()}
+        chains = {k: list(v or []) for k, v in (cfg.get("chains") or {}).items()}
+        # __online 变体（去掉本地成员后的链）由 build_models 预建，
+        # 这里补进 ctx 让路由层能选中。成员名沿用去掉本地后的顺序。
+        local_names = {n for n, s in (models_of(cfg)).items()
+                       if isinstance(s, dict) and s.get("type") == "ollama"}
+        for name, members in list(chains.items()):
+            rest = [m for m in members if m not in local_names]
+            if rest and len(rest) < len(members):
+                chains[f"{name}__online"] = rest
+        ctx["chains"] = chains
         ctx["default_model"] = cfg.get("default_model") or online_name
         # 隐私强制模型：配置里没写就退回本地（不能外发）
         sec = dict(cfg.get("privacy_models") or {}).get("secret")

@@ -104,21 +104,24 @@ chains:
 - **每一跳各有独立熔断状态**，某一跳挂掉只影响它自己
 - **只有限流/配额类错误才降级**。模型名写错、上下文超长、鉴权失败**不降级**——换一家也是错的，白白把所有 provider 的熔断都打一遍
 
-MiniMax **默认 `enabled: false`**。没配 key 时它不会被注册，三条链自动塌缩成 `[local]` / `[flash]` / `[pro]`，行为与加它之前完全一致。要启用：
-
-```yaml
-# config/gateway.yaml
-models:
-  minimax:
-    { enabled: true, ... }
-```
+启用方式：`config/gateway.yaml` 里 `models.minimax.enabled: true`，并在 `.env` 填三项。**没配 key 时它不会被注册，三条链自动塌缩成 `[local]` / `[flash]` / `[pro]`**，行为与加它之前一致。
 
 ```bash
 # .env
-MINIMAX_BASE_URL=https://api.minimax.io/v1
+MINIMAX_BASE_URL=https://api.minimax.cn/v1
 MINIMAX_MODEL=MiniMax-M3      # 模型 ID 区分大小写
-MINIMAX_API_KEY=<你的key>
+MINIMAX_API_KEY=<你的token套餐key>
 ```
+
+> `base_url` 必须是 **OpenAI 兼容**端点（`.../v1`）。另一个 `https://api.minimax.cn/anthropic` 是 Anthropic 协议端点，路径 `/anthropic/v1/messages`，与本项目的 `openai_compat` provider 不通用，填错表现为 404。
+> `path` 与 `base_url` 的 `/v1` 不能叠加：`base_url` 带 `/v1` 时 `path` 写 `/chat/completions`。
+
+**"本地不可用"有两种，不能混为一谈：**
+
+| 情况 | 处理 | 理由 |
+|---|---|---|
+| 过载 / 冷却 | 整条链照走，**保留 local** | minimax 不行还能回落本地，不必付钱 |
+| 窗口装不下 | 走 `{chain}__online` 变体，**摘掉 local** | 兜底那跳必然超限失败，留着是死路 |
 
 降级会留痕：返回结果里带 `served_by`（实际服务的那一跳）和 `fell_from`（被跳过的），所以"这个产物其实是 4B 写的"查得到。
 
@@ -303,7 +306,7 @@ python scripts\check_coverage.py --min 85            # 提高门槛
 
 | 项 | 值 |
 |---|---|
-| 测试 | `690 passed` |
+| 测试 | `696 passed` |
 | 覆盖率 | 25 模块平均 91.4%，门槛 80%，单模块也须过线 |
 | 真实端到端 | `3/3 SUBMITTED`（simple→local / medium→flash / complex→pro） |
 | 200MB 大文件 | 3.44M 行 / 3.80s / 峰值内存增量 0.5MB / 任务卡 702 tokens |

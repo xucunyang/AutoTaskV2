@@ -294,17 +294,48 @@ def test_minimax_leads_all_chains_when_enabled():
 
 
 def test_minimax_uses_configured_model_and_url():
+    """按 .env 真实配的值组装：url 不能叠成 /v1/v1，模型名不能是空串。"""
     env = {"ONLINE_API_KEY": "k", "ONLINE_FLASH_MODEL": "f",
            "ONLINE_PRO_MODEL": "p", "ONLINE_BASE_URL": "u",
-           "MINIMAX_API_KEY": "mk", "MINIMAX_BASE_URL": "https://api.minimax.io/v1",
+           "MINIMAX_API_KEY": "mk",
+           "MINIMAX_BASE_URL": "https://api.minimax.cn/v1",
            "MINIMAX_MODEL": "MiniMax-M3"}
     cfg = yaml.safe_load(yaml.safe_dump(CFG))
     cfg["models"]["minimax"]["enabled"] = True
     p = build_models(cfg, env=env)["minimax"]
     assert p.model == "MiniMax-M3"       # ${VAR} 真的展开了，没变成空串
-    assert p.base_url == "https://api.minimax.io/v1"
-    assert p.path == "/v1/chat/completions"
+    assert p.base_url + p.path == "https://api.minimax.cn/v1/chat/completions"
+    assert "/v1/v1" not in p.base_url + p.path
     assert p.api_key == "mk"
+
+
+def test_chain_collapses_when_minimax_disabled():
+    """把 minimax 关掉时链必须塌缩回原逻辑（而不是留下一个空跳）。"""
+    cfg = yaml.safe_load(yaml.safe_dump(CFG))
+    cfg["models"]["minimax"]["enabled"] = False
+    m = build_models(cfg, env={"ONLINE_API_KEY": "k", "ONLINE_FLASH_MODEL": "f",
+                               "ONLINE_PRO_MODEL": "p", "ONLINE_BASE_URL": "u",
+                               "MINIMAX_API_KEY": "mk"})
+    assert m["medium_chain"]._names() == ["flash"]
+    assert m["complex_chain"]._names() == ["pro"]
+    assert m["simple_chain"]._names() == ["local"]
+
+
+def test_online_variant_exists_only_when_local_is_a_member():
+    """__online 变体只对含本地的链生成，别给纯在线链造一份多余的。"""
+    m = build_models(CFG, env={"ONLINE_API_KEY": "k", "ONLINE_FLASH_MODEL": "f",
+                               "ONLINE_PRO_MODEL": "p", "ONLINE_BASE_URL": "u"})
+    # minimax 关着时 simple 塌缩成 [local]，此时没有"在线"可退，不该造变体
+    assert "simple_chain__online" not in m
+    cfg = yaml.safe_load(yaml.safe_dump(CFG))
+    cfg["models"]["minimax"]["enabled"] = True
+    m2 = build_models(cfg, env={"ONLINE_API_KEY": "k", "ONLINE_FLASH_MODEL": "f",
+                                "ONLINE_PRO_MODEL": "p", "ONLINE_BASE_URL": "u",
+                                "MINIMAX_API_KEY": "mk",
+                                "MINIMAX_BASE_URL": "u", "MINIMAX_MODEL": "m"})
+    assert "simple_chain__online" in m2
+    assert m2["simple_chain__online"]._names() == ["minimax"]
+    assert "medium_chain__online" not in m2     # medium 链本来就不含 local
 
 
 def test_online_provider_without_key_is_not_registered():
@@ -354,9 +385,9 @@ def test_route_returns_chain_for_each_tier():
 
 
 def test_chain_with_local_moves_online_when_window_insufficient():
-    """本地窗口不足时整条含 local 的链换在线。
+    """本地窗口不足时走去掉 local 的变体。
 
-    只判 `explicit == local_model_name` 的话，链出现后这个等式永远不成立，
+    只判 `explicit == local_model_name` 的话，链出现后这个等式永不成立，
     请求会带着装不下的上下文打给 4B 然后超限失败——链解决的是额度问题，
     不是上下文装不下的问题。
     """
@@ -365,8 +396,9 @@ def test_chain_with_local_moves_online_when_window_insufficient():
            "complexity_models": {"simple": "simple_chain"},
            "chains": {"simple_chain": ["minimax", "local"]}}
     r = gateway.route(Task("simple"), gateway.build_ctx(cfg, local_usable=False))
-    assert r["model"] == "flash"
+    assert r["model"] == "simple_chain__online"
     assert r["reason"] == "local_window_insufficient"
+    assert "local" not in r["chain"]
 
 
 def test_chain_without_local_is_unaffected_by_window_check():

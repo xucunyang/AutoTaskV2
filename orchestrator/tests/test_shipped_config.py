@@ -139,15 +139,32 @@ def test_gateway_chains_end_with_a_registered_fallback():
         assert len(chain) == len(set(chain)), f"链 {name!r} 有重复成员"
 
 
-def test_gateway_minimax_is_off_by_default():
-    """MiniMax 默认不启用：没配 key 时行为必须与加它之前完全一致。
+def test_gateway_minimax_path_does_not_double_v1():
+    """path 与 base_url 的 /v1 不能叠加。
 
-    它是"有额度就省钱"的优化通道，不该在用户还没主动配 key 时
-    就改变默认路由。
+    base_url=https://api.minimax.cn/v1 + path=/v1/chat/completions
+    → https://api.minimax.cn/v1/v1/chat/completions → 404。
+    两种写法只能选一种：base_url 带 /v1 就用 path=/chat/completions。
     """
     data = yaml.safe_load((CONFIG_DIR / "gateway.yaml").read_text(
         encoding="utf-8"))
-    assert (data["models"].get("minimax") or {}).get("enabled") is False
+    mm = data["models"]["minimax"]
+    base, path = mm["base_url"], mm["path"]
+    if base.rstrip("/").endswith("/v1"):
+        assert not path.rstrip("/").startswith("/v1"), \
+            "base_url 已含 /v1，path 不能再带 /v1"
+
+
+def test_gateway_minimax_is_not_pointed_at_anthropic_endpoint():
+    """base_url 不能指 Anthropic 协议端点。
+
+    https://api.minimax.cn/anthropic 走的是 /anthropic/v1/messages，
+    与本项目的 openai_compat provider（/chat/completions）协议不通用，
+    表现是 404 而不是明确的报错。
+    """
+    data = yaml.safe_load((CONFIG_DIR / "gateway.yaml").read_text(
+        encoding="utf-8"))
+    assert "/anthropic" not in data["models"]["minimax"]["base_url"]
 
 
 def test_load_cfg_does_not_swallow_silently(tmp_path):

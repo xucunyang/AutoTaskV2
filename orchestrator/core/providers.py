@@ -638,6 +638,16 @@ def build_models(cfg: dict, env=None) -> dict:
         if not picked:
             continue
         out[cname] = FallbackProvider(picked, name=cname)
+        # 含本地成员的链额外造一个 {cname}__online 变体（去掉本地那条）。
+        # 用于"本地窗口装不下"：那种情况不是换一家就好，而是不能把装不下的
+        # 请求发给本地成员，而原来的 _online_target 又要有个链形态可回。
+        local_names = {n for n, s in (cfg.get("models") or {}).items()
+                       if isinstance(s, dict) and s.get("type") == "ollama"}
+        if local_names & set(chain):
+            rest = [p for p in picked if p.name not in local_names]
+            if rest and len(rest) < len(picked):
+                out[f"{cname}__online"] = FallbackProvider(rest,
+                                                           name=f"{cname}__online")
     return out
 
 

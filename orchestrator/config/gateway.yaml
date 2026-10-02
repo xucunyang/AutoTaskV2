@@ -37,19 +37,24 @@ models:
   # 放在 chains 最前面 = 有额度时优先用它（套餐比按量付费划算）；
   # 额度耗尽时熔断/限流，FallbackProvider 自动回到下面的 flash/pro/local。
   #
-  # 默认 enabled: false —— 没配 MINIMAX_API_KEY 时不注册它，
-  # 行为与加它之前完全一致（见 build_models 里"缺 key 就不注册"）。
-  # 要启用改成 true 并在 .env 填 key。
+  # path 要与 base_url 配套，两种写法只能选一种，别叠加：
+  #   base_url .../v1        + path /chat/completions
+  #   base_url ...（裸host） + path /v1/chat/completions
+  # 叠成 .../v1/v1/chat/completions 的表现是 404，很难一眼看出。
+  #
+  # 注意别把 base_url 指到 https://api.minimax.cn/anthropic——那是
+  # Anthropic 协议端点（路径 /anthropic/v1/messages），本 provider 是
+  # openai_compat，协议不通用。
   minimax:
     {
       type: openai_compat,
       base_url: "${MINIMAX_BASE_URL}",
       api_key_env: MINIMAX_API_KEY,
       model: "${MINIMAX_MODEL}",
-      path: /v1/chat/completions,   # base_url 已含 /v1，这里只补段
-      context_window: null,        # 走 context_profiles 按模型名估
+      path: /chat/completions,   # base_url 已含 /v1，这里只补段
+      context_window: null,      # 走 context_profiles 按模型名估
       timeout_s: 180,
-      enabled: false,
+      enabled: true,
       max_concurrency: 4,
       extra_body: { thinking: { type: "disabled" } },  # 简单任务不需要长思考
     }
