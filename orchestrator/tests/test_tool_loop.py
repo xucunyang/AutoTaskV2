@@ -465,3 +465,100 @@ def test_resume_payload_is_passed_to_model(tmp_path):
     provider = ScriptedProvider([{"content": "继续"}])
     _tool_loop(provider, "卡", ck, tools.ToolBox(root), {}, 8192)
     assert "已拆2张" in json.dumps(provider.seen_messages, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------- 降级链 × tool loop
+#
+# 这组是真实 bug 的回归：降级链 FallbackProvider.chat 的签名是
+# (prompt, budget, **kw)，没有显式列 messages/tools。_chat_tools 原来只看
+# 显式参数名，于是判定"这个 provider 不支持多轮"并把所有 kw 丢掉——
+# 模型收到一份**没有工具定义**的任务卡，礼貌地回一段"我会先检索…"的文字，
+# tool_steps=0，产物为零。报错是 no_artifacts_produced，指向"模型没干活"，
+# 真因（我们没把工具发出去）在日志里完全看不见。
+# 真 e2e 实测：修复前 0/3 SUBMITTED，修复后 3/3。
+
+class _KwOnlyProvider:
+    """签名形状与 FallbackProvider 一致：只显式列 prompt/budget。"""
+
+    def __init__(self):
+        self.calls = []
+        self.name = "chain-like"
+
+    def chat(self, prompt, budget, **kw):
+        self.calls.append(kw)
+        return {"content": "done", "usage": {"prompt_tokens": 10,
+                                              "completion_tokens": 5}}
+
+    def health(self):
+        return {"ok": True}
+
+
+def test_kwargs_provider_is_not_mistaken_for_single_turn():
+    """只接受 **kw 的 provider 必须被当成"支持多轮"。
+
+    VAR_KEYWORD 不算的话，_chat_tools 会走单轮分支把 kw 全丢掉——
+    tool loop 被静默跳过，模型看不见任何工具。
+    """
+    from core.executor import _chat_tools, _supports_tools
+
+    p = _KwOnlyProvider()
+    assert _supports_tools(p) is True
+
+    schemas = [{"type": "function", "function": {"name": "atomic_write",
+                                                 "parameters": {}}}]
+    _chat_tools(p, [{"role": "user", "content": "card"}], {}, 8192, schemas)
+    assert p.calls, "根本没有调用 provider"
+    kw = p.calls[0]
+    assert kw.get("messages") == [{"role": "user", "content": "card"}]
+    assert kw.get("tools") == schemas, "tools 被丢掉了 → 模型收不到工具定义"
+
+
+def test_num_ctx_only_sent_to_providers_that_declare_it():
+    """num_ctx 是 ollama 专有；不给 OpenAI 兼容端点传（会 unexpected
+    keyword argument）。带 **kw 的 provider 不代表它认 num_ctx。"""
+    from core.executor import _chat_tools
+
+    class _RealKw(_KwOnlyProvider):
+        def chat(self, prompt, budget, messages=None, tools=None, **kw):
+            self.calls.append({"messages": messages, "tools": tools, **kw})
+            return {"content": "d", "usage": {"prompt_tokens": 1,
+                                              "completion_tokens": 1}}
+
+    p = _RealKw()
+    _chat_tools(p, [{"role": "user", "content": "card"}], {}, 8192, [])
+    assert "num_ctx" not in p.calls[0], (
+        "没声明 num_ctx 的 provider 不该收到它（会 unexpected keyword argument）")
+
+
+def test_real_fallback_chain_runs_a_write_and_read_loop(tmp_path):
+    """端到端：真 FallbackProvider（桩成员）跑完 write→verify 一步。"""
+    from core.providers import FallbackProvider
+
+    root = tmp_path / "root"
+    root.mkdir()
+    box = tools.ToolBox(root)
+
+    class _Writer:
+        name = "minimax"
+
+        def __init__(self):
+            self.step = 0
+
+        def chat(self, prompt, budget, **kw):
+            self.step += 1
+            if self.step == 1:
+                return {"content": "write",
+                        "tool_calls": [{"id": "c1", "name": "atomic_write",
+                                        "arguments": {"path": "artifacts/a.md",
+                                                      "content": "hi"}}],
+                        "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+            return {"content": "written", "tool_calls": [],
+                    "usage": {"prompt_tokens": 20, "completion_tokens": 3}}
+
+        def health(self):
+            return {"ok": True}
+
+    fb = FallbackProvider([_Writer()], name="c")
+    resp, steps = _tool_loop(fb, "write artifacts/a.md", None, box, {}, 8192)
+    assert steps >= 1, "tool loop 没有真正走一步"
+    assert (root / "artifacts" / "a.md").exists(), "产物没落盘"

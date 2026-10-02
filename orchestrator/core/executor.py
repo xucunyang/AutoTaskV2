@@ -488,7 +488,7 @@ def _chat_tools(provider, messages, budget, final_window, schemas) -> dict:
     params = _sig_params(provider)
     if "num_ctx" in params:
         kw["num_ctx"] = final_window
-    if "messages" in params:
+    if "messages" in params or "**kwargs" in params:
         resp = provider.chat(messages[0]["content"], budget, **kw)
     else:
         resp = provider.chat(messages[0]["content"], budget)
@@ -499,11 +499,25 @@ def _chat_tools(provider, messages, budget, final_window, schemas) -> dict:
 
 
 def _sig_params(provider) -> set:
+    """provider.chat 显式声明的参数名 ∪ 是否接受任意关键字。
+
+    **必须把 VAR_KEYWORD 算进去**。降级链 FallbackProvider.chat 的签名是
+    `(prompt, budget, **kw)`——它当然接受 messages/tools，只是没显式列。
+    原来只看显式名，于是链上 `messages` 判定为"不支持"，所有 kw 都被丢掉，
+    表现是：模型收到没有工具定义的任务卡，礼貌地回一段"我会先检索…"
+    的文字，tool_steps=0，产物为零。任务卡白渲染、预算白烧，
+    而且报错是 no_artifacts_produced，指向"模型没干活"，真因完全看不见。
+    """
     import inspect
     try:
-        return set(inspect.signature(provider.chat).parameters)
+        sig = inspect.signature(provider.chat)
     except (TypeError, ValueError):
         return set()
+    names = set(sig.parameters)
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD
+           for p in sig.parameters.values()):
+        names.add("**kwargs")
+    return names
 
 
 def main(argv: list[str] | None = None) -> int:

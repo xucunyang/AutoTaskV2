@@ -251,6 +251,8 @@ privacy_models:    # 涉密任务强制本地
 | `medium` | `flash` | `deepseek-v4-flash` |
 | `complex` | `pro` | `deepseek-v4-pro` |
 
+启用 MiniMax 后，三档的实际落点由 `chains` 决定（见[降级链与 MiniMax](#降级链与-minimax)），`complexity_models` 指向的是链名。
+
 几个要点：
 
 - `local` 开 `think: false`。实测同一任务卡 `think` 未设置 44.7s / `think=false` 13.2s，各 5/5 成功。
@@ -306,9 +308,9 @@ python scripts\check_coverage.py --min 85            # 提高门槛
 
 | 项 | 值 |
 |---|---|
-| 测试 | `696 passed` |
+| 测试 | `699 passed` |
 | 覆盖率 | 25 模块平均 91.4%，门槛 80%，单模块也须过线 |
-| 真实端到端 | `3/3 SUBMITTED`（simple→local / medium→flash / complex→pro） |
+| 真实端到端 | `3/3 SUBMITTED`（simple 7.4s / medium 75.4s / complex 41.2s，均由 MiniMax-M3 执行） |
 | 200MB 大文件 | 3.44M 行 / 3.80s / 峰值内存增量 0.5MB / 任务卡 702 tokens |
 | 生产环境已修 bug | 18 |
 
