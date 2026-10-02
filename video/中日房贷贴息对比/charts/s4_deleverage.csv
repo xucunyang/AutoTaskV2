@@ -1,0 +1,8 @@
+item,value,unit,source
+住户贷款_前8月增量,-1.03,万亿元,t2_market_data.md
+中长期贷款_前8月增量,188,亿元,t2_market_data.md
+新房销售面积同比,-12.1,%,t2_market_data.md
+二手房网签同比,10.6,%,t2_market_data.md
+开发端投资同比,-21,%,t2_market_data.md
+房贷利率,3.1,%,t2_market_data.md
+贴息后利率,2.1,%,推导(3.1-1.0)
