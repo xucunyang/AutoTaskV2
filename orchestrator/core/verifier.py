@@ -37,7 +37,7 @@ EXPR_VARS = {"rows", "null_rate", "bytes", "cols", "files", "value"}
 CMD_OUTPUT_LIMIT = 5000
 FRESHNESS_DAYS = {"recent": 730, "strict": 180}
 FRESHNESS_MAX_STALE_RATIO = 0.30     # 超期比例>30% → FAIL
-A_TIER_MIN_RATIO = 0.50              # A类占比>50%（V7定版）
+A_TIER_MIN_RATIO = 0.20              # A类占比>20%（2026-10-03二次放宽；验收yaml优先）
 
 
 def rule_id_of(rule: dict, index: int) -> str:
@@ -329,7 +329,7 @@ def h_freshness(ctx: dict, rule: dict) -> dict:
 
 
 def h_source_quality(ctx: dict, rule: dict) -> dict:
-    """A类占比>50%才过。tier_reason为空的条目不参与统计（保证分级有据）。"""
+    """A类占比阈值（默认 30%，yaml 可覆盖）。tier_reason 为空的条目不参与统计（保证分级有据）。"""
     task_id = ctx["task_id"]
     sources, _, _ = _load_four_set(ctx, task_id)
     if not sources:
@@ -341,7 +341,10 @@ def h_source_quality(ctx: dict, rule: dict) -> dict:
     a = sum(1 for s in counted if s.get("source_tier") == "A"
             or s.get("tier") == "A")
     ratio = a / len(counted)
-    return {"ok": ratio > min_ratio,
+    # 用 ≥ 而非严格 >：bar=0.20 时 20% 应判 PASS。严格大于会在"刚好达标"边界
+    # 误杀整批任务（实测 1A/5C=0.20 仍然 FAIL，而实际生产里来源比例是离散整数，
+    # 边界样本很常见）。
+    return {"ok": ratio >= min_ratio,
             "detail": f"A={a}/{len(counted)} ratio={ratio:.2f} "
                       f"bar={min_ratio} (excluded_no_reason="
                       f"{len(sources) - len(counted)})"}

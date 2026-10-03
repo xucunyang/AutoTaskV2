@@ -60,6 +60,28 @@ def test_card_token_budget_under_2k():
     assert estimate_tokens(_card()) < 2000
 
 
+def test_card_inputs_as_string_paths():
+    """汇总类任务（housing_daily/t4_rollup）的 inputs 是路径字符串而非 dict 列表。
+    此前 build_manifest 强解 str.get() 抛 AttributeError，build_card 直接炸。
+    修后：字符串路径 → 自取 sha + preview；dict 路径 → 取已有字段。"""
+    # 写一个真文件作为 inputs
+    src = ROOT / "artifacts" / "2026-09-29" / "in.md"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text("line0\nline1\nline2\nline3\nline4\nline5\n", encoding="utf-8")
+    c = _card(inputs=[str(src)])
+    assert "in.md" in c
+    # 文件存在时 sha256 应被填入
+    assert c.count("sha256") >= 1
+    # preview 应被截到 5 行
+    assert "line0" in c and "line5" not in c
+
+
+def test_card_inputs_missing_path_does_not_crash():
+    """inputs 路径不存在时，build_manifest 返回 sha256=None，模板仍能渲染。"""
+    c = _card(inputs=["artifacts/2099-01-01/never.md"])
+    assert "never.md" in c
+
+
 def test_card_token_budget_under_2k_with_checkpoint_and_web():
     c = _card(needs_web=True, freshness="strict",
               key_questions=["要点1", "要点2", "要点3"],

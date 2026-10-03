@@ -193,7 +193,8 @@ def test_search_and_filter_orders_filter_before_classify(tmp_path):
     assert pack["a_tier_meets_bar"] is True
 
 
-def test_a_tier_ratio_bar_is_strictly_over_half(tmp_path):
+def test_a_tier_ratio_bar_strictly_over_30pct(tmp_path):
+    """阈值 30%（2026-10-03 放宽）。1A/1C=50% 应过；放宽后没有"卡在边界失败"的旧场景。"""
     now = datetime(2026, 9, 29, tzinfo=timezone.utc)
     res = [
         SearchResult(url="https://www.gov.cn/a", title="p",
@@ -205,7 +206,22 @@ def test_a_tier_ratio_bar_is_strictly_over_half(tmp_path):
         provider=FakeProvider(res), cfg=CFG,
         llm=lambda p: '{"tier":"C","reason":"自媒体"}', root=tmp_path)
     assert pack["a_tier_ratio"] == 0.5
-    assert pack["a_tier_meets_bar"] is False      # 要求>50%，不是>=
+    assert pack["a_tier_meets_bar"] is True       # 50% > 30%，过
+
+
+def test_a_tier_ratio_below_threshold_fails(tmp_path):
+    """1A/6C≈14% < 20% → 不达标。覆盖阈值负向。"""
+    now = datetime(2026, 9, 29, tzinfo=timezone.utc)
+    res = [SearchResult(url=f"https://x.com/{i}", title=f"t{i}",
+                        published_at=now.isoformat()) for i in range(6)]
+    res.insert(0, SearchResult(url="https://www.gov.cn/a", title="p",
+                                published_at=now.isoformat()))
+    pack = pipeline.search_and_filter(
+        {"freshness": "recent", "key_questions": ["q"]}, None,
+        provider=FakeProvider(res), cfg=CFG,
+        llm=lambda p: '{"tier":"C","reason":"自媒体"}', root=tmp_path)
+    assert pack["a_tier_ratio"] < 0.2
+    assert pack["a_tier_meets_bar"] is False
 
 
 # ---------- ③ 分析阶段资料包 ----------

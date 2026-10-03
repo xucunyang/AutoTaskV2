@@ -1,0 +1,101 @@
+plan_template: housing_daily
+# 每日房地产跟踪。三条线互相独立，可单独 --rerun。
+# 全部 needs_web: true —— 这些是"当下正在发生"的事，用模型参数内知识
+# 回答等于编数据（enqueue 也硬门要求 needs_web 必须带 freshness）。
+tasks:
+  - id: t1_tier
+    name: 分线城市跟踪
+    complexity: complex
+    key_questions:
+      - "一线城市新房与二手房价格、成交量相比上月与去年同期如何变化？"
+      - "二线城市与三四线城市的房价和成交量走势有何差异？"
+      - "贴息政策实施后，各能级城市的成交量与库存去化周期具体变化是多少？"
+      - "哪些城市出现了政策效果，哪些城市没有？依据是什么？"
+    objective: >-
+      跟踪中国房地产市场在房贷贴息政策实施后的变化，按城市能级分类对比：
+      一线城市（北京/上海/广州/深圳）、二线城市、三四线城市、其他城市。
+      每类至少给出：新房与二手房成交量环比/同比、价格环比变化、
+      库存去化周期、挂牌量、以及贴息政策的具体影响证据。
+      写入 artifacts/{date}/t1_tier.md，并在文末以表格汇总四类城市的
+      涨跌幅与成交量对比。所有数字标注来源与口径（新房/二手、
+      全年/当月、名义/实际），无法核实的项明确写"数据缺失"而不是估。
+    depends_on: []
+    outputs: ["artifacts/{date}/t1_tier.md"]
+    acceptance_ref: schemas/acceptance_market.yaml
+    needs_web: true
+    freshness: recent
+    max_attempts: 3
+    budget: {max_steps: 10, timeout_s: 600}
+
+  - id: t2_xz_nj
+    name: 徐州南京对比
+    complexity: complex
+    key_questions:
+      - "徐州新房与二手房的最新价格和成交量是多少？同比环比变化如何？"
+      - "南京新房与二手房的最新价格和成交量是多少？同比环比变化如何？"
+      - "徐州和南京在全国房价格局中分别处于什么位置？与同能级城市相比如何？"
+      - "这两座城市的产业与人口基本面如何支撑或拖累房价？"
+    objective: >-
+      单独跟踪徐州与南京的房价走势，并放在全国整体坐标系里对比。
+      对两座城市分别给出：新房/二手房价格与成交量、库存去化周期、
+      人口与产业基本面、以及与同能级城市（徐州对标三四线、南京对标二线）
+      的横向对比。明确指出这两座城市在全国格局中属于哪种类型、
+      当前处于什么相对位置。写入 artifacts/{date}/t2_xuzhou_nanjing.md。
+      所有数字标注来源与口径，无法核实的项写"数据缺失"。
+    depends_on: []
+    outputs: ["artifacts/{date}/t2_xuzhou_nanjing.md"]
+    acceptance_ref: schemas/acceptance_market.yaml
+    needs_web: true
+    freshness: recent
+    max_attempts: 3
+    budget: {max_steps: 10, timeout_s: 600}
+
+  - id: t3_hexagon
+    name: 六边形战士城市
+    complexity: complex
+    key_questions:
+      - "哪些城市在工作机会与薪资水平上表现最好？具体指标是什么？"
+      - "哪些城市在生活成本、医疗、教育、交通方面最均衡？"
+      - "哪些城市的房价收入比与租售比最合理？"
+      - "把工作、生活、房价三维都均衡的城市有哪些？哪些城市明显偏科？"
+    objective: >-
+      找出在工作、生活、房价三个维度都均衡的"六边形战士"型城市。
+      三个维度分别明确：工作（岗位密度、薪资水平、产业多元性）、
+      生活（医疗、教育、交通、气候、环境）、
+      房价（房价收入比、租售比、相对省会或同能级的价格分位）。
+      给出候选城市清单与每个城市在三维上的具体数据，
+      指出哪些城市是三项均衡的、哪些是明显偏科的。
+      写入 artifacts/{date}/t3_hexagon_cities.md。
+      结论必须可证伪——写明用什么指标在什么时间点能验证该城市是否仍均衡。
+    depends_on: []
+    outputs: ["artifacts/{date}/t3_hexagon_cities.md"]
+    acceptance_ref: schemas/acceptance_market.yaml
+    needs_web: true
+    freshness: recent
+    max_attempts: 3
+    budget: {max_steps: 10, timeout_s: 600}
+
+  - id: t4_rollup
+    name: 长期对比与投资观察
+    complexity: complex
+    objective: >-
+      基于本日 t1_tier、t2_xuzhou_nanjing、t3_hexagon_cities 三份产物，
+      以及 artifacts/ 下历史日期的同类产物，做纵向对比：
+      哪些指标相对上次是改善/恶化、哪些已连续多期同向。
+      汇总成 artifacts/{date}/t4_investment_watch.md，
+      给出当前观察清单与需要继续跟踪的指标。
+      **只做记录与对比，不给具体买卖建议**，也不给价格预测；
+      对每个方向说明支持证据与反证、以及能被证伪的观测点。
+      若历史产物不足（首期运行），明确写"需要更多期数据"而不是编趋势。
+    depends_on: [t1_tier, t2_xz_nj, t3_hexagon]
+    inputs:
+      - artifacts/{date}/t1_tier.md
+      - artifacts/{date}/t2_xuzhou_nanjing.md
+      - artifacts/{date}/t3_hexagon_cities.md
+    outputs: ["artifacts/{date}/t4_investment_watch.md"]
+    # 汇总类专用验收：不含 freshness/source_quality/source_traceable，
+    # 因为 t4 不检索、不产生 sources.json，那三条对它永远 FAIL。
+    acceptance_ref: schemas/acceptance_rollup.yaml
+    needs_web: false
+    max_attempts: 3
+    budget: {max_steps: 8, timeout_s: 420}

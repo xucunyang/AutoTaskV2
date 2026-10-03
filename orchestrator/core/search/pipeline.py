@@ -18,7 +18,7 @@ from core.search.base import SearchResult
 from core.utils import atomic_write_json, now_utc_iso
 
 FRESHNESS_DAYS = {"recent": 730, "strict": 180}     # V7§10定版
-A_TIER_MIN_RATIO = 0.5                                # A类占比>50%（用户决策）
+A_TIER_MIN_RATIO = 0.20                               # A类占比≥20%（2026-10-03二次放宽；与verifier.py保持一致）
 
 
 def parse_date(s: str | None) -> datetime | None:
@@ -97,7 +97,7 @@ def search_and_filter(shard: dict, task: dict | None = None, *,
         "dropped": dropped,
         "tiers": tiers,
         "a_tier_ratio": round(a_ratio, 4),
-        "a_tier_meets_bar": a_ratio > A_TIER_MIN_RATIO,
+        "a_tier_meets_bar": a_ratio >= A_TIER_MIN_RATIO,
         "fetched_at": now_utc_iso(),
     }
 

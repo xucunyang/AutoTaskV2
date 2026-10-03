@@ -30,8 +30,24 @@ def _env(root: Path) -> Environment:
                        keep_trailing_newline=False)
 
 
-def build_manifest(artifact: dict) -> dict:
-    """只保留路径+哈希+preview前5行（Phase0§5：禁止索要全量）。"""
+def build_manifest(artifact) -> dict:
+    """只保留路径+哈希+preview前5行（Phase0§5：禁止索要全量）。
+
+    artifact 可以是 dict（已有 manifest 字段）或 str（路径，自行计算）。
+    housing_daily 这类汇总任务，模板里 inputs 写的是路径字符串；
+    真正的 manifest 字段只有产物落盘时才填（Executor 写 manifest 阶段）。
+    两路都支持才不会在 build_card 阶段就炸。
+    """
+    if isinstance(artifact, str):
+        p = Path(artifact)
+        if not p.exists():
+            return {"path": artifact, "sha256": None, "bytes": 0,
+                    "rows": None, "preview": []}
+        from core.utils import sha256_file
+        info = sha256_file(p)
+        return {"path": artifact, "sha256": info.get("sha256"),
+                "bytes": info.get("bytes"), "rows": info.get("rows"),
+                "preview": (info.get("preview") or [])[:5]}
     return {"path": artifact.get("path"), "sha256": artifact.get("sha256"),
             "bytes": artifact.get("bytes"), "rows": artifact.get("rows"),
             "preview": (artifact.get("preview") or [])[:5]}

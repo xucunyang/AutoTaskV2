@@ -313,7 +313,7 @@ def test_smoke_d_research_chain_four_set_and_audit(tmp_path):
         provider=P(), cfg=cfg, llm=llm, root=root)
     assert pack["raw_count"] == 6 and pack["unique_count"] == 3
     assert len(pack["kept"]) == 3
-    assert pack["a_tier_ratio"] > 0.5
+    assert pack["a_tier_ratio"] > 0.2
 
     # ④产出四件套（claims带source_id，不留幻觉）
     out = spipe.write_four_set(

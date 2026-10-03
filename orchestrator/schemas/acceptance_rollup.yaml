@@ -1,0 +1,13 @@
+# 汇总类任务（t4）的验收：**不检索**，只读上游产物做纵向对比。
+#
+# 刻意不含 freshness / source_quality / source_traceable：
+# 那三条要求产物里有 sources.json，而 t4 是 needs_web:false 的纯汇总，
+# 它不产生新来源。加上去只会让"因为没有 sources.json"变成永远 FAIL——
+# 一条永远红的验收等于没有验收（看久了就被忽略）。
+# 来源的可信度在 t1/t2/t3 上已经各自查过一遍了。
+- type: file_exists
+  path: artifacts/{date}/t4_investment_watch.md
+
+- type: business_rule
+  expr: "bytes >= 600"
+  path: artifacts/{date}/t4_investment_watch.md

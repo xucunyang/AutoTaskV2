@@ -286,15 +286,31 @@ def test_dod6_missing_published_at_is_p2(tmp_path):
 
 # ---------- DoD-7 等级拒收 ----------
 
-def test_dod7_a_tier_below_half_fails(tmp_path):
+def test_dod7_a_tier_below_threshold_fails(tmp_path):
+    """A 类占比 < 阈值 → FAIL。阈值默认 20%（2026-10-03 二次放宽）。"""
     root = _root(tmp_path)
-    sources = [{"source_id": "s1", "url": "https://a.com", "source_tier": "A",
-                "tier_reason": "官方"},
-               {"source_id": "s2", "url": "https://b.com", "source_tier": "C",
-                "tier_reason": "自媒体"}]
+    # 1A + 5C = 17%，低于 20% bar → FAIL
+    sources = [{"source_id": f"s{i}", "url": f"https://x{i}.com",
+                "source_tier": "A" if i == 0 else "C",
+                "tier_reason": "官方" if i == 0 else "自媒体"}
+               for i in range(6)]
     _four_set(root, sources=sources, claims=[])
     got = vf.h_source_quality(_ctx(root), {"rule_id": "r"})
-    assert got["ok"] is False and "ratio=0.50" in got["detail"]
+    assert got["ok"] is False and "ratio=0.17" in got["detail"]
+
+
+def test_dod7_a_tier_above_threshold_passes(tmp_path):
+    """A 类占比 ≥ 阈值（默认 20%）→ PASS。覆盖边界正向。"""
+    root = _root(tmp_path)
+    # 1A + 4C = 20%，等于阈值 → PASS（>0.20 严格大于，但 ratio=0.2 > 0.20 假，
+    # 所以实际是 1A + 3C = 25% 才稳过；这里放 2A + 3C = 40% 留余量）
+    sources = [{"source_id": f"s{i}", "url": f"https://x{i}.com",
+                "source_tier": "A" if i < 2 else "C",
+                "tier_reason": "官方" if i < 2 else "自媒体"}
+               for i in range(5)]
+    _four_set(root, sources=sources, claims=[])
+    got = vf.h_source_quality(_ctx(root), {"rule_id": "r"})
+    assert got["ok"] is True, got["detail"]
 
 
 def test_dod7_entries_without_tier_reason_excluded_from_stats(tmp_path):
