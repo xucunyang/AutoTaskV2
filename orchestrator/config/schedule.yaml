@@ -10,9 +10,8 @@ jobs:
     max_workers: 4
     poll_interval_s: 30
   # 每日房地产跟踪（分能级 / 徐州南京 / 六边形战士 / 纵向汇总）。
-  # 两条 job 用同一个 plan_id（plan_id_for(date)），所以**只能二选一**：
-  # 同时启用会让同一批任务被两个模板各建一次，第二次撞幂等键后
-  # 只建一半，产物目录也会对不上。要换模板就改这条的 template 指向。
+  # plan_id 按 job_id 分立：daily_report_YYYY-MM-DD vs housing_daily_YYYY-MM-DD，
+  # 两个 job 各自的 plan/tasks/产物目录互不干扰（同一日期也能并存）。
   - id: housing_daily
     cron: "0 8 * * *"
     timezone: Asia/Shanghai

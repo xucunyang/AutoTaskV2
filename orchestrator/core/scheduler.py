@@ -22,8 +22,16 @@ from core.utils import jlog, now_utc_iso
 SHANGHAI = timezone(timedelta(hours=8))
 
 
-def plan_id_for(date: str) -> str:
-    return f"daily_report_{date}"
+def plan_id_for(date: str, job_id: str | None = None) -> str:
+    """生成 plan_id。**每个 job_id 独占一个 plan_id**。
+
+    此前固定返回 "daily_report_{date}"，导致两个 job 共用同一个 plan_id——
+    同一日期先跑的 job 把 plan 建出来后，后跑的 job 会撞幂等键被 skip。
+    改为：未传 job_id 时退回旧语义保持兼容；传了就拼成 "{job_id}_{date}"。
+    """
+    if job_id is None:
+        return f"daily_report_{date}"
+    return f"{job_id}_{date}"
 
 
 def task_spec_hash(shard: dict, date: str) -> str:
@@ -53,11 +61,15 @@ def load_schedule(root: Path) -> dict:
     return yaml.safe_load((root / "config" / "schedule.yaml").read_text(encoding="utf-8"))
 
 
-def expand_template(root: Path, template_rel: str, date: str) -> dict:
-    """读模板 → 展开{date} → 合并 acceptance_ref → 返回 plan+tasks 结构。"""
+def expand_template(root: Path, template_rel: str, date: str,
+                     job_id: str = "daily_report") -> dict:
+    """读模板 → 展开{date} → 合并 acceptance_ref → 返回 plan+tasks 结构。
+
+    job_id 决定 plan_id 前缀（与 plan_id_for 对齐）。
+    """
     tpl_path = root / template_rel
     tpl = yaml.safe_load(tpl_path.read_text(encoding="utf-8"))
-    plan_id = plan_id_for(date)
+    plan_id = plan_id_for(date, job_id)
     tasks = []
     for i, t in enumerate(tpl.get("tasks", []) or []):
         tid = t["id"]
@@ -122,7 +134,8 @@ def expand_template(root: Path, template_rel: str, date: str) -> dict:
             "updated_at": now_utc_iso(), "tasks": tasks}
 
 
-def ensure_plan(store: Store, date: str, template_rel: str) -> tuple[str, int]:
+def ensure_plan(store: Store, date: str, template_rel: str,
+                job_id: str = "daily_report") -> tuple[str, int]:
     """幂等展开：plan已存在则skip（防双调度重复展开，§异常矩阵）。
     返回("created"|"skipped", 新建任务数)。
 
@@ -133,14 +146,14 @@ def ensure_plan(store: Store, date: str, template_rel: str) -> tuple[str, int]:
     "plan: skipped" 然后报告"全部任务进终态 done=0"，看起来像
     "今天没活"，实际是"活没了"。实测就踩了这个坑。
     """
-    pid = plan_id_for(date)
+    pid = plan_id_for(date, job_id)
     created = store.ensure_plan(pid, template=template_rel)
     if not created:
         if store.list_plan_tasks(pid):
             return "skipped", 0
         jlog(store.root, "WARN", "plan_exists_but_empty", plan_id=pid,
              detail="plan 存在但任务数为 0，按异常重建")
-    plan = expand_template(Path(store.root), template_rel, date)
+    plan = expand_template(Path(store.root), template_rel, date, job_id)
     n = 0
     for shard in plan["tasks"]:
         try:
@@ -154,9 +167,12 @@ def ensure_plan(store: Store, date: str, template_rel: str) -> tuple[str, int]:
 
 
 def catchup_missing(store: Store, lookback_days: int, template_rel: str,
-                    grace_s: int) -> list[dict]:
+                    grace_s: int, job_id: str = "daily_report") -> list[dict]:
     """补跑：扫过去N天缺plan；历史日期超misfire_grace跳过并告警（不补陈旧任务）。
-    当天plan一律补建（当天日报仍要做），只是晚建时记WARN，不按陈旧任务处理。"""
+    当天plan一律补建（当天日报仍要做），只是晚建时记WARN，不按陈旧任务处理。
+
+    job_id 决定 plan_id 前缀（与 plan_id_for 对齐），让两个 job 的补跑互不干扰。
+    """
     root = Path(store.root)
     out = []
     now_sh = datetime.now(SHANGHAI)
@@ -164,7 +180,7 @@ def catchup_missing(store: Store, lookback_days: int, template_rel: str,
     existing = {p["plan_id"] for p in store.list_plans()}
     for d in range(lookback_days, -1, -1):
         date = (now_sh - timedelta(days=d)).strftime("%Y-%m-%d")
-        pid = plan_id_for(date)
+        pid = plan_id_for(date, job_id)
         if pid in existing:
             out.append({"date": date, "plan_id": pid, "action": "exists"})
             continue
@@ -232,7 +248,7 @@ def _daily_job(root_str: str, job_id: str, cron: str, template: str | None) -> N
         (j["template"] for j in cfg.get("jobs", []) or [] if j["id"] == job_id),
         "templates/daily_plan.yaml")
     date = datetime.now(SHANGHAI).strftime("%Y-%m-%d")
-    status, n = ensure_plan(store, date, tpl)
+    status, n = ensure_plan(store, date, tpl, job_id=job_id)
     jlog(root, "INFO", "daily_fired", job_id=job_id, date=date,
          result=status, tasks=n)
 
@@ -247,13 +263,17 @@ def recover_missed(store: Store, lookback_days: int = 3) -> list[dict]:
             continue
         out.extend(catchup_missing(store, lookback_days,
                                    job.get("template", "templates/daily_plan.yaml"),
-                                   int(job.get("misfire_grace_time", 3600))))
+                                   int(job.get("misfire_grace_time", 3600)),
+                                   job_id=job.get("id", "daily_report")))
     return out
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="core.scheduler")
     ap.add_argument("--date", default=None, help="手动展开指定日期（默认今天）")
+    ap.add_argument("--job", default=None,
+                    help="指定 job_id（决定 plan_id 与 template）。"
+                         "不传则取 schedule.yaml 的第一个 job。")
     ap.add_argument("--catchup", action="store_true", help="补跑过去N天缺失plan")
     ap.add_argument("--lookback-days", type=int, default=3)
     ap.add_argument("--dry-run", action="store_true", help="只打印计划不启动")
@@ -265,14 +285,18 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.root) if args.root else Path(__file__).resolve().parent.parent
     store = Store(root)
     cfg = load_schedule(root)
-    tpl = (cfg.get("jobs") or [{}])[0].get("template", "templates/daily_plan.yaml")
+    jobs = cfg.get("jobs") or [{}]
+    job_cfg = next((j for j in jobs if j.get("id") == args.job), jobs[0]) \
+        if args.job else jobs[0]
+    job_id = job_cfg.get("id", "daily_report")
+    tpl = job_cfg.get("template", "templates/daily_plan.yaml")
 
     if args.catchup:
         print(json.dumps(recover_missed(store, args.lookback_days),
                          ensure_ascii=False, indent=2))
         return 0
     if args.date:
-        status, n = ensure_plan(store, args.date, tpl)
+        status, n = ensure_plan(store, args.date, tpl, job_id=job_id)
         print(json.dumps({"date": args.date, "result": status, "tasks": n},
                          ensure_ascii=False))
         if not args.rerun:
@@ -283,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
                               "detail": "--rerun 必须配合 --date（要知道是哪个plan）"},
                              ensure_ascii=False))
             return 2
-        pid = plan_id_for(args.date)
+        pid = plan_id_for(args.date, job_id)
         t = store.get_task(pid, args.rerun)
         if t is None:
             print(json.dumps({"error": "task_not_found", "task_id": args.rerun}))
