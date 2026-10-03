@@ -80,6 +80,39 @@ def test_429_is_limit():
     assert is_limit_error(LIMIT) is True
 
 
+def test_529_overloaded_falls_back():
+    """529 = Overloaded，必须降级。
+
+    真实踩过：MiniMax 返回
+      http_529 {"error":{"type":"overloaded_error",
+                 "message":"当前服务集群负载较高，请稍后重试"}}
+    一次集群过载把整个任务打成 FAILED。明明只是"等一会儿"，
+    链上还有 flash/pro/local 兜底，不该直接判死。
+    """
+    err = ProviderError(
+        'minimax:failed:http_529:{"type":"error","error":'
+        '{"type":"overloaded_error","message":"服务集群负载较高，请稍后重试"}}',
+        status=529)
+    assert is_limit_error(err) is True
+    # 真能换到下一跳，而不只是判对
+    a, b = _spec("minimax", script=err), _spec("flash")
+    out = FallbackProvider([a, b], name="c").chat("p", {})
+    assert out["served_by"] == "flash"
+    assert out["fell_from"] == ["minimax"]
+
+
+def test_500_with_overloaded_text_falls_back():
+    """过载文案出现在 500 里也要认。"""
+    err = ProviderError("http_500:server overloaded", status=500)
+    assert is_limit_error(err) is True
+
+
+def test_auth_failure_never_falls_back():
+    """401 不降级：key 写错时换 provider 也是 401，白白打遍所有熔断器。"""
+    err = ProviderError("http_401:invalid api key", status=401, permanent=True)
+    assert is_limit_error(err) is False
+
+
 def test_quota_text_on_403_counts_as_limit():
     """配额型套餐常给 403 + 文本说明，不给 429。"""
     assert is_limit_error(QUOTA_403) is True

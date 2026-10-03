@@ -9,6 +9,20 @@ jobs:
     catchup: true
     max_workers: 4
     poll_interval_s: 30
+  # 每日房地产跟踪（分能级 / 徐州南京 / 六边形战士 / 纵向汇总）。
+  # 两条 job 用同一个 plan_id（plan_id_for(date)），所以**只能二选一**：
+  # 同时启用会让同一批任务被两个模板各建一次，第二次撞幂等键后
+  # 只建一半，产物目录也会对不上。要换模板就改这条的 template 指向。
+  - id: housing_daily
+    cron: "0 8 * * *"
+    timezone: Asia/Shanghai
+    template: templates/housing_daily.yaml
+    coalesce: true
+    max_instances: 1
+    misfire_grace_time: 3600
+    catchup: true
+    max_workers: 4
+    poll_interval_s: 30
 # V6§7 V5值：两档配额 + governor阈值（ACTIVE约1/8共享1槽，IDLE约85%）
 # 注意：下面这些都是**顶层键**，不要缩进到 workers: 里去——
 # workers 是 flow mapping（{...}），挂不了子键，缩进会让整个文件解析失败。

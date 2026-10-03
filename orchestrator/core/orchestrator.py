@@ -1,4 +1,4 @@
-"""主循环编排（Phase2 §2/§4）。
+﻿"""主循环编排（Phase2 §2/§4）。
 
 主Agent不碰业务数据，只做三件事：算谁该跑、把谁派出去、把跑完的推进下一态。
 所有状态变更都经Store（状态机在Store层强制），本模块不持有状态真相。
@@ -21,6 +21,7 @@ import anyio
 from core import enqueue as enqueue_mod
 from core import governor as gov_mod
 from core import lease as lease_mod
+from core import power
 from core.store import Conflict, IllegalTransition, Store, StaleOwner
 from core.utils import jlog, now_utc_iso
 
@@ -599,13 +600,31 @@ class Orchestrator:
         if not self.acquire_lock():
             jlog(self.root, "WARN", "orchestrator_lock_busy", pid=os.getpid())
             return
-        jlog(self.root, "INFO", "orchestrator_started", pid=os.getpid(),
-             owner=self.owner)
+        # 防休眠包住整个运行期：定时器能唤醒机器，但执行途中被系统
+        # 再次睡回去的话，任务会中途被杀——表现是"有时跑完有时没跑完"，
+        # 日志断在半路且无任何报错。
+        # release 在 finally 里，保证正常退出/异常退出/被 Ctrl-C 都还原
+        # 电源策略；漏一处就是"这台机器永远不休眠"，比不防更糟。
+        with power.KeepAwake() as ka:
+            jlog(self.root, "INFO", "orchestrator_started", pid=os.getpid(),
+                 owner=self.owner, keep_awake=ka.ok,
+                 keep_awake_error=power.status().get("error", ""))
+            if not ka.ok and power.IS_WINDOWS:
+                # 防不住不等于不能跑，所以只记日志不中止；但这意味着
+                # "有时跑不完"可能与电源策略有关，排障时要能查到。
+                jlog(self.root, "WARN", "keep_awake_failed",
+                     detail=power.status().get("error", "")[:200])
+            n = self._drive_loop(max_ticks)
+        self.release_lock()
+        jlog(self.root, "INFO", "orchestrator_stopped", ticks=n)
+
+    def _drive_loop(self, max_ticks: int | None = None) -> int:
+        """真正的主循环。拆出来是为了让 run_forever 只管电源策略。"""
         n = 0
         async def _drive():
-            """有池子时在async上下文里跑tick，池子退出时会等所有worker收尾
-            （不cancel——中途cancel会让任务永远停在VERIFYING）。"""
-            n = 0
+            """异步池时代：verify 池负责慢 python_test，不阻塞主循环；
+            cancel 若触发则自动停在VERIFYING等待requeue_verify。"""
+            nn = 0
             async with self.verify_pool:
                 while not self.check_shutdown():
                     if not self.heartbeat_lock():
@@ -613,11 +632,11 @@ class Orchestrator:
                              pid=os.getpid())
                         break
                     self.tick()
-                    n += 1
-                    if self.run_once or (max_ticks is not None and n >= max_ticks):
+                    nn += 1
+                    if self.run_once or (max_ticks is not None and nn >= max_ticks):
                         break
                     self.wait_wakeup(self.poll_normal_s)
-            return n
+            return nn
         try:
             if self.verify_pool is not None:
                 n = anyio.run(_drive)
@@ -633,8 +652,8 @@ class Orchestrator:
                         break
                     self.wait_wakeup(self.poll_normal_s)
         finally:
-            self.release_lock()
-            jlog(self.root, "INFO", "orchestrator_stopped", ticks=n)
+            pass
+        return n
 
 
 def _age_s(ts: str | None) -> float | None:

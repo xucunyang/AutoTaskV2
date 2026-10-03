@@ -79,15 +79,29 @@ def expand_template(root: Path, template_rel: str, date: str) -> dict:
             "status": "PENDING",
             "idempotency_key": f"{plan_id}:{tid}",
             "objective": t.get("objective", ""),
-            "inputs": t.get("inputs", []) or [],
+            # inputs 与 outputs 一样要做 {date} 展开。此前只展开 outputs，
+            # 于是模板里写 inputs: [artifacts/{date}/t1.md] 时，
+            # 下游拿到的是**字面量** "artifacts/{date}/t1.md"——
+            # read_range 会去找一个根本不存在的路径，于是"上游产物拿不到"
+            # 表现为工具调用失败，而不是"inputs 没展开"，很难联想到。
+            "inputs": [str(i).replace("{date}", date)
+                       for i in (t.get("inputs") or [])],
             "outputs": [o.replace("{date}", date) for o in t.get("outputs", []) or []],
             "depends_on": t.get("depends_on", []) or [],
             "acceptance": acceptance,
+            # budget 必须透传。模板里写了 budget:{max_steps:10,timeout_s:600}
+            # 却不往下带的话，执行器会退回 DEFAULT_BUDGET（12 步 / 默认超时），
+            # 于是"我在模板里限的工具步数"根本没生效——配置写了却不管用，
+            # 比没这个字段更糟：改模板的人以为改好了。
+            "budget": dict(t.get("budget") or {}),
             "priority": int(t.get("priority", 10)),
             "source": "daily",
             "max_attempts": int(t.get("max_attempts", 3)),
             "privacy": t.get("privacy", "public"),
             "complexity": t.get("complexity", "simple"),
+            # key_questions 是 coverage 验收的依据。模板不写就不传，
+            # 但传了就必须带到执行器与验收器，否则 coverage 规则形同虚设。
+            "key_questions": list(t.get("key_questions", []) or []),
             "needs_web": bool(t.get("needs_web", False)),
             "freshness": t.get("freshness", "none"),
             "long_running": bool(t.get("long_running", False)),
@@ -110,11 +124,22 @@ def expand_template(root: Path, template_rel: str, date: str) -> dict:
 
 def ensure_plan(store: Store, date: str, template_rel: str) -> tuple[str, int]:
     """幂等展开：plan已存在则skip（防双调度重复展开，§异常矩阵）。
-    返回("created"|"skipped", 新建任务数)。"""
+    返回("created"|"skipped", 新建任务数)。
+
+    **但"plan 存在且一个任务都没有"要当异常重建**，不能直接skip。
+    那个状态不是正常路径能到达的：上一轮建到一半崩了、或有人清理过
+    任务行，plans 表的记录还在。这时候skip 的后果是当天的活儿
+    一件都不会发生——而且**没有任何报错**：run_daily 打印
+    "plan: skipped" 然后报告"全部任务进终态 done=0"，看起来像
+    "今天没活"，实际是"活没了"。实测就踩了这个坑。
+    """
     pid = plan_id_for(date)
     created = store.ensure_plan(pid, template=template_rel)
     if not created:
-        return "skipped", 0
+        if store.list_plan_tasks(pid):
+            return "skipped", 0
+        jlog(store.root, "WARN", "plan_exists_but_empty", plan_id=pid,
+             detail="plan 存在但任务数为 0，按异常重建")
     plan = expand_template(Path(store.root), template_rel, date)
     n = 0
     for shard in plan["tasks"]:

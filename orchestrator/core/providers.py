@@ -54,7 +54,7 @@ class CircuitOpen(ProviderError):
 #
 # 429 是标准限流。但配额型套餐经常不给 429，直接 400/403 + 文本说明，
 # 所以文本也要认。命中即**不重试当前 provider**，交给下一跳。
-LIMIT_STATUS = (429,)
+LIMIT_STATUS = (429, 529)
 
 _LIMIT_TEXTS = (
     "rate limit", "rate_limit", "ratelimit",
@@ -63,6 +63,10 @@ _LIMIT_TEXTS = (
     "insufficient funds", "exceeded your current quota",
     "package quota", "out of balance", "billing",
     "resource_exhausted", "try again later",
+    # 529 = Overloaded（Anthropic 定义的过载码，MiniMax 等端点也在用）。
+    # 响应体里通常写的是"服务集群负载较高，请稍后重试"而不是标准限流文案，
+    # 不认的话一次集群过载就会把整批任务打成 FAILED——明明只是"等一会儿"。
+    "overloaded", "529",
 )
 
 
@@ -84,7 +88,7 @@ def is_limit_error(err: Exception) -> bool:
     text = _norm(err)
     if status in LIMIT_STATUS:
         return True
-    if status in (400, 402, 403, 500, 502, 503, 529):
+    if status in (400, 402, 403, 500, 502, 503):
         return any(t in text for t in _LIMIT_TEXTS)
     return False
 
