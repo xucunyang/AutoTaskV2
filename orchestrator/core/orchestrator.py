@@ -447,10 +447,20 @@ class Orchestrator:
 
         没有这一步，验收失败的任务会**永久卡在RETRY**——refresh_ready只管
         PENDING/BLOCKED，没人把RETRY捞回来，整个plan就此停摆。
+
+        **上闸**：attempts 已达 max_attempts 的不再重排，直接升死信。
+        这里判一次不是多余——escalate_dead_letters 在 housekeeping 里跑，
+        两者顺序若变了（或有人单独调 promote_retries），闸就没了。
+        实测过没有这道闸的后果：daily_report_2026-10-05/t1_tier attempts=7
+        （上限3）仍每轮重跑一次完整 LLM。
         """
         out = []
         now = time.time()
         for t in self.store.list_by_status("RETRY"):
+            if lease_mod.dead_letter_if_exhausted(
+                    self.store, t, run_id=self._run_id(),
+                    agent=self.owner) is not None:
+                continue                     # 已升死信（P0已告警），不计入重排
             waited = now - _epoch(t["updated_at"])
             delay = lease_mod.backoff_delay_s(t["attempts"])
             if waited < delay:

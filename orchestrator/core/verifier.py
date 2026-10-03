@@ -198,32 +198,80 @@ def h_business_rule(ctx: dict, rule: dict) -> dict:
 # ---------- 调研质量 4 handlers（§2.2b） ----------
 
 def _load_four_set(ctx: dict, task_id: str) -> tuple[list, list, str]:
-    """读四件套。路径优先按任务**声明的 outputs** 找，找不到才回退到惯例路径。
+    """读四件套。查找顺序：声明的 outputs → 产物所在目录 → plan 逻辑日期 → ctx 日期。
 
-    为什么不能只按 `artifacts/{date}/` 找：outputs 里的日期是 planner
-    填的**逻辑日期**（如补跑 2026-09-30 的 plan），而 ctx["date"] 是
-    任务入队日或今天。两者不一致时——补跑历史日期必现——验收会报
-    no_sources_json，而文件明明就在声明的路径下躺着。
-    按声明找是最直接的：模型就是往那些路径写的。
+    为什么不能只按 `artifacts/{date}/` 找（`date` 取的是入队时间）：
+    任务入队日和 plan 的**逻辑日期**经常不一致——补跑历史日期、或 plan 建得早
+    而任务跑得晚，都会让两者差几天。实测 2026-10-03 就是这样：
+    plan 逻辑日期 10-05（acceptance 的 path 在建 plan 时已展开成 10-05，
+    所以 file_exists/business_rule 能过），而入队时间是 10-02，
+    于是四件套去 `artifacts/2026-10-02/` 找，那里只有 .md 没有 claims/sources，
+    三条 source 规则齐刷刷报 no_claims_json/no_sources_json——
+    同一次验收里两套日期各走各的，必然自相矛盾。
+
+    按 outputs 的父目录找是最可靠的：模型的 .md / .claims.json / .sources.json
+    一定写在同一个目录（它就在那个目录下工作）。
     """
     root = Path(ctx["root"])
-    declared = [str(o) for o in (ctx.get("shard") or {}).get("outputs") or []]
+    declared = [str(o).replace("\\", "/")
+                for o in (ctx.get("shard") or {}).get("outputs") or []]
 
     def _pick(suffix: str) -> Path:
         want = f"{task_id}{suffix}"
         for o in declared:
             # 只认"以 task_id.suffix 结尾"的声明，避免把别的任务文件张冠李戴
-            if o.replace("\\", "/").endswith("/" + want) or o == want:
-                return root / o.replace("\\", "/")
-        d = Path(ctx["root"]) / "artifacts" / ctx["date"]
-        return d / want
+            if o.endswith("/" + want) or o == want:
+                return root / o
+        dirs: list[Path] = []
+        for o in declared:                       # 1) 产物父目录（模型实际写的地方）
+            dirs.append((root / o).parent)
+        pd = plan_date_of(ctx.get("plan_id") or "")   # 2) plan 逻辑日期
+        if pd:
+            dirs.append(root / "artifacts" / pd)
+        dirs.append(root / "artifacts" / str(ctx["date"]))   # 3) 入队日期（老行为）
+        seen, uniq = set(), []
+        for d in dirs:
+            if d not in seen:
+                seen.add(d)
+                uniq.append(d)
+        for d in uniq:                           # 按序找，谁有文件用谁
+            if (d / want).exists():
+                return d / want
+        return uniq[0] / want                    # 都没有 → 返回首选，报"文件不存在"
 
     src, clm, rep = (_pick(".sources.json"), _pick(".claims.json"),
                      _pick(".report.md"))
-    sources = json.loads(src.read_text(encoding="utf-8")) if src.exists() else []
-    claims = json.loads(clm.read_text(encoding="utf-8")) if clm.exists() else []
+    sources = _safe_json(root, src)
+    claims = _safe_json(root, clm)
     report = rep.read_text(encoding="utf-8", errors="ignore") if rep.exists() else ""
     return _normalize_sources(sources), _normalize_claims(claims), report
+
+
+def plan_date_of(plan_id: str) -> str:
+    """从 plan_id 尾部取逻辑日期（`housing_daily_2026-10-03` → `2026-10-03`）。
+
+    plan_id 形如 `{job_id}_{YYYY-MM-DD}`；取不到日期返回 ""（调用方跳过这一档）。
+    """
+    m = re.search(r"(\d{4}-\d{2}-\d{2})$", plan_id or "")
+    return m.group(1) if m else ""
+
+
+def _safe_json(root: Path, p: Path):
+    """读 JSON。文件不存在 → []；**内容坏了也 → []** 并记 WARN。
+
+    坏 JSON 曾让 handler 抛 JSONDecodeError，被 run_rules 兜成
+    `handler_error:JSONDecodeError:...` —— 失败信息指向解析器而不是
+    "哪个文件坏了"，排查时会先怀疑代码。坏文件是模型的产物问题，
+    应该按"没有可用数据"处理，并把坏文件路径写进日志让人一眼看到。
+    """
+    if not p.exists():
+        return []
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (ValueError, OSError) as e:
+        jlog(root, "WARN", "four_set_invalid_json", path=str(p),
+             error=str(e)[:200])
+        return []
 
 
 def _normalize_sources(raw) -> list[dict]:

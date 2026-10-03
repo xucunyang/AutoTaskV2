@@ -176,39 +176,68 @@ class Heartbeat:
 def escalate_dead_letters(store: Store, run_id: str = "",
                           agent: str = "orchestrator",
                           sop_ref: str = "") -> list[dict]:
-    """Phase2§3：FAILED且attempts已达上限 → DEAD_LETTER + P0告警。
+    """Phase2§3：RETRY **或** FAILED 且 attempts 已达上限 → DEAD_LETTER + P0告警。
 
-    attempts只在RETRY→READY时+1，所以判据是"已经RETRY过max_attempts次"
+    attempts只在RETRY→READY时+1，所以判据是"已经重试过max_attempts次"
     （attempts >= max_attempts）。死信三必填（Phase0§2.3）：
     reason/last_error/sop_ref——没有SOP链接的死信等于没人知道怎么处理。
+
+    **为什么 RETRY 也要扫**（2026-10-03 加）：验收失败走 VERIFYING→RETRY，
+    压根不经过 FAILED。原来只扫 FAILED，于是"验收一直失败"的任务
+    没有任何放弃路径——实测 daily_report_2026-10-05/t1_tier attempts=7
+    （上限 3）还在退避-重跑，每轮一次完整 LLM 调用，且永远进不了死信、
+    没人会去看它。FAILED 和 RETRY 是两条平行的失败路径，出口必须同一个。
     """
     if not sop_ref:
         sop_ref = "docs/sop/dead-letter.md"
     out = []
-    for t in store.list_by_status("FAILED"):
-        if t["attempts"] < t["max_attempts"]:
-            continue
-        reason = _last_error_of(store, t)
-        try:
-            got = store.transition(
-                t["plan_id"], t["task_id"], "DEAD_LETTER", agent=agent,
-                run_id=run_id, expect_version=t["version"],
-                payload={"reason": "max_attempts_exceeded",
-                         "last_error": reason or "unknown",
-                         "sop_ref": sop_ref,
-                         "attempts": t["attempts"],
-                         "max_attempts": t["max_attempts"]})
-        except (Conflict, IllegalTransition):
-            continue            # 并发改了版本/已被处理，下轮再扫
-        store.alert("P0", "dead_letter", plan_id=t["plan_id"],
-                    task_id=t["task_id"], attempts=t["attempts"],
-                    last_error=(reason or "unknown")[:200])
-        out.append(got)
+    for status in ("FAILED", "RETRY"):
+        for t in store.list_by_status(status):
+            got = dead_letter_if_exhausted(store, t, run_id=run_id,
+                                           agent=agent, sop_ref=sop_ref)
+            if got is not None:
+                out.append(got)
     return out
 
 
+def dead_letter_if_exhausted(store: Store, task: dict, *, run_id: str = "",
+                             agent: str = "orchestrator",
+                             sop_ref: str = "") -> dict | None:
+    """attempts 达上限才升死信；否则/并发冲突/状态已变 → None。
+
+    escalate_dead_letters 和 promote_retries 共用这一个出口：
+    判据和死信三必填只在一处，两条路径不会各判各的。
+    """
+    if not sop_ref:
+        sop_ref = "docs/sop/dead-letter.md"
+    if task["attempts"] < task["max_attempts"]:
+        return None
+    reason = _last_error_of(store, task)
+    try:
+        got = store.transition(
+            task["plan_id"], task["task_id"], "DEAD_LETTER", agent=agent,
+            run_id=run_id, expect_version=task["version"],
+            payload={"reason": "max_attempts_exceeded",
+                     "last_error": reason or "unknown",
+                     "sop_ref": sop_ref,
+                     "attempts": task["attempts"],
+                     "max_attempts": task["max_attempts"]})
+    except (Conflict, IllegalTransition):
+        return None            # 并发改了版本/已被处理，下轮再扫
+    store.alert("P0", "dead_letter", plan_id=task["plan_id"],
+                task_id=task["task_id"], attempts=task["attempts"],
+                last_error=(reason or "unknown")[:200])
+    return got
+
+
 def _last_error_of(store: Store, task: dict) -> str:
-    """从该任务最近事件里翻出最后一条错误（FAILED的payload优先）。"""
+    """从该任务最近事件里翻出最后一条错误。
+
+    key顺序有讲究：error/last_error 是执行器写的原始异常；detail 是验收写的
+    `rule_2:no_claims_json;...`（带具体哪条规则挂了）；reason 是
+    `verify_failed`/`backoff_elapsed` 这类枚举词，**信息量最低，放最后**——
+    死信里的 last_error 要能直接看出该查什么，写个 "verify_failed" 等于没写。
+    """
     evs = store.recent_events(task["plan_id"], limit=50)
     mine = [e for e in evs if e["task_id"] == task["task_id"]]
     for e in mine:
@@ -216,7 +245,7 @@ def _last_error_of(store: Store, task: dict) -> str:
             payload = json.loads(e["payload"] or "{}")
         except ValueError:
             continue
-        for key in ("error", "last_error", "reason"):
+        for key in ("error", "last_error", "detail", "reason"):
             if payload.get(key):
                 return str(payload[key])[:2000]
     return ""

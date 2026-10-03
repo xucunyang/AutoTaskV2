@@ -597,6 +597,87 @@ def test_load_four_set_ignores_other_tasks_files(tmp_path):
            "shard": {"outputs": ["artifacts/2026-09-30/t2.sources.json"]}}
     sources, _, _ = vf._load_four_set(ctx, "t1")
     assert sources == [], f"读到了别的任务的文件: {sources}"
+
+
+def test_load_four_set_finds_files_next_to_declared_output(tmp_path):
+    """housing_daily 形态：outputs 只声明 .md，四件套写在同一个目录。
+
+    实测 2026-10-03：plan 逻辑日期 10-05（acceptance 的 path 建 plan 时已按它
+    展开，所以 file_exists 能过），而任务 10-02 入队，旧代码回退到
+    `artifacts/{入队日期}/` 找 claims/sources —— 那里只有 .md，
+    于是同一次验收里 file_exists 通过、三个 source 规则全 no_claims_json。
+    """
+    d = tmp_path / "artifacts" / "2026-10-05"
+    d.mkdir(parents=True)
+    (d / "t1.md").write_text("# 报告\n", encoding="utf-8")
+    (d / "t1.sources.json").write_text(json.dumps([
+        {"source_id": "s1", "url": "https://a.com", "title": "T",
+         "tier_reason": "官方", "published_at": "2026-09-01T00:00:00+00:00"}]),
+        encoding="utf-8")
+    (d / "t1.claims.json").write_text(json.dumps([
+        {"claim_id": "c1", "text": "x", "source_ids": ["s1"]}]),
+        encoding="utf-8")
+    ctx = {"root": tmp_path, "date": "2026-10-02",          # 入队日 ≠ plan 日
+           "plan_id": "housing_daily_2026-10-05",
+           "task_id": "t1",
+           "shard": {"outputs": ["artifacts/2026-10-05/t1.md"]}}
+    sources, claims, report = vf._load_four_set(ctx, "t1")
+    assert len(sources) == 1, "没按 outputs 的父目录找到 sources"
+    assert len(claims) == 1, "没按 outputs 的父目录找到 claims"
+    assert report == ""          # t1.report.md 不在，不能误读别的目录
+
+
+def test_load_four_set_plan_date_before_enqueued_date(tmp_path):
+    """outputs 目录里没文件时，按 plan 尾部日期找，入队日期只作最后兜底。"""
+    d = tmp_path / "artifacts" / "2026-10-05"
+    d.mkdir(parents=True)
+    (d / "t1.sources.json").write_text(json.dumps([
+        {"source_id": "s1", "url": "https://a.com", "tier_reason": "官方"}]),
+        encoding="utf-8")
+    ctx = {"root": tmp_path, "date": "2026-10-02",
+           "plan_id": "housing_daily_2026-10-05", "task_id": "t1",
+           "shard": {"outputs": ["artifacts/2026-10-05/t1.md"]}}
+    sources, _, _ = vf._load_four_set(ctx, "t1")
+    assert len(sources) == 1
+
+
+def test_load_four_set_plan_id_without_date_is_skipped(tmp_path):
+    """plan_id 不带日期后缀（老数据/手工建的）时这一档自动跳过，不炸。"""
+    d = tmp_path / "artifacts" / "2026-10-02"
+    d.mkdir(parents=True)
+    (d / "t1.sources.json").write_text(json.dumps([
+        {"source_id": "s1", "url": "https://a.com", "tier_reason": "官方"}]),
+        encoding="utf-8")
+    ctx = {"root": tmp_path, "date": "2026-10-02", "plan_id": "legacy_plan",
+           "task_id": "t1", "shard": {}}
+    sources, _, _ = vf._load_four_set(ctx, "t1")
+    assert len(sources) == 1
+
+
+def test_load_four_set_corrupt_json_returns_empty(tmp_path):
+    """坏 JSON 按"没有可用数据"处理，不抛异常。
+
+    实测：模型写 sources.json 时 snippet 里内嵌未转义引号，json.loads 直接炸，
+    被 run_rules 兜成 handler_error:JSONDecodeError——失败信息指向解析器，
+    排查时会先怀疑代码。应该返回空 + 把坏文件路径写进日志。
+    """
+    d = tmp_path / "artifacts" / "2026-10-05"
+    d.mkdir(parents=True)
+    (d / "t1.sources.json").write_text(
+        '{"source_id": "s1", "title": "他说"引号没转义"}', encoding="utf-8")
+    ctx = {"root": tmp_path, "date": "2026-10-05",
+           "plan_id": "housing_daily_2026-10-05", "task_id": "t1",
+           "shard": {"outputs": ["artifacts/2026-10-05/t1.md"]}}
+    sources, claims, report = vf._load_four_set(ctx, "t1")
+    assert sources == [] and claims == []
+    log = (tmp_path / "logs" / "structured.jsonl")
+    assert log.exists(), "坏文件没记日志，下次还得靠猜"
+    # 按 JSON 解析再比路径：Windows 反斜杠会被转义成 \\，直接子串匹配必假阴
+    rows = [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines() if x]
+    bad = [r for r in rows if r.get("msg") == "four_set_invalid_json"]
+    assert bad, f"坏文件没记日志: {rows}"
+    assert bad[0]["path"] == str(d / "t1.sources.json"), bad[0]
+    assert bad[0]["error"]
     """不短路：一条FAIL也要把剩下的跑完，否则不知道还错几处。"""
     root = _root(tmp_path)
     s = Store(root)

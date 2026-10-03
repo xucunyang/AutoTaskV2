@@ -79,16 +79,103 @@ def test_dead_letter_still_counts_as_terminal():
 
 def test_no_automatic_path_reads_dead_letters():
     """没有任何自动流程会扫 DEAD_LETTER——这是 reopen 安全的前提。
-    escalate 只看 FAILED；promote_retries 只看 RETRY。"""
+    escalate 只看 FAILED/RETRY（两条失败路径，都得能收口到死信）；
+    promote_retries 只看 RETRY。"""
     import inspect
     from core import lease as lease_mod
     from core.orchestrator import Orchestrator
     src_escalate = inspect.getsource(lease_mod.escalate_dead_letters)
-    assert 'list_by_status("FAILED")' in src_escalate
+    # 扫描集写在元组里（"FAILED", "RETRY"），两条失败路径都要收口到死信
+    assert '("FAILED", "RETRY")' in src_escalate, \
+        "验收失败走RETRY，只扫FAILED会让这类任务无限重试"
     assert 'list_by_status("DEAD_LETTER")' not in src_escalate
     src_promote = inspect.getsource(Orchestrator.promote_retries)
     assert 'list_by_status("RETRY")' in src_promote
-    assert 'DEAD_LETTER' not in src_promote.replace("DEAD_LETTER", "", 0) or True
+    assert 'dead_letter_if_exhausted' in src_promote, \
+        "promote_retries 自己要带闸，不能只依赖 housekeeping 的执行顺序"
+
+
+def _exhausted_retry(root, task_id="t1", attempts=3, max_attempts=3):
+    """造一个"验收一直失败"的任务：停在 **RETRY**（不是 FAILED）且 attempts 已满。
+
+    这才是真实分布：验收失败走 VERIFYING→RETRY，压根不经过 FAILED，
+    所以原来的 escalate（只扫 FAILED）永远看不见它。
+    """
+    s = Store(root)
+    s.ensure_plan(PLAN, template="daily")
+    shard = enqueue.validate(json.dumps({
+        "task_id": task_id, "plan_id": PLAN, "objective": "x",
+        "outputs": [f"artifacts/{task_id}.md"],
+    }, ensure_ascii=False).encode("utf-8"), root=root)
+    s.insert_task(shard)
+    v = lambda: s.get_task(PLAN, task_id)["version"]      # noqa: E731
+    f = lambda: s.get_task(PLAN, task_id)["fencing_token"]  # noqa: E731
+    s.transition(PLAN, task_id, "READY", agent="o", run_id="r", expect_version=v())
+    s.transition(PLAN, task_id, "RUNNING", agent="o", run_id="r",
+                 expect_version=v(), lease_op="acquire")
+    s.transition(PLAN, task_id, "SUBMITTED", agent="sub", run_id="r",
+                 expect_version=v(), expect_fencing=f(),
+                 handoff={"task_id": task_id, "status": "SUBMITTED",
+                          "artifacts": [], "self_test": []})
+    s.transition(PLAN, task_id, "VERIFYING", agent="orchestrator", run_id="r",
+                 expect_version=v())
+    s.transition(PLAN, task_id, "RETRY", agent="verifier", run_id="r",
+                 expect_version=v(), role="verifier",
+                 payload={"reason": "verify_failed",
+                          "detail": "rule_2:no_claims_json; rule_3:no_sources_json"})
+    s._write_txn(lambda con: con.execute(
+        "UPDATE tasks SET attempts=?, max_attempts=? WHERE plan_id=? AND task_id=?",
+        (attempts, max_attempts, PLAN, task_id)))
+    return s
+
+
+def test_escalate_picks_up_exhausted_retry_task(tmp_path):
+    """验收失败的任务也必须能进死信——否则无限退避重跑且没人会去看它。"""
+    r = _root(tmp_path)
+    s = _exhausted_retry(r, attempts=3, max_attempts=3)
+    assert s.get_task(PLAN, "t1")["status"] == "RETRY"
+    out = lease.escalate_dead_letters(s, run_id="r1")
+    assert [o["task_id"] for o in out] == ["t1"]
+    assert s.get_task(PLAN, "t1")["status"] == "DEAD_LETTER"
+    payload = next(json.loads(e["payload"]) for e in s.recent_events(PLAN)
+                   if e["to_s"] == "DEAD_LETTER")
+    assert payload["reason"] == "max_attempts_exceeded"
+    assert payload["sop_ref"] and payload["last_error"]
+    # last_error 要能看出是哪条规则挂了，而不是一个词 "verify_failed"
+    assert "no_claims_json" in payload["last_error"]
+    alerts = (r / "reports" / "alerts.jsonl").read_text(encoding="utf-8")
+    assert '"priority": "P0"' in alerts and "dead_letter" in alerts
+
+
+def test_escalate_leaves_retry_before_max_alone(tmp_path):
+    r = _root(tmp_path)
+    s = _exhausted_retry(r, attempts=1, max_attempts=3)
+    assert lease.escalate_dead_letters(s) == []
+    assert s.get_task(PLAN, "t1")["status"] == "RETRY"
+
+
+def test_promote_retries_gates_exhausted_task(tmp_path):
+    """promote_retries 自带闸：不依赖 housekeeping 跑在它前面。
+    没有闸时它会把 attempts 已满的任务照常重排（实测跑到 7 次）。"""
+    from core.orchestrator import Orchestrator
+    r = _root(tmp_path)
+    s = _exhausted_retry(r, attempts=3, max_attempts=3)
+    o = Orchestrator(r, executor_fn=lambda *a, **k: None, run_once=True)
+    assert o.promote_retries() == [], "重排了 attempts 已满的任务"
+    assert s.get_task(PLAN, "t1")["status"] == "DEAD_LETTER"
+
+
+def test_promote_retries_still_promotes_normal_task(tmp_path):
+    """闸门不能误伤正常重试（attempts 未满的照常退避后重排）。"""
+    from core.orchestrator import Orchestrator
+    r = _root(tmp_path)
+    s = _exhausted_retry(r, attempts=1, max_attempts=3)
+    s._write_txn(lambda con: con.execute(
+        "UPDATE tasks SET updated_at=? WHERE plan_id=? AND task_id=?",
+        ("2026-01-01T00:00:00+00:00", PLAN, "t1")))
+    o = Orchestrator(r, executor_fn=lambda *a, **k: None, run_once=True)
+    assert o.promote_retries(), "正常任务没被重排"
+    assert s.get_task(PLAN, "t1")["status"] == "READY"
 
 
 # ---------------------------------------------------------------- reopen

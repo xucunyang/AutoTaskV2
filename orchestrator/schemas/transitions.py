@@ -8,7 +8,13 @@ ALLOWED = {
     "SUBMITTED": {"VERIFYING", "CANCELLED"},
     "VERIFYING": {"DONE", "RETRY", "FAILED", "WAITING_APPROVAL"},
     "WAITING_APPROVAL": {"DONE", "RETRY", "CANCELLED"},
-    "RETRY": {"READY", "CANCELLED"},
+    # RETRY→DEAD_LETTER（2026-10-03 加）：验收失败走的是
+    # VERIFYING→RETRY，**不经过 FAILED**，而 attempts 只在 RETRY→READY 时 +1。
+    # 原来 RETRY 只有 {READY, CANCELLED}，于是"验收一直失败"的任务
+    # 没有任何办法被放弃：attempts 早超了 max_attempts（实测跑到 7，上限 3）
+    # 还在退避-重跑，既烧 token 也永远进不了死信、没人会去处理。
+    # FAILED 和 RETRY 是两条平行的失败路径，必须收敛到同一个出口。
+    "RETRY": {"READY", "CANCELLED", "DEAD_LETTER"},
     "FAILED": {"RETRY", "DEAD_LETTER"},
     # DEAD_LETTER→RETRY：**只有显式的运维动作会走这条边**
     # （Store.reopen_dead_letter / `scheduler --rerun`），必须带 reason+sop_ref
@@ -20,7 +26,7 @@ ALLOWED = {
     # 除非有人去破坏数据完整性。
     #
     # 为什么这不破坏"终态"语义：TERMINAL 的含义是**系统不会自动再处理它**
-    # （escalate 只扫 FAILED、promote_retries 只扫 RETRY、
+    # （escalate 只扫 FAILED/RETRY、promote_retries 只扫 RETRY、
     #  refresh_ready 只处理 PENDING/BLOCKED）——没有任何自动路径离开死信。
     # 离开它的只有一个：人明确说"我修好了，重来"。
     "DEAD_LETTER": {"RETRY"},

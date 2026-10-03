@@ -75,6 +75,21 @@ def test_retry_loop():
     assert is_allowed("FAILED", "DEAD_LETTER")
 
 
+def test_retry_has_dead_letter_exit():
+    """RETRY 必须能进死信。
+
+    验收失败走 VERIFYING→RETRY，**不经过 FAILED**，而 attempts 只在
+    RETRY→READY 时 +1。原来 RETRY 只有 {READY, CANCELLED}，于是"验收一直失败"
+    的任务没有任何放弃路径——实测 attempts=7（上限3）还在退避重跑。
+    FAILED 与 RETRY 是平行的两条失败路径，出口必须同一个。
+    """
+    assert ALLOWED["RETRY"] == {"READY", "CANCELLED", "DEAD_LETTER"}
+    assert is_allowed("RETRY", "DEAD_LETTER")
+    # 出边是加进来的，但死信**入边**的放宽不影响终态语义
+    assert ALLOWED["DEAD_LETTER"] == {"RETRY"}
+    assert is_terminal("DEAD_LETTER")
+
+
 def test_cancel_paths():
     """取消路径：各非终态均可->CANCELLED"""
     for fr in ("PENDING", "BLOCKED", "READY", "SUBMITTED", "WAITING_APPROVAL", "RETRY"):
