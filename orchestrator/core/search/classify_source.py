@@ -140,20 +140,43 @@ def save_cache(root: str | Path, rows: list[dict]) -> Path:
 
 def classify_with_cache(root: str | Path, results: list[SearchResult],
                         cfg: dict, llm=None) -> list[dict]:
-    """先查缓存，命中的不再调LLM；未命中的判完写回缓存。"""
+    """判定顺序：**域名先验 > 缓存 > LLM**；未判的判完写回缓存。
+
+    先验必须排在缓存前面：先验来自 config（人工维护的白名单），缓存是历史
+    判级结果。只改了 official_domains 却被旧缓存拦住的话，"加白名单"这个
+    动作就永远不生效——同一批 URL 会一直用加白名单之前判的 B 档。
+    实测 2026-10-03 就踩了这个坑：白名单加了 news.cn/people.com.cn，
+    但这些 URL 早在缓存里躺着 B，重跑还是 B。
+    """
     cache = load_cache(root)
-    out, todo = [], []
+    # 决策按 URL 收集，最后按 results 原序输出（同 URL 多条 source_id 各自成立）
+    decided: dict[str, dict] = {}
+    todo: list[SearchResult] = []
+    prior_rows: list[dict] = []
     for r in results:
+        prior, pre = prior_tier(r.url, cfg)
+        if prior is not None:
+            decided[r.url] = {"tier": prior, "tier_reason": pre,
+                              "decided_by": "domain_prior"}
+            prior_rows.append({"url": r.url, "tier": prior,
+                               "tier_reason": pre, "decided_by": "domain_prior"})
+            continue
         hit = cache.get(r.url)
         if hit:
-            out.append({"source_id": r.source_id, "url": r.url,
-                        "title": r.title, "tier": hit["tier"],
-                        "tier_reason": hit["tier_reason"],
-                        "decided_by": hit.get("decided_by", "") + "+cache"})
+            decided[r.url] = {"tier": hit["tier"],
+                              "tier_reason": hit["tier_reason"],
+                              "decided_by": hit.get("decided_by", "") + "+cache"}
         else:
             todo.append(r)
-    if todo:
-        fresh = classify_all(todo, cfg, llm)
-        save_cache(root, fresh)
-        out.extend(fresh)
-    return out
+    fresh = classify_all(todo, cfg, llm) if todo else []
+    for d in fresh:
+        decided[d["url"]] = {"tier": d["tier"], "tier_reason": d["tier_reason"],
+                             "decided_by": d.get("decided_by", "")}
+    if fresh or prior_rows:
+        # 先验也写回缓存：让 state 里不留"与当前白名单矛盾"的旧条目
+        save_cache(root, prior_rows + fresh)
+    return [{"source_id": r.source_id, "url": r.url, "title": r.title,
+             **(decided.get(r.url) or {"tier": "C",
+                                       "tier_reason": "no_decision",
+                                       "decided_by": "fallback"})}
+            for r in results]

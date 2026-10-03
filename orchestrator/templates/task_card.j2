@@ -11,6 +11,7 @@
 【你有工具，不要直接把答案打在回复里】
 一次只调一个工具，工具结果会回给你。
 - atomic_write(path, content)：原子写产物（tmp+fsync+rename）。**产物只能用这个工具落盘**。
+  **没有第二次机会**：这一整轮你必须至少调用它一次，且只写 {{ outputs }} 里的路径。
 - read_range(path, offset, limit)：分页读文件（超过200行必须分页，别一次读整个文件）。
 {% if needs_web %}
 - search(query, max_results)：联网检索。**本任务时效性要求={{ freshness }}，关键问题：{{ key_questions | join("；") }}**
@@ -25,9 +26,18 @@
 
 【执行顺序：先产出，再验证】
 1. **先 atomic_write 把产物写出来**。这是硬要求——产物没落盘，任务直接判失败。
+   实测有模型把整轮花在 read_range + run_cmd 上，回复只写了 19 个字就结束，
+   结果 no_artifacts_produced，前面读的全白读。**读完输入的下一步就是 atomic_write**。
 2. 需要的话再 read_range 读回来自查，或 run_cmd 跑一次验证。
 3. **不要**为了"确认环境"反复 run_cmd/read_range。实测有模型把整个预算花在
    跑测试和翻代码上，一个字都没产出——那等于任务失败。
+
+【什么不算完成】（验收只认落盘的文件，不认你的解释）
+- 把内容**打在回复里** = 没有产物 = FAIL。回复不是产物。
+- 只 read_range 读完输入、说"已读完/已汇总" = 没有产物 = FAIL。
+- 先写个空文件或占位符 = 产物无效，照样 FAIL。一次性写完整内容。
+- 汇总/对比/复述类任务（needs_web=false）同样适用：它的产物就是你读完 inputs 后
+  组织出来的那份报告，**必须 atomic_write 落盘**。
 
 {% if needs_web %}
 【检索约束】时效性要求={{ freshness }}；关键问题：{{ key_questions | join("；") }}

@@ -19,6 +19,9 @@ CFG = {
     "tier_criteria": {"A": "官方机构", "B": "主流媒体", "C": "个人/UGC"},
 }
 
+# 2026-10-03 白名单扩充后的配置（config/search.yaml 的子集）
+CFG2 = {**CFG, "official_domains": ["gov.cn", "sec.gov", "news.cn"]}
+
 
 class FakeProvider:
     name = "fake"
@@ -132,6 +135,50 @@ def test_tier_cache_survives_corrupt_file(tmp_path):
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text("{坏", encoding="utf-8")
     assert cs.load_cache(tmp_path) == {}
+
+
+def test_domain_prior_beats_stale_cache(tmp_path):
+    """域名先验 > 缓存。缓存里是加白名单**之前**判的 B，改 config 后必须立刻生效。
+
+    反例（2026-10-03 实测）：白名单加了 news.cn，但 URL 早缓存成 B，
+    重跑还是 B —— "改白名单"这个动作被缓存悄悄吃掉。
+    """
+    p = tmp_path / "state" / "source_tiers.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"https://news.cn/a":
+                             {"tier": "B", "tier_reason": "llm:主流媒体",
+                              "decided_by": "llm", "cached_at": "2026-10-01"}}),
+                 encoding="utf-8")
+    calls = []
+
+    def llm(prompt):
+        calls.append(prompt)
+        return '{"tier":"C","reason":"不该被调"}'
+
+    results = [SearchResult(url="https://news.cn/a", title="t", source_id="s1"),
+               SearchResult(url="https://u.example/b", title="t2", source_id="s2")]
+    got = cs.classify_with_cache(tmp_path, results, CFG2, llm)
+    assert got[0]["tier"] == "A" and got[0]["decided_by"] == "domain_prior"
+    # 先验命中的那条不进 LLM；另一条（不在白名单、无缓存）才调，共 1 次
+    assert len(calls) == 1 and "news.cn" not in calls[0], calls
+    # 先验结果写回缓存，不留与白名单矛盾的旧条目
+    assert cs.load_cache(tmp_path)["https://news.cn/a"]["tier"] == "A"
+
+
+def test_cache_hit_preserves_input_order(tmp_path):
+    """先验/缓存改判后，输出必须与 results 同序（调用方按位置对齐 source_id）。"""
+    def llm(prompt):
+        return '{"tier":"B","reason":"媒体"}'
+    urls = ["https://u.example/1", "https://u.example/2", "https://gov.cn/x"]
+    results = [SearchResult(url=u, title=f"t{i}", source_id=f"s{i}")
+               for i, u in enumerate(urls)]
+    got = cs.classify_with_cache(tmp_path, results, CFG2, llm)
+    assert [g["url"] for g in got] == urls
+    assert [g["source_id"] for g in got] == ["s0", "s1", "s2"]
+    assert got[2]["tier"] == "A"          # gov.cn 走先验，不进 LLM
+    again = cs.classify_with_cache(tmp_path, results, CFG2, llm)
+    assert [g["url"] for g in again] == urls
+    assert "cache" in again[0]["decided_by"]
 
 
 # ---------- 时效过滤 ----------

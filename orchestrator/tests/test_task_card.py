@@ -163,3 +163,16 @@ def test_empty_inputs_renders_placeholder():
     c = _card(inputs=[])
     assert "（无输入产物）" in c
     assert estimate_tokens(c) < 2000
+
+
+def test_card_demands_atomic_write_for_summary_tasks():
+    """2026-10-03 实测：t4_rollup 这类 needs_web=false 汇总任务，模型连跑 4 轮
+    只调 read_range/run_cmd，回复 19 个字就结束，判 no_artifacts_produced。
+    任务卡必须把"回复/读完不算完成"写死，且汇总任务不能被排除在这条之外。"""
+    c = _card(needs_web=False)
+    assert "atomic_write" in c
+    assert "回复不是产物" in c
+    assert "no_artifacts_produced" in c
+    assert "汇总/对比/复述类任务" in c
+    # 加了这么多硬要求，token 门禁仍要过
+    assert estimate_tokens(c) < 2000

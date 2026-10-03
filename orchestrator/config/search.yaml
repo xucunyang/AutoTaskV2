@@ -17,7 +17,29 @@ base_url: "https://api.tavily.com"
 # summary: true        # 要长文本摘要（只有bocha支持）
 # freshness: noLimit   # noLimit/oneDay/oneWeek/oneMonth/oneYear/日期区间
 # 来源分级：域名先验（V7§2.10）
-official_domains: [gov.cn, sec.gov, who.int, un.org, reuters.com]
+# official_domains 命中 → 直接判 A，不调 LLM（省时省钱，且分级不受模型心情影响）。
+# 2026-10-03 扩充：实跑发现 A 类占比只有 20-24%，缺口全在"权威财经媒体被 LLM 判成 B"——
+# 新华/人民/央视/证券时报/第一财经这些一线媒体按 tier_criteria.B（"主流媒体"）进了 B 档，
+# 而它们实际是中宣部/财经口的权威发布渠道，与 reuters 同档。
+# 用户 2026-10-03 拍板：验收阈值维持 20%，同时把这批域名加进白名单直接定 A。
+official_domains:
+  - gov.cn            # 政府（含各级部委/地方站点）
+  - sec.gov
+  - who.int
+  - un.org
+  - reuters.com
+  # --- 权威媒体（2026-10-03 新增）---
+  - news.cn           # 新华网 / 新华社
+  - xinhuanet.com
+  - people.com.cn     # 人民网 / 人民日报
+  - cctv.com          # 央视网 / CCTV 财经
+  - cnr.cn            # 央广网
+  - stcn.com          # 证券时报
+  - cnstock.com       # 上海证券报·中国证券网
+  - cs.com.cn         # 中国证券报
+  - yicai.com         # 第一财经
+  - 21jingji.com      # 21世纪经济报道
+  - thepaper.cn       # 澎湃新闻
 ugc_domains: [x.com, tiktok.com, douyin.com, weibo.com, zhihu.com]
 # A/B/C判据（分级prompt用，只喂url+域名+title+发布者，禁喂正文防注入）
 tier_criteria:
