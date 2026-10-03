@@ -296,7 +296,7 @@ def tool_spec_prompt() -> str:
         "可用工具（用JSON调用，不要只描述意图）：\n"
         '{"tool":"read_range","path":"...","offset":0,"limit":200}\n'
         '{"tool":"search","query":"..."}\n'
-        '{"tool":"atomic_write","path":"artifacts/x.md","content":"..."}\n'
+        '{"tool":"atomic_write","path":"artifacts/<日期>/x.md","content":"..."}\n'
         '{"tool":"run_cmd","cmd":"pytest tests/ -q"}\n'
         "一次只调一个；写完产物再结束。"
     )

@@ -73,6 +73,14 @@ def expand_template(root: Path, template_rel: str, date: str,
     tasks = []
     for i, t in enumerate(tpl.get("tasks", []) or []):
         tid = t["id"]
+        # outputs 先展开：acceptance 的 {output} 要指向**这个任务自己**的产物。
+        # 多条任务共用一份 acceptance（housing 的 t1/t2/t3 共用
+        # acceptance_market.yaml）时，path 写死 artifacts/{date}/report.md
+        # 是错的——那三条任务的产物分别是 t1_tier.md / t2_xuzhou_nanjing.md /
+        # t3_hexagon_cities.md，而 report.md 是**别人**写的：任何一条任务
+        # 交了 report.md，另外两条的 file_exists/bytes 也一起"通过"，
+        # 等于三条任务的产物存在性互相顶替。实测 10-03 就是这样过的。
+        outs = [str(o).replace("{date}", date) for o in (t.get("outputs") or [])]
         acc_file = t.get("acceptance_ref")
         acceptance = []
         if acc_file:
@@ -83,7 +91,12 @@ def expand_template(root: Path, template_rel: str, date: str,
                 rule.setdefault("rule_id", f"rule_{j}")
                 for k in ("path", "schema_ref"):
                     if isinstance(rule.get(k), str):
-                        rule[k] = rule[k].replace("{date}", date)
+                        # 没声明 outputs 的任务把 {output} 展开成 ""，
+                        # normalize_path 报 empty_path——明确失败好过
+                        # 静默去查一个不属于它的文件。
+                        repl = outs[0] if outs else ""
+                        rule[k] = (rule[k].replace("{date}", date)
+                                   .replace("{output}", repl))
                 acceptance.append(rule)
         shard = {
             "task_id": tid,
@@ -98,7 +111,7 @@ def expand_template(root: Path, template_rel: str, date: str,
             # 表现为工具调用失败，而不是"inputs 没展开"，很难联想到。
             "inputs": [str(i).replace("{date}", date)
                        for i in (t.get("inputs") or [])],
-            "outputs": [o.replace("{date}", date) for o in t.get("outputs", []) or []],
+            "outputs": outs,
             "depends_on": t.get("depends_on", []) or [],
             "acceptance": acceptance,
             # budget 必须透传。模板里写了 budget:{max_steps:10,timeout_s:600}

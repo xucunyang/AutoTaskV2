@@ -61,6 +61,31 @@ def test_expand_template_substitutes_date_and_rules(tmp_path):
     assert plan["tasks"][1]["depends_on"] == ["t1_collect"]
 
 
+def test_housing_acceptance_points_at_own_output(tmp_path):
+    """t1/t2/t3 共用一份 acceptance，path 必须是**各自**的产物。
+
+    实测 2026-10-03：acceptance_market.yaml 的 path 写死
+    artifacts/{date}/report.md，而三条任务的产物是 t1_tier.md /
+    t2_xuzhou_nanjing.md / t3_hexagon_cities.md——report.md 是其中一条
+    顺手写的，于是谁交了它，另外两条的 file_exists/bytes 也一起"通过"，
+    产物存在性互相顶替。{output} 展开后各查各的。
+    """
+    root = Path(__file__).resolve().parent.parent
+    plan = scheduler.expand_template(root, "templates/housing_daily.yaml",
+                                     "2026-10-04", job_id="housing_daily")
+    assert {t["outputs"][0] for t in plan["tasks"][:3]} == {
+        "artifacts/2026-10-04/t1_tier.md",
+        "artifacts/2026-10-04/t2_xuzhou_nanjing.md",
+        "artifacts/2026-10-04/t3_hexagon_cities.md",
+    }
+    for t in plan["tasks"]:
+        own = t["outputs"][0]
+        for r in t["acceptance"]:
+            if r.get("type") in ("file_exists", "business_rule"):
+                assert r["path"] == own, (t["task_id"], r)
+                assert "{output}" not in r["path"] and "{date}" not in r["path"]
+
+
 def test_ensure_plan_idempotent(tmp_path):
     s = _store(tmp_path)
     assert scheduler.ensure_plan(s, "2026-09-29", TPL) == ("created", 3)

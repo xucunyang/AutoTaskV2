@@ -111,6 +111,32 @@ def test_needs_web_card_contains_four_set_schema():
     assert "source_ids" in card
 
 
+def test_four_set_paths_carry_the_date_dir():
+    """四件套必须给**逐字完整路径**，不能只给文件名。
+
+    实测 2026-10-03 重跑：卡上写的是 `{task_id}.sources.json`（没说目录），
+    三个任务全把 sources 写进 `artifacts/` 顶层、claims 一个都没写，
+    验收齐刷刷 no_sources_json/no_claims_json。验收只在
+    `artifacts/{date}/` 下找文件，所以路径必须带日期目录。
+    """
+    card = _card(task_id="t1", objective="调研",
+                 outputs=["artifacts/2026-10-01/t1.report.md"],
+                 needs_web=True, freshness="recent",
+                 key_questions=["问题一"])
+    assert "artifacts/2026-10-01/t1.sources.json" in card
+    assert "artifacts/2026-10-01/t1.claims.json" in card
+    assert "不要写到 `artifacts/` 顶层" in card
+    # 单独给文件名（没有目录）的旧写法不能再出现
+    assert "`t1.sources.json` 必须" not in card
+
+
+def test_four_set_dir_falls_back_without_outputs():
+    """没声明产物时也要给个目录提示，而不是留空让模型自己猜。"""
+    from core.task_card import _out_dir
+    assert _out_dir(["artifacts/2026-10-01/t1.md"]) == "artifacts/2026-10-01"
+    assert _out_dir([]) == "artifacts/<日期>"
+
+
 def test_non_web_card_has_no_four_set_schema():
     """不需要检索的任务卡不该有四件套说明——多余的约束只会干扰模型。"""
     c = _card(needs_web=False)

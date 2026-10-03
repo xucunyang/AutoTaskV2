@@ -504,14 +504,22 @@ class Orchestrator:
             return []
         pending = vmod.requeue_verify(self.store, run_id=self._run_id())
         out = []
+        skipped = []
         for t in pending:
             key = (t["plan_id"], t["task_id"])
             if key in self._in_flight:
+                skipped.append(key)
                 continue
             self._in_flight.add(key)
             self.verify_pool._tg.start_soon(self._verify_worker, *key,
                                            self._run_id())
             out.append(key)
+        if pending and not out:
+            # 该派的全被 `_in_flight` 挡住 = 上一批 worker 没回来。
+            # 这一档必须留痕：2026-10-03 实测三个任务卡在 VERIFYING 35 分钟，
+            # 日志里只有 deps 拒绝，metric/告警/异常全没有，完全查不下去。
+            jlog(self.root, "WARN", "verify_dispatch_stalled",
+                 inflight=len(self._in_flight), skipped=[f"{p}/{t}" for p, t in skipped[:5]])
         return out
 
     async def _verify_worker(self, plan_id: str, task_id: str,
@@ -553,21 +561,49 @@ class Orchestrator:
 
     # ---------- 唤醒（评审M2：事件唤醒替代纯sleep） ----------
 
+    def _take_wakeup(self) -> bool:
+        """wakeup.flag 在就吃掉它。返回是否被唤醒。"""
+        flag = self.root / "wakeup.flag"
+        if not flag.exists():
+            return False
+        try:
+            flag.unlink()
+        except OSError:
+            pass
+        return True
+
     def wait_wakeup(self, timeout_s: float) -> bool:
         """等wakeup.flag出现或超时。返回是否被唤醒。
-        flag由enqueue入队时touch，管道任务不用等满一个轮询周期。"""
-        flag = self.root / "wakeup.flag"
+        flag由enqueue入队时touch，管道任务不用等满一个轮询周期。
+
+        同步版，只给 no-pool 排障路径用；async 主循环必须用
+        wait_wakeup_async，否则见下面那段血的教训。
+        """
         deadline = time.time() + timeout_s
         while time.time() < deadline:
-            if flag.exists():
-                try:
-                    flag.unlink()
-                except OSError:
-                    pass
+            if self._take_wakeup():
                 return True
             if self.check_shutdown():
                 return False
             time.sleep(0.1)
+        return False
+
+    async def wait_wakeup_async(self, timeout_s: float) -> bool:
+        """wait_wakeup 的异步孪生：time.sleep → await，把控制权还给事件循环。
+
+        verify worker 是 `start_soon` 出去的**协程**，只在事件循环让出控制权
+        时才起跑。主循环里如果全是同步 sleep，循环被整段饿死，这些 worker
+        就只剩一个执行时机：进程退出、任务组 `__aexit__` 收尾。
+        实测 2026-10-03：三个任务卡 VERIFYING 35 分钟，verify metric 一条没记、
+        异常日志一条没有，我 kill 进程连收尾都没跑到——"异步校验池"等于没有。
+        """
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            if self._take_wakeup():
+                return True
+            if self.check_shutdown():
+                return False
+            await anyio.sleep(min(0.1, max(0.0, deadline - time.time())))
         return False
 
     def _run_id(self) -> str:
@@ -643,9 +679,13 @@ class Orchestrator:
                         break
                     self.tick()
                     nn += 1
+                    # 让本轮 start_soon 出去的 verify worker 真的起跑。
+                    # tick 是同步的，不显式让出控制权的话，任务组里的协程
+                    # 只会等到进程退出才被执行（见 wait_wakeup_async 注释）。
+                    await anyio.sleep(0)
                     if self.run_once or (max_ticks is not None and nn >= max_ticks):
                         break
-                    self.wait_wakeup(self.poll_normal_s)
+                    await self.wait_wakeup_async(self.poll_normal_s)
             return nn
         try:
             if self.verify_pool is not None:

@@ -53,12 +53,33 @@ def build_manifest(artifact) -> dict:
             "preview": (artifact.get("preview") or [])[:5]}
 
 
+def _out_dir(outputs) -> str:
+    """四件套的落盘目录 = 声明产物所在目录（`artifacts/2026-10-03`）。
+
+    没声明产物时退化成 `artifacts/<日期>` 这样的文字提示——总比留空让模型
+    自己猜好，它猜的结果实测就是写到 `artifacts/` 顶层。
+    """
+    outs = [str(o).replace("\\", "/") for o in (outputs or [])]
+    if outs and "/" in outs[0]:
+        return outs[0].rsplit("/", 1)[0]
+    return "artifacts/<日期>"
+
+
 # 四件套的精确形状说明，只在 needs_web 的任务卡里出现。
 # 它必须和 verifier._load_four_set 实际读的形状一致——这是同一份契约的
 # 两面（"卡上承诺的" vs "验收检查的"）。改了一边必须改另一边，
 # 否则会出现"按卡写了却过不了验收"，而模型完全不知道为什么。
+#
+# **必须带完整目录**：原来只写 `{task_id}.sources.json`，没说写到哪，
+# 模型就按 tool_spec_prompt 的示例落到了 `artifacts/` 顶层——实测 2026-10-03
+# 重跑时三个任务全把 sources 写进顶层、claims 一个都没写，验收齐刷刷
+# no_sources_json/no_claims_json。验收只在 `artifacts/{date}/` 下找
+# （verifier 的 normalize_path 也拒绝其它位置），所以路径必须逐字给全。
 FOUR_SET_SCHEMA = """\
-`{task_id}.sources.json` 必须是**顶层数组**（不要包在 {"sources":...} 里），
+四件套**必须**写到与 outputs 相同的日期目录（`{out_dir}/`），
+不要写到 `artifacts/` 顶层——验收只在日期目录下找文件，写错目录等于没写。
+
+`{out_dir}/{task_id}.sources.json` 必须是**顶层数组**（不要包在 {"sources":...} 里），
 每个元素：
 {"source_id": "s1", "url": "https://...", "title": "...",
  "snippet": "摘要（search 返回的原文，不要自己编）",
@@ -68,10 +89,11 @@ FOUR_SET_SCHEMA = """\
 字段名必须用 source_id（不是 id），tier_reason 不能为空。
 A = 官方机构/政府公告/持牌金融机构；B = 主流媒体；C = 个人号/论坛。
 
-`{task_id}.claims.json` 必须是**顶层数组**，每个元素：
+`{out_dir}/{task_id}.claims.json` 必须是**顶层数组**，每个元素：
 {"claim_id": "c1", "text": "一句话结论", "source_ids": ["s1", "s2"]}
 每条 claim 的 source_ids 必须非空且指向 sources.json 里存在的 source_id。
 没有来源支撑的结论不要写进 claims（写了会被判幻觉）。
+这两个文件**缺一个就整条任务判失败**（no_sources_json / no_claims_json）。
 
 `{task_id}.report.md` 是给人看的正文，按 key_questions 分节，
 每节标题必须包含对应问题的关键词（coverage 验收按标题匹配）。
@@ -114,7 +136,10 @@ def render_task_card(root: str | Path, *, task_id: str, plan_id: str, run_id: st
         "needs_web": needs_web, "freshness": freshness,
         "key_questions": key_questions or [],
         "cmd_allowlist": cmd_allowlist,
-        "four_set_schema": FOUR_SET_SCHEMA.replace("{task_id}", task_id),
+        # out_dir：四件套的落盘目录 = 声明产物所在目录。模型要的是**逐字路径**，
+        # 不是"推断一下"——推断错就写到 artifacts/ 顶层，验收直接 no_claims_json。
+        "four_set_schema": FOUR_SET_SCHEMA.replace(
+            "{task_id}", task_id).replace("{out_dir}", _out_dir(outputs)),
     }
     if needs_web and freshness == "none":
         # 与TaskShard._needs_web_requires_freshness同一条约束，只是提前到渲染口

@@ -3,8 +3,15 @@
 # 规则只查**可机械判定**的东西：文件在不在、有没有来源、来源够不够新够不够权威、
 # 正文有没有实质内容。"数字对不对""结论站不站得住"没法机械判，
 # 写进规则只会变成一堆永远为真、也永远抓不到问题的断言。
+#
+# path 用 {output} 而不是写死文件名：这份验收被 t1_tier / t2_xz_nj / t3_hexagon
+# 三条任务共用，产物名各不相同（t1_tier.md / t2_xuzhou_nanjing.md /
+# t3_hexagon_cities.md）。写死 artifacts/{date}/report.md 等于查了一个
+# **没人声明要产出**的文件——实测 10-03：report.md 是其中一条任务顺手写的，
+# 另外两条的 file_exists/bytes 因此一起"通过"，产物存在性互相顶替。
+# {output} 在 expand_template 里替换成该任务自己的 outputs[0]。
 - type: file_exists
-  path: artifacts/{date}/report.md
+  path: "{output}"
 
 # 正文有实质内容。只查 file_exists 的话，模型写一句"数据获取失败"也算通过
 # ——这种"通过了但没用"的验收最坏。
@@ -14,7 +21,7 @@
 # 800 字节约合 400+ 汉字，足以排除"一句话交差"。
 - type: business_rule
   expr: "bytes >= 800"
-  path: artifacts/{date}/report.md
+  path: "{output}"
 
 # 幻觉拒收：每条论断必须挂到真实存在的来源上
 - type: source_traceable
