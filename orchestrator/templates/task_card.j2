@@ -22,7 +22,7 @@
 {% endif %}
 - read_range(path, offset, limit)：分页读文件（超过200行必须分页，别一次读整个文件）。
 {% if needs_web %}
-- search(query, max_results)：联网检索。**本任务时效性要求={{ freshness }}，关键问题：{{ key_questions | join("；") }}**
+- search(query, max_results)：联网检索。**时效={{ freshness_days }}天内（published_at ≥ {{ freshness_cutoff }}），关键问题：{{ key_questions | join("；") }}**
   取证必须走 search；不要凭记忆写事实，也不要编造来源。
 {% else %}
 - 本任务不需要联网：**不要**调用 search。
@@ -52,7 +52,16 @@
   组织出来的那份报告，**必须 atomic_write 落盘**。
 
 {% if needs_web %}
-【检索约束】时效性要求={{ freshness }}；关键问题：{{ key_questions | join("；") }}
+【检索约束】关键问题：{{ key_questions | join("；") }}
+- 时效（硬验收 rule_3）：今天 {{ freshness_today }}，每条来源都要有 published_at，
+  且日期 ≥ **{{ freshness_cutoff }}**（{{ freshness_days }} 天内）。
+  超期条数 ÷ 有日期来源数 > 30% → 整轮作废重跑，你前面积累的全白费。
+  榜单/年报类若查不到当年版本，换关键词找更新的（"{{ freshness_today[:4] }}"、"最新"、"发布"），
+  **别拿截止日之前的版本充数**——去年的数据在这个任务里就算过期。
+{% if has_tier_bar %}
+- 分级（硬验收 rule_4）：source_tier=A 的占比要 ≥ {{ tier_bar }}，
+  优先取官方机构/政府公告/统计公报，每条都写 tier_reason（空的不计入统计）。
+{% endif %}
 
 【四件套 JSON 形状（验收按这个读，写错形状等于没写）】
 {{ four_set_schema }}

@@ -224,3 +224,52 @@ def test_card_writable_paths_include_the_four_set():
     assert "且只写" not in c
     assert "只能写" not in c
     assert estimate_tokens(c) < 2000
+
+
+def test_card_gives_concrete_freshness_cutoff():
+    """时效必须翻成**具体日期**，不能留个模型换算不出来的 token。
+
+    实测 2026-10-04：卡上写的是 `时效性要求=recent`，而验收实际按
+    freshness_days=365 且不给模型任何时钟——它以为 2025 年的来源算新，
+    交了 2025-10-01（368 天，差 3 天）和 2020 年的旧榜，stale=8/12=0.67
+    卡在 limit=0.3，t3_hexagon 连挂三轮。数字就在 acceptance 里，
+    卡片却没把它翻成人能执行的判据，等于没说。
+    """
+    from datetime import date, timedelta
+    acc = ACCEPTANCE + [
+        {"type": "freshness", "freshness_days": 365},
+        {"type": "source_quality", "source_tier_min_ratio": {"A": 0.2}},
+    ]
+    c = _card(task_id="t3", objective="调研",
+              outputs=["artifacts/2026-10-04/t3.md"],
+              needs_web=True, freshness="recent", key_questions=["问题一"],
+              acceptance=acc)
+    cutoff = (date.today() - timedelta(days=365)).isoformat()
+    assert cutoff in c, "没给截止日期，模型无从判断哪条来源算超期"
+    assert date.today().isoformat() in c, "不给今天就没法做差"
+    assert "30%" in c, "没说超期比例上限（rule_3 的判据）"
+    assert "20%" in c, "没说 A 类门槛（rule_4 的判据）"
+    # 无信息量的旧写法不能再出现（只有 token、没有可执行判据）
+    assert "时效性要求=recent，" not in c
+    assert "时效性要求=recent。" not in c
+    assert "时效性要求=recent（365天内" in c
+    assert estimate_tokens(c) < 2000
+
+
+def test_non_web_card_has_no_freshness_block():
+    """不需要联网的任务卡不该出现时效判据——多余的约束只会干扰模型。"""
+    c = _card(needs_web=False)
+    assert "published_at" not in c
+    assert "时效（硬验收" not in c
+    assert estimate_tokens(c) < 2000
+
+
+def test_freshness_days_falls_back_when_acceptance_silent():
+    """验收没写 freshness_days 时回退到 FRESHNESS_DAYS 映射，不能渲染出空日期。"""
+    from datetime import date, timedelta
+    c = _card(task_id="t3", objective="调研",
+              outputs=["artifacts/2026-10-04/t3.md"],
+              needs_web=True, freshness="strict", key_questions=["问题一"])
+    cutoff = (date.today() - timedelta(days=180)).isoformat()
+    assert cutoff in c
+    assert "180" in c

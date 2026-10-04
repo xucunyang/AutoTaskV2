@@ -7,11 +7,13 @@ needs_web=true时追加"仅基于检索资料"注记（禁参数内知识）。
 from __future__ import annotations
 
 import math
+from datetime import date, timedelta
 from pathlib import Path
 
 import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from core.search.pipeline import FRESHNESS_DAYS
 from schemas.models import Checkpoint
 
 # Phase0§5白名单：只有这些能进任务卡
@@ -51,6 +53,21 @@ def build_manifest(artifact) -> dict:
     return {"path": artifact.get("path"), "sha256": artifact.get("sha256"),
             "bytes": artifact.get("bytes"), "rows": artifact.get("rows"),
             "preview": (artifact.get("preview") or [])[:5]}
+
+
+def _rule_value(acceptance, rule_type: str, key: str):
+    """从内嵌验收里取某条规则的参数（取不到返回None）。
+
+    卡片必须用**模型能执行的单位**复述验收真正在查的数字。验收写的是
+    `freshness_days: 365`，卡片原来只渲染 `时效性要求=recent`——模型既没有
+    时钟、也不知道今天几号，无从换算成"到底哪天之前的来源算超期"。
+    实测 2026-10-04：t3_hexagon 交了 2025-10-01（368天，差3天）和 2020 年的
+    来源，stale=8/12=0.67 卡在 limit=0.3，连挂三轮。
+    """
+    for rule in (acceptance or []):
+        if isinstance(rule, dict) and rule.get("type") == rule_type:
+            return rule.get(key)
+    return None
 
 
 def _out_dir(outputs) -> str:
@@ -144,6 +161,22 @@ def render_task_card(root: str | Path, *, task_id: str, plan_id: str, run_id: st
         "four_set_schema": FOUR_SET_SCHEMA.replace(
             "{task_id}", task_id).replace("{out_dir}", _out_dir(outputs)),
     }
+    if needs_web:
+        # 把验收的两个硬数字翻成模型**能执行**的单位：
+        #   freshness → 具体截止日期（模型没有时钟，"recent" 换算不出日期）
+        #   A类门槛 → 百分比（tier 判级规则在 search.yaml，这里只给阈值）
+        days = _rule_value(acceptance, "freshness", "freshness_days")
+        days = int(days or FRESHNESS_DAYS.get(freshness, 730))
+        today = date.today()
+        ctx["freshness_days"] = days
+        ctx["freshness_today"] = today.isoformat()
+        ctx["freshness_cutoff"] = (today - timedelta(days=days)).isoformat()
+        ratio = _rule_value(acceptance, "source_quality",
+                            "source_tier_min_ratio")
+        if isinstance(ratio, dict):          # 验收写的是 {A: 0.2}
+            ratio = ratio.get("A")
+        ctx["has_tier_bar"] = ratio is not None
+        ctx["tier_bar"] = f"{float(ratio):.0%}" if ratio is not None else ""
     if needs_web and freshness == "none":
         # 与TaskShard._needs_web_requires_freshness同一条约束，只是提前到渲染口
         raise ValueError("needs_web=true要求freshness为recent/strict")
@@ -160,7 +193,8 @@ def render_task_card(root: str | Path, *, task_id: str, plan_id: str, run_id: st
     if needs_web:
         card += ("\n【检索约束】本任务needs_web=true：仅基于检索资料回答，"
                  "资料未覆盖的部分标注[未覆盖]，禁止使用模型参数内知识。"
-                 f"时效性要求={freshness}。")
+                 f"时效性要求={freshness}（{ctx['freshness_days']}天内，"
+                 f"published_at ≥ {ctx['freshness_cutoff']}）。")
     return card
 
 
