@@ -144,6 +144,29 @@ def test_rule_types_registered():
     assert not unmodelled, f"规则没进 AcceptanceRule 的 Literal: {unmodelled}"
 
 
+def test_md_tasks_must_have_chart_rule():
+    """产物是 .md 的任务，验收里必须有 mermaid 规则——"报告要有图"不能靠记性。
+
+    2026-10-04 用户拍板：t1_tier / t2_xz_nj / t3_hexagon 三份分报告也要有图
+    （acceptance_market 加 mermaid min:1，次日生效）。这条 lint 钉住该决定：
+    谁哪天把规则删了/忘了给新模板加，测试当场红，而不是等第二天跑完
+    才发现报告又变回纯表格。
+    """
+    missing = []
+    for tpl in TEMPLATES:
+        for t in _template_tasks(tpl):
+            outs = [str(o) for o in (t.get("outputs") or [])]
+            if not any(o.endswith(".md") for o in outs):
+                continue
+            ref = t.get("acceptance_ref")
+            if not ref or not (ROOT / str(ref)).exists():
+                continue        # 文件缺失由 test_acceptance_ref_files_exist 报
+            if not any(r.get("type") == "mermaid" for r in _rules(ROOT / str(ref))):
+                missing.append(f"{tpl.name}:{t.get('id')}")
+    assert not missing, (
+        "产出 md 却没有图表验收（报告会退回纯表格）: " + ", ".join(missing))
+
+
 def test_acceptance_paths_point_at_declared_outputs():
     """file_exists/bytes 这类带 path 的规则，path 必须是**该任务声明过的产物**。
 
