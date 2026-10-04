@@ -2,7 +2,9 @@
   path: artifacts/{date}/t2_clean.csv
 - type: row_count
   path: artifacts/{date}/t2_clean.csv
-  min: 1
+  # 2026-10-04 从 min:1 提到 10：清洗不该把 20 行采样洗成 1 行。
+  # 不提成 20 是给"去空行/去重"留余量，卡太死会让它为了凑数去编行。
+  min: 10
 
 # 2026-10-04 删掉 `python_test: pytest tests/test_clean.py -q`。
 # 它在本仓库**没有对应文件**——顶层连 tests/ 目录都没有（测试全在

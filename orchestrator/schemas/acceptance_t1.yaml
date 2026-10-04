@@ -1,5 +1,31 @@
+# t1_collect：2026-10-04 从"3 行桩数据"改成**联网检索的真实公开数据**。
+#
+# 原来只有 file_exists + row_count min:1——模型随手编三行数字就能过，
+# 于是下游 t2 拿不到真数据、自己又编了一张表（t1 是 id,value，
+# t2 却交了 id,timestamp,source,value,status），整条链"名义连通、数据上断的"。
+# 现在把"数据得是真的"变成机械可判的四件事：够行、够列、能追到来源、来源够新够权威。
+#
+# row_count min:20：一份城市级数据少于 20 行基本等于没采。不卡 70 行——
+# 检索不一定能拿到全表，卡死只会把它推进死信（见 acceptance_t2 的教训）。
 - type: file_exists
   path: artifacts/{date}/t1_collect.csv
+
 - type: row_count
   path: artifacts/{date}/t1_collect.csv
-  min: 1
+  min: 20
+
+# 只有表头没有列的 csv 也算 file_exists 通过，所以列数要单独判。
+# cols/rows 由 h_business_rule 从 csv 表头+行数注入，不需要模型自己申报。
+- type: business_rule
+  expr: "cols >= 5"
+  path: artifacts/{date}/t1_collect.csv
+
+# 联网任务三件套：来源可追、够新、够权威（与 acceptance_market 同一套口径）
+- type: source_traceable
+
+- type: freshness
+  freshness_days: 365
+
+# 统计局/政府门户/地方统计局 = A；只引媒体报道的话 A 占比到不了 20%
+- type: source_quality
+  source_tier_min_ratio: {A: 0.2}

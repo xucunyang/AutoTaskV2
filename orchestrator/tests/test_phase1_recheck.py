@@ -25,8 +25,8 @@ def test_daily_dag_respects_depends_gate(tmp_path):
     t = s.transition(pid, "t1_collect", "READY", agent="o", run_id="r",
                      expect_version=t["version"])
     assert t["status"] == "READY"
-    # t2/t3 被门禁挡住
-    for tid in ("t2_clean", "t3_report"):
+    # t2/t4_charts/t3 被门禁挡住（t3 现在还要等 t4_charts 出图）
+    for tid in ("t2_clean", "t4_charts", "t3_report"):
         row = s.get_task(pid, tid)
         with pytest.raises(IllegalTransition, match="deps_unsatisfied"):
             s.transition(pid, tid, "READY", agent="o", run_id="r",
@@ -34,7 +34,11 @@ def test_daily_dag_respects_depends_gate(tmp_path):
 
 
 def test_daily_dag_advances_in_order(tmp_path):
-    """整条链走通：t1 DONE → t2 READY → t2 DONE → t3 READY。"""
+    """整条链走通：t1 DONE → t2 DONE → t4_charts DONE → t3 READY。
+
+    2026-10-04 加了 t4_charts：t3_report 要贴图，图必须先有，
+    所以 t3 的 READY 被两个依赖同时挡住（t2_clean 与 t4_charts）。
+    """
     s = _store(tmp_path)
     scheduler.ensure_plan(s, "2026-09-29", TPL)
     pid = "daily_report_2026-09-29"
@@ -53,7 +57,7 @@ def test_daily_dag_advances_in_order(tmp_path):
         return s.transition(pid, tid, "DONE", agent="v", run_id="r",
                             expect_version=row["version"], role="verifier")
 
-    for tid in ("t1_collect", "t2_clean", "t3_report"):
+    for tid in ("t1_collect", "t2_clean", "t4_charts", "t3_report"):
         got = advance(tid)
         assert got["status"] == "DONE", tid
     assert s.replay(pid)["ok"]
@@ -66,7 +70,9 @@ def test_expand_template_carries_depends_on(tmp_path):
     by_id = {t["task_id"]: t for t in plan["tasks"]}
     assert by_id["t1_collect"]["depends_on"] == []
     assert by_id["t2_clean"]["depends_on"] == ["t1_collect"]
-    assert by_id["t3_report"]["depends_on"] == ["t2_clean"]
+    assert by_id["t4_charts"]["depends_on"] == ["t2_clean"]
+    # t3 现在等两张：clean 的数据 + charts 的图（缺一不可，否则报告贴不出图）
+    assert by_id["t3_report"]["depends_on"] == ["t2_clean", "t4_charts"]
 
 
 def test_store_read_dag_blocked_count(tmp_path):
@@ -74,6 +80,6 @@ def test_store_read_dag_blocked_count(tmp_path):
     s = _store(tmp_path)
     scheduler.ensure_plan(s, "2026-09-29", TPL)
     pid = "daily_report_2026-09-29"
-    blocked = [tid for tid in ("t1_collect", "t2_clean", "t3_report")
+    blocked = [tid for tid in ("t1_collect", "t2_clean", "t4_charts", "t3_report")
                if s.unsatisfied_dependencies(pid, tid)]
-    assert blocked == ["t2_clean", "t3_report"]
+    assert blocked == ["t2_clean", "t4_charts", "t3_report"]

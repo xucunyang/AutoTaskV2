@@ -11,3 +11,10 @@
 - type: business_rule
   expr: "bytes >= 600"
   path: artifacts/{date}/t4_investment_watch.md
+
+# 汇总报告要有图（2026-10-04 加）：t4 的输入里有 t5_charts 的 charts.md，
+# 把其中的 mermaid 曲线贴进对应小节即可。它不检索、不产 sources，
+# 所以只判"有没有图"，不判来源三件套。
+- type: mermaid
+  path: artifacts/{date}/t4_investment_watch.md
+  min: 1

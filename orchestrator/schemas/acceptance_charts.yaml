@@ -1,0 +1,17 @@
+# 图表任务（housing t5_charts / daily t4_charts）的验收：
+# 产物就是"图"，所以除了文件在、够大，必须判**图够不够张**。
+#
+# mermaid 的计数口径只认 xychart/pie/gantt（见 verifier.h_mermaid）——
+# mindmap、sequenceDiagram 不是数据图，放行它们等于让模型贴个不相干的块凑数。
+# min:2 而不是 1：一张图可以是顺手画的，两张才说明它真把上游数列整理过一遍。
+- type: file_exists
+  path: artifacts/{date}/charts.md
+
+# 800 字节约合 400+ 汉字，排除"两张图+一句话"式交差
+- type: business_rule
+  expr: "bytes >= 800"
+  path: artifacts/{date}/charts.md
+
+- type: mermaid
+  path: artifacts/{date}/charts.md
+  min: 2

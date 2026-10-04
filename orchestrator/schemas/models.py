@@ -19,7 +19,7 @@ class ArtifactRef(BaseModel):
 
 class AcceptanceRule(BaseModel):
     type: Literal["file_exists", "row_count", "python_test", "json_schema", "business_rule",
-                  "source_traceable", "freshness", "source_quality", "coverage"]
+                  "source_traceable", "freshness", "source_quality", "coverage", "mermaid"]
     path: Optional[str] = None
     cmd: Optional[str] = None
     min: Optional[int] = None

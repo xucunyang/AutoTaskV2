@@ -32,9 +32,13 @@ def _seed_templates(root: Path) -> None:
     (root / "templates" / "daily_plan.yaml").write_text(
         (shutil_src / "templates" / "daily_plan.yaml").read_text(encoding="utf-8"),
         encoding="utf-8")
-    for n in ("acceptance_t1.yaml", "acceptance_t2.yaml", "acceptance_t3.yaml"):
+    # 全量拷贝：模板的 acceptance_ref 指向哪些文件就可能读哪些，
+    # 少拷一个（如新增的 acceptance_charts.yaml）→ 展开时 FileNotFoundError，
+    # 测出来的不是"模板写错了"而是"种子没跟上"。
+    for n in sorted(p.name for p in (shutil_src / "schemas").glob("*.yaml")):
         (root / "schemas" / n).write_text(
-            (shutil_src / "schemas" / n).read_text(encoding="utf-8"), encoding="utf-8")
+            (shutil_src / "schemas" / n).read_text(encoding="utf-8"),
+            encoding="utf-8")
 
 
 def _store(root: Path) -> Store:
@@ -48,13 +52,15 @@ def test_expand_template_substitutes_date_and_rules(tmp_path):
     plan = scheduler.expand_template(tmp_path, TPL, "2026-09-29")
     assert plan["plan_id"] == "daily_report_2026-09-29"
     ids = [t["task_id"] for t in plan["tasks"]]
-    assert ids == ["t1_collect", "t2_clean", "t3_report"]
+    # t4_charts 插在 t2 与 t3 之间：t3 要贴图，图必须先有
+    assert ids == ["t1_collect", "t2_clean", "t4_charts", "t3_report"]
     t1 = plan["tasks"][0]
     assert t1["source"] == "daily" and t1["priority"] == 10
     assert t1["idempotency_key"] == "daily_report_2026-09-29:t1_collect"
     assert t1["outputs"] == ["artifacts/2026-09-29/t1_collect.csv"]
     # {date} 在 acceptance path 中也被替换，且每条规则拿到 rule_id
-    paths = [r["path"] for r in t1["acceptance"]]
+    # （.get：source_traceable/freshness/source_quality 没有 path 字段）
+    paths = [r.get("path") for r in t1["acceptance"]]
     assert "artifacts/2026-09-29/t1_collect.csv" in paths
     assert all(r["rule_id"] for r in t1["acceptance"])
     # 依赖关系保留
@@ -88,9 +94,9 @@ def test_housing_acceptance_points_at_own_output(tmp_path):
 
 def test_ensure_plan_idempotent(tmp_path):
     s = _store(tmp_path)
-    assert scheduler.ensure_plan(s, "2026-09-29", TPL) == ("created", 3)
+    assert scheduler.ensure_plan(s, "2026-09-29", TPL) == ("created", 4)
     assert scheduler.ensure_plan(s, "2026-09-29", TPL) == ("skipped", 0)
-    assert len(s.list_by_status("PENDING")) == 3
+    assert len(s.list_by_status("PENDING")) == 4
     assert len(s.list_plans()) == 1
 
 
@@ -99,7 +105,8 @@ def test_two_plans_same_day_tasks_do_not_collide(tmp_path):
     scheduler.ensure_plan(s, "2026-09-28", TPL)
     scheduler.ensure_plan(s, "2026-09-29", TPL)
     tasks = s.list_by_status("PENDING")
-    assert len(tasks) == 6
+    # 两天 × 4 个任务（2026-10-04 加了 t4_charts）
+    assert len(tasks) == 8
     assert {t["plan_id"] for t in tasks} == {"daily_report_2026-09-28",
                                              "daily_report_2026-09-29"}
     seqs = [t["seq"] for t in tasks]
@@ -204,7 +211,7 @@ def test_cli_dry_run_lists_jobs(tmp_path, capsys):
 def test_cli_date_and_catchup(tmp_path, capsys):
     s = _store(tmp_path)
     assert scheduler.main(["--root", str(tmp_path), "--date", "2026-09-01"]) == 0
-    assert json.loads(capsys.readouterr().out)["tasks"] == 3
+    assert json.loads(capsys.readouterr().out)["tasks"] == 4
     assert s.get_task("daily_report_2026-09-01", "t3_report") is not None
     assert scheduler.main(["--root", str(tmp_path), "--catchup"]) == 0
     assert isinstance(json.loads(capsys.readouterr().out), list)

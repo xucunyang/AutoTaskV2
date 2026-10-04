@@ -828,3 +828,79 @@ def _to_done(s: Store, plan_id: str, task_id: str, run_id: str = "r"):
     return s.transition(plan_id, task_id, "DONE", agent="verifier",
                         run_id=run_id, expect_version=t["version"],
                         role="verifier")
+
+
+# ---------- 报告要有图：mermaid 规则 ----------
+
+_MD_LINE = """# 报告
+
+## 价格走势
+
+```mermaid
+xychart-beta
+    x-axis ["8月", "9月"]
+    y-axis "环比%" 0 --> 1
+    line [0.1, 0.2]
+```
+
+正文……
+"""
+
+_MD_MINDMAP = """# 报告
+
+```mermaid
+mindmap
+  root((要点))
+    甲
+```
+
+正文……
+"""
+
+
+def test_mermaid_chart_block_passes(tmp_path):
+    """有数据图（xychart/pie/gantt）就算图——这正是原来缺的那道门。"""
+    root = _root(tmp_path)
+    _art(root, f"artifacts/{DATE}/report.md", _MD_LINE)
+    got = vf.h_mermaid(_ctx(root), {"path": f"artifacts/{DATE}/report.md",
+                                    "min": 1, "rule_id": "r"})
+    assert got["ok"] is True, got
+    assert "mermaid_charts=1" in got["detail"]
+
+
+def test_mermaid_non_chart_block_does_not_count(tmp_path):
+    """mindmap/sequence 不是数据图：放行它们等于让模型贴个块凑数。
+
+    detail 里同时报 blocks，方便看出"贴了但不会画"这种半吊子情况。
+    """
+    root = _root(tmp_path)
+    _art(root, f"artifacts/{DATE}/report.md", _MD_MINDMAP)
+    got = vf.h_mermaid(_ctx(root), {"path": f"artifacts/{DATE}/report.md",
+                                    "min": 1, "rule_id": "r"})
+    assert got["ok"] is False, got
+    assert "mermaid_charts=0 blocks=1" in got["detail"]
+
+
+def test_mermaid_min_not_met_fails(tmp_path):
+    root = _root(tmp_path)
+    _art(root, f"artifacts/{DATE}/charts.md", _MD_LINE)
+    got = vf.h_mermaid(_ctx(root), {"path": f"artifacts/{DATE}/charts.md",
+                                    "min": 2, "rule_id": "r"})
+    assert got["ok"] is False
+    assert "mermaid_charts=1" in got["detail"] and "need>=2" in got["detail"]
+
+
+def test_mermaid_missing_file_and_path_escape_fail(tmp_path):
+    root = _root(tmp_path)
+    got = vf.h_mermaid(_ctx(root), {"path": f"artifacts/{DATE}/nope.md",
+                                    "min": 1, "rule_id": "r"})
+    assert got["ok"] is False and "missing" in got["detail"]
+    # 路径逃逸与其它规则同一道闸
+    got = vf.h_mermaid(_ctx(root), {"path": "../../etc/passwd",
+                                    "min": 1, "rule_id": "r"})
+    assert got["ok"] is False and "security" in got["detail"]
+
+
+def test_mermaid_registered_in_handlers():
+    """新规则类型必须同时进 HANDLERS，否则验收走到它就 handler_error。"""
+    assert "mermaid" in vf.HANDLERS

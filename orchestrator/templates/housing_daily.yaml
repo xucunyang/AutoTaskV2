@@ -75,23 +75,58 @@ tasks:
     max_attempts: 3
     budget: {max_steps: 10, timeout_s: 600}
 
-  - id: t4_rollup
-    name: 长期对比与投资观察
-    complexity: complex
+  - id: t5_charts
+    name: 图表汇总
+    complexity: simple
+    key_questions:
+      - "分能级的价格环比、成交量有哪些可对比的数列？单位与期间是什么？"
+      - "徐州与南京在价格、去化周期上差多少？"
+      - "六边形三维打分里，候选城市之间的差距有多大？"
     objective: >-
-      基于本日 t1_tier、t2_xuzhou_nanjing、t3_hexagon_cities 三份产物，
-      以及 artifacts/ 下历史日期的同类产物，做纵向对比：
-      哪些指标相对上次是改善/恶化、哪些已连续多期同向。
-      汇总成 artifacts/{date}/t4_investment_watch.md，
-      给出当前观察清单与需要继续跟踪的指标。
-      **只做记录与对比，不给具体买卖建议**，也不给价格预测；
-      对每个方向说明支持证据与反证、以及能被证伪的观测点。
-      若历史产物不足（首期运行），明确写"需要更多期数据"而不是编趋势。
+      读取 artifacts/{date}/ 下 t1_tier.md、t2_xuzhou_nanjing.md、
+      t3_hexagon_cities.md 三份产物里的表格，把**可对比的量**画成
+      mermaid 曲线/柱状图，输出 artifacts/{date}/charts.md：
+      **至少 2 张图**，每张图前一行"图N：标题（口径 / 期间 / 来源）"。
+      优先画：①分能级价格环比走势 ②徐州 vs 南京的价格与去化对比
+      ③六边形候选城市三维打分对比。
+      图内数据点必须**逐字来自**上游表格——上游没写的数不要自己补；
+      某个维度上游确实没给，就换一个有数据的维度画，并在图注里写明
+      "该口径上游未给"。
     depends_on: [t1_tier, t2_xz_nj, t3_hexagon]
     inputs:
       - artifacts/{date}/t1_tier.md
       - artifacts/{date}/t2_xuzhou_nanjing.md
       - artifacts/{date}/t3_hexagon_cities.md
+    outputs: ["artifacts/{date}/charts.md"]
+    acceptance_ref: schemas/acceptance_charts.yaml
+    # 不联网：数据全部来自上游三份产物，再检索一遍只会引入两套口径。
+    needs_web: false
+    max_attempts: 3
+    budget: {max_steps: 8, timeout_s: 420}
+
+  - id: t4_rollup
+    name: 长期对比与投资观察
+    complexity: complex
+    objective: >-
+      基于本日 t1_tier、t2_xuzhou_nanjing、t3_hexagon_cities 三份产物、
+      t5_charts 的 charts.md，以及 artifacts/ 下历史日期的同类产物，
+      做纵向对比：
+      哪些指标相对上次是改善/恶化、哪些已连续多期同向。
+      汇总成 artifacts/{date}/t4_investment_watch.md，
+      给出当前观察清单与需要继续跟踪的指标。
+      **图表必须来自 charts.md**：把其中对应的 mermaid 图块贴进正文小节
+      （验收按 mermaid 计数，正文一张图都没有 = FAIL），不要重画、
+      也不要只贴数据表代替图。
+      **只做记录与对比，不给具体买卖建议**，也不给价格预测；
+      对每个方向说明支持证据与反证、以及能被证伪的观测点。
+      若历史产物不足（首期运行），明确写"需要更多期数据"而不是编趋势。
+    # t5_charts 前置：t4 要贴图，就得先有图可贴（2026-10-04 加）。
+    depends_on: [t1_tier, t2_xz_nj, t3_hexagon, t5_charts]
+    inputs:
+      - artifacts/{date}/t1_tier.md
+      - artifacts/{date}/t2_xuzhou_nanjing.md
+      - artifacts/{date}/t3_hexagon_cities.md
+      - artifacts/{date}/charts.md
     outputs: ["artifacts/{date}/t4_investment_watch.md"]
     # 汇总类专用验收：不含 freshness/source_quality/source_traceable，
     # 因为 t4 不检索、不产生 sources.json，那三条对它永远 FAIL。

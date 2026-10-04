@@ -28,12 +28,14 @@ def _root(tmp_path: Path) -> Path:
         encoding="utf-8")
     for sub in ("templates", "schemas"):
         (tmp_path / sub).mkdir(parents=True, exist_ok=True)
-    for f in ("templates/task_card.j2", "templates/daily_plan.yaml",
-              "templates/pipeline_task.json",
-              "schemas/acceptance_t1.yaml", "schemas/acceptance_t2.yaml",
-              "schemas/acceptance_t3.yaml", "schemas/summary.schema.json"):
-        dst = tmp_path / f
-        dst.write_text((ROOT_TPL / f).read_text(encoding="utf-8"), encoding="utf-8")
+    # 全量拷贝而不是列名单：列名单时新增一个文件（如 2026-10-04 的
+    # schemas/acceptance_charts.yaml）就会漏拷，冒烟在展开模板时
+    # FileNotFoundError——测的是"种子没跟上"，不是被测系统。
+    for sub in ("templates", "schemas"):
+        for src in sorted((ROOT_TPL / sub).iterdir()):
+            if src.is_file():
+                (tmp_path / sub / src.name).write_text(
+                    src.read_text(encoding="utf-8"), encoding="utf-8")
     return tmp_path
 
 

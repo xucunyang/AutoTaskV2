@@ -126,7 +126,7 @@ def test_chaos2_double_scheduler_builds_once(tmp_path):
     r1 = scheduler.ensure_plan(a.store, "2026-09-29", tpl)
     r2 = scheduler.ensure_plan(b.store, "2026-09-29", tpl)
     assert r1[0] == "created" and r2[0] == "skipped"
-    assert len(a.store.list_plan_tasks("daily_report_2026-09-29")) == 3
+    assert len(a.store.list_plan_tasks("daily_report_2026-09-29")) == 4
     _log("混沌2 双调度只建一次", True, f"first={r1} second={r2}")
 
 

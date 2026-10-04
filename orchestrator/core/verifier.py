@@ -195,6 +195,32 @@ def h_business_rule(ctx: dict, rule: dict) -> dict:
     return {"ok": ok, "detail": detail or f"expr={expr}"}
 
 
+def h_mermaid(ctx: dict, rule: dict) -> dict:
+    """md 里 mermaid **图表**块数量 ≥ min——"报告要有图"的机械判据。
+
+    为什么需要它：原来验收只查"文件在不在/多大/有没有来源"，四份报告全是
+    表格和长段文字，没有一处曲线，任务照样全绿——"有数据"和"看得懂"是两件事。
+
+    判不了"图画得对不对"（那得人看），但能判"有没有图、够不够几张"。
+    计数只认**图表类**图（xychart/pie/gantt），mindmap/sequence 这类不算，
+    免得模型贴个不相干的块凑数；`blocks` 一并报出来，方便看出"贴了但不会画"。
+    """
+    p, err = normalize_path(rule.get("path"), ctx["date"])
+    if err:
+        return {"ok": False, "detail": f"security:{err}"}
+    full = ctx["root"] / p
+    if not full.exists():
+        return {"ok": False, "detail": f"missing:{rule.get('path')}"}
+    text = full.read_text(encoding="utf-8", errors="ignore")
+    blocks = re.findall(r"```mermaid\s*\n(.*?)```", text, re.S | re.I)
+    charts = [b for b in blocks
+              if re.search(r"^\s*(xychart|pie|gantt)", b, re.I | re.M)]
+    need = int(rule.get("min") or 1)
+    return {"ok": len(charts) >= need,
+            "detail": f"mermaid_charts={len(charts)} blocks={len(blocks)} "
+                      f"need>={need}"}
+
+
 # ---------- 调研质量 4 handlers（§2.2b） ----------
 
 def _load_four_set(ctx: dict, task_id: str) -> tuple[list, list, str]:
@@ -477,6 +503,7 @@ HANDLERS = {
     "python_test": h_python_test,
     "json_schema": h_json_schema,
     "business_rule": h_business_rule,
+    "mermaid": h_mermaid,
     "source_traceable": h_source_traceable,
     "freshness": h_freshness,
     "source_quality": h_source_quality,

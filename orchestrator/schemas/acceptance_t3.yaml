@@ -5,3 +5,9 @@
 - type: json_schema
   path: artifacts/{date}/summary.json
   schema_ref: schemas/summary.schema.json
+
+# 报告要有图（2026-10-04 加）：正文光有数字表格不算"直观呈现"。
+# t3 的输入里就有 charts.md（t4_charts 产物），把其中的 mermaid 块贴进正文即可。
+- type: mermaid
+  path: artifacts/{date}/report.md
+  min: 1

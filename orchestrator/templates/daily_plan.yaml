@@ -1,15 +1,46 @@
 plan_template: daily_report
+# 2026-10-04 两处改动，都来自同一天实跑暴露的问题：
+#
+# 1) t1_collect 从"3 行桩数据"改成**联网采集真实公开数据**。
+#    原 objective 只要 id,value 两列 >=3 行，模型随手编三个数就过验收，
+#    下游 t2 拿到的是假数据、还照自己的想象另编了一张表
+#    （t1 是 id,value，t2 交的却是 id,timestamp,source,value,status）——
+#    链路名义连通，数据在 t1→t2 之间是断的。
+#
+# 2) 新增 t4_charts，并让 t3_report 依赖它：报告里要有图。
+#    原来三步全是"表+长段文字"，验收只查文件在不在/多大/schema 对不对，
+#    有没有曲线没人管。depends_on 决定**派发顺序**，inputs 决定**卡片里
+#    给不给路径**——t3 要贴图，两者都得写。
 tasks:
   - id: t1_collect
     name: 采集数据
-    objective: 采集数据，输出 collect.csv（含id,value两列，>=3行）
+    key_questions:
+      - "最新一期70城房价环比是多少？谁发布的？"
+      - "涨跌城市有哪些？各能级差异？"
+      - "数据期次？较上期怎么变？"
+    objective: >-
+      检索并采集"最新一期 70 个大中城市商品住宅销售价格变动情况"的
+      真实公开数据，输出 artifacts/{date}/t1_collect.csv：
+      **至少 20 行、至少 5 列**，列须含：城市、城市能级（一线/二线/三四线）、
+      新房价格环比、二手房价格环比、数据期次（YYYY-MM）。
+      每个数字必须能在你引用的原文里逐字找到；查不到的项留空并写"未查到"，
+      **不许估算或凭记忆补**。同时交齐 sources.json / claims.json，
+      优先引统计局与地方政府门户（验收要求 A 类来源占比 ≥20%）。
     depends_on: []
     outputs: ["artifacts/{date}/t1_collect.csv"]
     acceptance_ref: schemas/acceptance_t1.yaml
+    needs_web: true
+    freshness: recent
     max_attempts: 3
+    budget: {max_steps: 12, timeout_s: 720}
+
   - id: t2_clean
     name: 清洗数据
-    objective: 清洗采集数据去空行，输出 clean.csv
+    objective: >-
+      读取 artifacts/{date}/t1_collect.csv，去空行、去重复城市、统一期次为
+      YYYY-MM，缺失值补"未查到"而**不是删行**（清洗不该把采到的行洗掉大半，
+      验收要求 t2_clean.csv 至少 10 行）。保留原列与原值输出
+      artifacts/{date}/t2_clean.csv——只做规范化，不新增/替换数值。
     depends_on: [t1_collect]
     # 2026-10-04 加 inputs：原来只写 depends_on，产物路径一个都没声明，
     # 卡片上是"（无输入产物）"，模型只能靠 objective 里的"采集数据"自己猜。
@@ -21,11 +52,35 @@ tasks:
     outputs: ["artifacts/{date}/t2_clean.csv"]
     acceptance_ref: schemas/acceptance_t2.yaml
     max_attempts: 3
-  - id: t3_report
-    name: 生成日报
-    objective: 基于clean.csv生成 summary.json + report.md
+
+  - id: t4_charts
+    name: 画图表
+    objective: >-
+      读取 artifacts/{date}/t2_clean.csv，把里面的数列画成 mermaid 曲线/柱状图，
+      输出 artifacts/{date}/charts.md：**至少 2 张图**，每张图前一行
+      "图N：标题（口径 / 期间 / 来源）"。图内数据点逐字取自 clean.csv，
+      坐标轴写清单位；数列本身不够画两张时，换角度
+      （如按能级分组的柱状 + 期次走势）而不是编新数据。
     depends_on: [t2_clean]
     inputs: ["artifacts/{date}/t2_clean.csv"]
+    outputs: ["artifacts/{date}/charts.md"]
+    acceptance_ref: schemas/acceptance_charts.yaml
+    needs_web: false
+    max_attempts: 3
+    budget: {max_steps: 8, timeout_s: 420}
+
+  - id: t3_report
+    name: 生成日报
+    objective: >-
+      基于 artifacts/{date}/t2_clean.csv 与 artifacts/{date}/charts.md 生成：
+      ① artifacts/{date}/summary.json（形状见验收，date + rows 必填）；
+      ② artifacts/{date}/report.md——先给结论与关键数字，再把 charts.md 里的
+      mermaid 图块**原样贴进**对应小节（正文至少 1 张图，验收按 mermaid 计数），
+      最后注明数据期次与来源。只贴表格不贴图 = FAIL。
+    # t4_charts 先出图，t3 才有图可贴（10-04 加：t3 原来只依赖 t2_clean，
+    # 卡片上无从得知 charts.md 存在，"报告里要有图"就落不了地）。
+    depends_on: [t2_clean, t4_charts]
+    inputs: ["artifacts/{date}/t2_clean.csv", "artifacts/{date}/charts.md"]
     outputs: ["artifacts/{date}/summary.json", "artifacts/{date}/report.md"]
     acceptance_ref: schemas/acceptance_t3.yaml
     max_attempts: 3

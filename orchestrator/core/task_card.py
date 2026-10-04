@@ -70,6 +70,20 @@ def _rule_value(acceptance, rule_type: str, key: str):
     return None
 
 
+def _rule_id(acceptance, rule_type: str) -> str:
+    """某类规则在验收里的实际 rule_id（`rule_3`），取不到返回空串。
+
+    卡片原来把时效写死成"硬验收 rule_3"、分级写死成"rule_4"——那两个编号
+    只是**恰好**等于 acceptance_market.yaml 里的下标。换一份验收（规则条数
+    不同）或调整规则顺序，卡上就会指向另一条规则，模型照着编号去核对，
+    核对的却是不相干的那条。编号必须跟着规则走，不能写死。
+    """
+    for i, rule in enumerate(acceptance or []):
+        if isinstance(rule, dict) and rule.get("type") == rule_type:
+            return rule.get("rule_id") or f"rule_{i}"
+    return ""
+
+
 def _out_dir(outputs) -> str:
     """四件套的落盘目录 = 声明产物所在目录（`artifacts/2026-10-03`）。
 
@@ -111,7 +125,11 @@ A = 官方机构/政府公告/持牌金融机构；B = 主流媒体；C = 个人
 每条 claim 的 source_ids 必须非空且指向 sources.json 里存在的 source_id。
 没有来源支撑的结论不要写进 claims（写了会被判幻觉）。
 这两个文件**缺一个就整条任务判失败**（no_sources_json / no_claims_json）。
+"""
 
+# 只给产物是 .md 的任务看（coverage 规则查的就是它）。csv/json 任务贴这句
+# 是纯噪音——卡片每行都是 token，t1_collect 的卡曾因此顶到 2275 > 2k 门禁。
+REPORT_MD_NOTE = """
 `{task_id}.report.md` 是给人看的正文，按 key_questions 分节，
 每节标题必须包含对应问题的关键词（coverage 验收按标题匹配）。
 """
@@ -158,9 +176,23 @@ def render_task_card(root: str | Path, *, task_id: str, plan_id: str, run_id: st
         # 同时它也是任务卡里"可写路径"的正面清单（原来写的是"只能写 outputs"，
         # 和四件套要求直接打架，实测把 t3 三次全打死）。
         "out_dir": _out_dir(outputs),
-        "four_set_schema": FOUR_SET_SCHEMA.replace(
-            "{task_id}", task_id).replace("{out_dir}", _out_dir(outputs)),
+        "four_set_schema": (FOUR_SET_SCHEMA
+                            + (REPORT_MD_NOTE
+                               if any(str(o).endswith((".md", ".txt"))
+                                      for o in (outputs or [])) else "")
+                            ).replace("{task_id}", task_id).replace(
+                                "{out_dir}", _out_dir(outputs)),
     }
+    # 图表验收：卡上必须说清"要几张图、画到哪个文件"，否则模型根本不知道
+    # 这轮还要交图（正文它一定会写，图不会）。只在验收真有 mermaid 规则时
+    # 才渲染——没有图表要求的任务不该被塞一段无关指令。
+    mermaid_rules = [r for r in (acceptance or [])
+                     if isinstance(r, dict) and r.get("type") == "mermaid"]
+    ctx["mermaid_required"] = bool(mermaid_rules)
+    ctx["mermaid_min"] = int(mermaid_rules[0].get("min") or 1) if mermaid_rules else 0
+    ctx["mermaid_target"] = (str(mermaid_rules[0].get("path")
+                                 or (outputs[0] if outputs else ""))
+                             if mermaid_rules else "")
     if needs_web:
         # 把验收的两个硬数字翻成模型**能执行**的单位：
         #   freshness → 具体截止日期（模型没有时钟，"recent" 换算不出日期）
@@ -177,6 +209,9 @@ def render_task_card(root: str | Path, *, task_id: str, plan_id: str, run_id: st
             ratio = ratio.get("A")
         ctx["has_tier_bar"] = ratio is not None
         ctx["tier_bar"] = f"{float(ratio):.0%}" if ratio is not None else ""
+        # 规则编号跟着验收走（原来写死 rule_3/rule_4，换份验收就指错规则）
+        ctx["freshness_rule_id"] = _rule_id(acceptance, "freshness")
+        ctx["tier_rule_id"] = _rule_id(acceptance, "source_quality")
     if needs_web and freshness == "none":
         # 与TaskShard._needs_web_requires_freshness同一条约束，只是提前到渲染口
         raise ValueError("needs_web=true要求freshness为recent/strict")

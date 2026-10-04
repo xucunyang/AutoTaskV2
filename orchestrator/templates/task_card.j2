@@ -5,8 +5,10 @@
 验收标准：
 {{ acceptance_yaml }}
 幂等键：{{ idempotency_key }}（若本任务已DONE直接退出，不要重复副作用）
-上下文水位线：总体上下文使用超模型窗口80%（动态计算）、steps超{{ budget.max_steps }}或耗时超{{ budget.timeout_s }}s时，先写 state/checkpoints/{{ task_id }}.json 再退出，下轮从断点续跑。
+水位线：上下文超模型窗口80%（动态计算）、steps超{{ budget.max_steps }}或超时{{ budget.timeout_s }}s时，先写 state/checkpoints/{{ task_id }}.json 再退出，下轮从断点续跑。
+{% if checkpoint_cursor %}
 检查点续跑：若存在checkpoint，从 cursor 继续。cursor={{ checkpoint_cursor }}；已完成步骤={{ checkpoint_done_steps }}
+{% endif %}
 
 【你有工具，不要直接把答案打在回复里】
 一次只调一个工具，工具结果会回给你。
@@ -20,46 +22,52 @@
 {% else %}
   只写 {{ outputs }} 里的路径。
 {% endif %}
-- read_range(path, offset, limit)：分页读文件（超过200行必须分页，别一次读整个文件）。
+- read_range(path, offset, limit)：分页读文件（超200行必须分页，别一次读整个文件）。
 {% if needs_web %}
-- search(query, max_results)：联网检索。**时效={{ freshness_days }}天内（published_at ≥ {{ freshness_cutoff }}），关键问题：{{ key_questions | join("；") }}**
-  取证必须走 search；不要凭记忆写事实，也不要编造来源。
+- search(query, max_results)：联网检索。**published_at ≥ {{ freshness_cutoff }}**
+  取证必须走 search；不要凭记忆写事实，也不要编造来源（关键问题见下方【检索约束】）。
 {% else %}
 - 本任务不需要联网：**不要**调用 search。
 {% endif %}
-- run_cmd(cmd)：跑只读性质的命令（pytest/ruff/python -c）确认你的产出能跑。
-  白名单只有 {{ cmd_allowlist }}，不经 shell，不能用管道/重定向/&&。
-  注意：它只是**可执行文件白名单，不是路径沙箱**——命令里能写的文件
-  拦不住。所以别拿它写文件或当临时草稿区，临时脚本会留在仓库里。
+- run_cmd(cmd)：只读命令（pytest/ruff/python -c），白名单只有 {{ cmd_allowlist }}，
+  不经 shell，不能用管道/重定向/&&。它是**可执行文件白名单，不是路径沙箱**——
+  别拿它写文件或当临时草稿区，临时脚本会留在仓库里。
 
 【执行顺序：先产出，再验证】
-1. **先 atomic_write 把产物写出来**。这是硬要求——产物没落盘，任务直接判失败。
-   实测有模型把整轮花在 read_range + run_cmd 上，回复只写了 19 个字就结束，
-   结果 no_artifacts_produced，前面读的全白读。**读完输入的下一步就是 atomic_write**。
+1. **先 atomic_write 把产物写出来**——没落盘直接判失败（no_artifacts_produced）。
+   实测有模型把整轮花在 read_range + run_cmd 上、回复只写 19 个字，前面读的全白读。
+   **读完输入的下一步就是 atomic_write。**
 {% if needs_web %}
    四件套（正文 + sources.json + claims.json）要**一次交齐**：search 一跑完就写，
-   别攒到最后一步——steps 超预算会被直接掐断，只交一半等于整轮白跑。
+   别攒到最后——steps 超预算会被掐断，只交一半等于整轮白跑。
 {% endif %}
-2. 需要的话再 read_range 读回来自查，或 run_cmd 跑一次验证。
-3. **不要**为了"确认环境"反复 run_cmd/read_range。实测有模型把整个预算花在
-   跑测试和翻代码上，一个字都没产出——那等于任务失败。
+2. 需要的话再 read_range 读回来自查，或 run_cmd 跑一次验证；**别**把预算花在
+   "确认环境"上（反复跑测试翻代码、一个字不产出 = 任务失败）。
+
+{% if mermaid_required %}
+【图表：验收规则 mermaid 要求 {{ mermaid_min }} 张起】
+- 在 `{{ mermaid_target }}` 正文的对应小节里贴 ```mermaid 代码块：
+  曲线/柱状用 `xychart-beta`，占比用 `pie`。只认这几种，mindmap/sequence 不算图。
+- 图里的每个数据点必须**逐字来自**你引用的来源或输入文件，坐标轴写清单位与期间。
+- 写完 read_range 读回来自查：``` 要成对、`type: line/bar` 拼写对、
+  没有数据支撑的图别画（编数据比不画更糟）。
+{% endif %}
 
 【什么不算完成】（验收只认落盘的文件，不认你的解释）
-- 把内容**打在回复里** = 没有产物 = FAIL。回复不是产物。
-- 只 read_range 读完输入、说"已读完/已汇总" = 没有产物 = FAIL。
-- 先写个空文件或占位符 = 产物无效，照样 FAIL。一次性写完整内容。
+- 打在回复里 / 只读完输入说"已读完、已汇总" = 没有产物 = FAIL。回复不是产物。
+- 空文件、占位符同样无效，照样 FAIL——一次性 atomic_write 写完整内容。
 - 汇总/对比/复述类任务（needs_web=false）同样适用：它的产物就是你读完 inputs 后
   组织出来的那份报告，**必须 atomic_write 落盘**。
 
 {% if needs_web %}
 【检索约束】关键问题：{{ key_questions | join("；") }}
-- 时效（硬验收 rule_3）：今天 {{ freshness_today }}，每条来源都要有 published_at，
+- 时效（硬验收 {{ freshness_rule_id or "时效规则" }}）：今天 {{ freshness_today }}，每条来源都要有 published_at，
   且日期 ≥ **{{ freshness_cutoff }}**（{{ freshness_days }} 天内）。
   超期条数 ÷ 有日期来源数 > 30% → 整轮作废重跑，你前面积累的全白费。
-  榜单/年报类若查不到当年版本，换关键词找更新的（"{{ freshness_today[:4] }}"、"最新"、"发布"），
+  查不到当年版本就换关键词（"{{ freshness_today[:4] }}"、"最新"、"发布"），
   **别拿截止日之前的版本充数**——去年的数据在这个任务里就算过期。
 {% if has_tier_bar %}
-- 分级（硬验收 rule_4）：source_tier=A 的占比要 ≥ {{ tier_bar }}，
+- 分级（硬验收 {{ tier_rule_id or "分级规则" }}）：source_tier=A 的占比要 ≥ {{ tier_bar }}，
   优先取官方机构/政府公告/统计公报，每条都写 tier_reason（空的不计入统计）。
 {% endif %}
 

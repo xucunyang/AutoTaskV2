@@ -273,3 +273,51 @@ def test_freshness_days_falls_back_when_acceptance_silent():
     cutoff = (date.today() - timedelta(days=180)).isoformat()
     assert cutoff in c
     assert "180" in c
+
+
+def test_card_shows_chart_block_only_when_mermaid_rule_present():
+    """有图表验收才出图表段，没图表要求的任务不塞无关指令。
+
+    反过来更危险：验收要图而卡上没提——正文模型一定会写，图不会，
+    结果就是每轮 mermaid 规则挂一次、烧三轮进死信。
+    """
+    mermaid = {"type": "mermaid", "path": "artifacts/2026-09-29/charts.md",
+               "min": 2, "rule_id": "rule_2"}
+    c = _card(acceptance=ACCEPTANCE + [mermaid])
+    assert "【图表：验收规则 mermaid 要求 2 张起】" in c
+    assert "artifacts/2026-09-29/charts.md" in c
+    assert "xychart-beta" in c
+    assert estimate_tokens(c) < 2000
+
+    # 没有 mermaid 规则的任务卡不该出现图表段
+    assert "【图表：验收规则" not in _card()
+
+
+def test_rule_ids_in_card_follow_acceptance_order():
+    """卡上的"硬验收 rule_N"必须是该规则**实际**的编号。
+
+    原来写死 rule_3/rule_4（恰好等于 acceptance_market 的下标）。换成
+    acceptance_t1 这种 6 条规则的验收后，时效实际是 rule_4——写死就会指向
+    另一条规则，模型照着编号核对的却是不相干的那条。
+    """
+    acceptance = [
+        {"type": "file_exists", "path": "artifacts/2026-09-29/t1.csv",
+         "rule_id": "rule_0"},
+        {"type": "row_count", "path": "artifacts/2026-09-29/t1.csv",
+         "min": 20, "rule_id": "rule_1"},
+        {"type": "business_rule", "expr": "cols >= 5",
+         "path": "artifacts/2026-09-29/t1.csv", "rule_id": "rule_2"},
+        {"type": "source_traceable", "rule_id": "rule_3"},
+        {"type": "freshness", "freshness_days": 365, "rule_id": "rule_4"},
+        {"type": "source_quality",
+         "source_tier_min_ratio": {"A": 0.2}, "rule_id": "rule_5"},
+    ]
+    c = _card(objective="采集数据", needs_web=True, freshness="recent",
+              acceptance=acceptance,
+              outputs=["artifacts/2026-09-29/t1.csv"],
+              key_questions=["最新一期数据是多少？"])
+    assert "时效（硬验收 rule_4）" in c, c
+    assert "分级（硬验收 rule_5）" in c, c
+    assert "时效（硬验收 rule_3）" not in c
+    # 门槛数字本身也要照抄验收
+    assert "≥ 20%" in c and "365" in c

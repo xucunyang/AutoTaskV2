@@ -1,10 +1,11 @@
-"""端到端冒烟（Phase4 §4）：daily三任务链 + 二次触发 + 混合 + 调研。
+"""端到端冒烟（Phase4 §4）：daily四任务链 + 二次触发 + 混合 + 调研。
 
 用**stub provider**（不连真模型），所以测的是编排/状态机/验收/报告这条链，
 不是模型效果——模型效果没法在CI里当门禁。
 
 四条冒烟：
-A. daily链：ensure_plan → 跑编排 → 校验 → 报告，三任务全DONE
+A. daily链：ensure_plan → 跑编排 → 校验 → 报告，四任务全DONE
+   （2026-10-04 加 t4_charts：报告里要有 mermaid 图）
 B. 二次同输入：至少一个命中SKIPPED_CACHED（省token可观测）
 C. 混合：Daily跑一半注入管道高优，验证"排队等待不抢占 + 当前任务完成后自然衔接"
 D. 调研链：planner拆分 → needs_web任务走四段式 → 4条调研验收全过
@@ -40,6 +41,21 @@ DATE = "2026-09-29"
 PLAN = f"daily_report_{DATE}"
 RUN_ID = "smoke-run-1"
 SMOKE_BUDGET_S = 300          # §5：单计划三任务端到端<5min（stub模式）
+
+# stub 要交出的"合格产物"形状——由 acceptance_t1/t2/t3/charts 的规则反推：
+# t1 要求 rows>=20 且 cols>=5（旧的 3 行 2 列桩数据在 2026-10-04 改严后必挂），
+# 图表类要求 md 里 mermaid 图表块 >=2 且 bytes>=800。
+_STUB_CSV = ("city,tier,new_mom,resale_mom,period,note\n" +
+             "".join(f"city{i},二线,0.1,0.2,2026-08,ok\n" for i in range(1, 26)))
+_STUB_LINE = ("```mermaid\nxychart-beta\n    x-axis [\"a\", \"b\", \"c\"]\n"
+              "    y-axis \"value\" 0 --> 10\n    line [1, 2, 3]\n```\n")
+_STUB_BAR = ("```mermaid\nxychart-beta\n    x-axis [\"a\", \"b\", \"c\"]\n"
+             "    y-axis \"value\" 0 --> 10\n    bar [3, 2, 1]\n```\n")
+_STUB_PAD = "<!-- pad -->\n" * 60        # 填到 800 字节以上（charts.md 的 bytes 门槛）
+
+
+def _stub_md(name: str, outs: str) -> str:
+    return f"# stub {name}\n\n{outs}\n\n{_STUB_LINE}\n{_STUB_BAR}\n{_STUB_PAD}"
 
 
 class StubProvider:
@@ -79,18 +95,58 @@ def _provider_for(store, plan_id, task_id):
                 p = Path(store.root) / line
                 p.parent.mkdir(parents=True, exist_ok=True)
                 # 按产物类型写内容：给.json写CSV的话，json_schema验收报bad_json，
-                # 那是stub的错不是被测系统的错——测出来的失败必须是真的
-                if p.suffix == ".json":
+                # 那是stub的错不是被测系统的错——测出来的失败必须是真的。
+                # stub 是"把活干完的模型"的替身：验收要四件套/20行CSV/mermaid 图，
+                # 它就得交出那个形状，否则测到的是"stub 交白卷"而不是产品缺陷。
+                if p.name.endswith(".sources.json"):
+                    # freshness 用 now 而不是 DATE：写死日期会让这套断言
+                    # 在一年多以后变成恒红（stale>30%），那时没人记得为什么。
+                    pub = datetime.now(timezone.utc).replace(
+                        microsecond=0).isoformat()
+                    p.write_text(json.dumps([{
+                        "source_id": "s1",
+                        "url": "https://www.stats.gov.cn/sj/zxfb/",
+                        "title": "70个大中城市商品住宅销售价格变动情况",
+                        "snippet": "stub 检索到的原文片段",
+                        "published_at": pub,
+                        "source_tier": "A", "tier": "A",
+                        "tier_reason": "国家统计局发布"}], ensure_ascii=False),
+                        encoding="utf-8")
+                elif p.name.endswith(".claims.json"):
+                    p.write_text(json.dumps([{
+                        "claim_id": "c1", "text": "stub 结论",
+                        "source_ids": ["s1"]}]), encoding="utf-8")
+                elif p.suffix == ".json":
                     p.write_text(json.dumps({"date": DATE, "rows": 2,
                                             "note": "stub"}), encoding="utf-8")
                 elif p.suffix in (".md", ".txt"):
-                    p.write_text(f"# stub {p.name}\n", encoding="utf-8")
+                    p.write_text(_stub_md(p.name, "\n".join(paths)),
+                                 encoding="utf-8")
                 else:
-                    p.write_text("id,value\n1,2\n3,4\n", encoding="utf-8")
+                    p.write_text(_STUB_CSV, encoding="utf-8")
                 body += line + "\n"
             return {"content": body,
                     "usage": {"prompt_tokens": 100, "completion_tokens": 40}}
     return P()
+
+
+def _stub_search(*args, **kwargs):
+    """冒烟用的检索替身：一个函数要兼容执行器的两种调用签名。
+
+    - 预取 search_fn(shard, task)：返回 []。执行器拿到非空会把 sources 写到
+      `artifacts/<task>.sources.json`（**顶层**），而验收只在日期目录里找
+      四件套——预取写出来的东西没人看，所以这里干脆不写，四件套交给
+      stub provider 在 `artifacts/<date>/` 里落。
+    - 工具层 search_fn(query, max_results=5)：返回一条够用的结果。
+      （冒烟的 stub 不支持 tools，走单轮；给它是为了别把 search_fn=None
+      这条路测没了——t1_collect 自 2026-10-04 起是 needs_web。）
+    """
+    if (args and isinstance(args[0], str)) or kwargs.get("max_results") is not None:
+        return [{"url": "https://www.stats.gov.cn/sj/zxfb/",
+                 "title": "70个大中城市商品住宅销售价格变动情况",
+                 "snippet": "stub 检索到的原文",
+                 "published_at": datetime.now(timezone.utc).isoformat()}]
+    return []
 
 
 def _run_chain(root: Path, s: Store, max_ticks: int = 20) -> dict:
@@ -101,6 +157,7 @@ def _run_chain(root: Path, s: Store, max_ticks: int = 20) -> dict:
     def dispatch(s_, plan_id, task_id, run_id, owner=None):
         executor.run_task(s_, plan_id, task_id, run_id, owner=owner or "smoke",
                           provider=_provider_for(s_, plan_id, task_id),
+                          search_fn=_stub_search,
                           final_window=65536)
     o.executor_fn = dispatch
 
@@ -139,18 +196,24 @@ def _root_with_project_tests(tmp_path):
     return _root(repo / "orchestrator")
 
 
-def test_smoke_a_daily_chain_three_tasks_done(tmp_path):
-    """A: daily三任务链全DONE，产物+manifest存在，events可重放，报告生成。"""
+def test_smoke_a_daily_chain_all_tasks_done(tmp_path):
+    """A: daily四任务链（采集→清洗→画图→日报）全DONE，产物+manifest存在，
+    events可重放，报告生成。
+
+    2026-10-04 由三任务改四任务：新增 t4_charts（报告里要有图）。
+    """
     root = _root_with_project_tests(tmp_path)
     s = Store(root)
     t0 = time.monotonic()
     assert scheduler.ensure_plan(s, DATE, "templates/daily_plan.yaml")[0] == "created"
     got = _run_chain(root, s)
     elapsed = time.monotonic() - t0
-    assert set(got["done"]) == {"t1_collect", "t2_clean", "t3_report"}, got
+    assert set(got["done"]) == {"t1_collect", "t2_clean", "t4_charts",
+                                "t3_report"}, got
     assert elapsed < SMOKE_BUDGET_S, elapsed
-    # 产物存在
-    for name in ("t1_collect.csv", "t2_clean.csv"):
+    # 产物存在（charts.md/report.md 是本轮新加的图表链路产物）
+    for name in ("t1_collect.csv", "t2_clean.csv", "charts.md",
+                 "summary.json", "report.md"):
         p = root / "artifacts" / DATE / name
         assert p.exists(), p
     # events可重放
