@@ -11,7 +11,15 @@
 【你有工具，不要直接把答案打在回复里】
 一次只调一个工具，工具结果会回给你。
 - atomic_write(path, content)：原子写产物（tmp+fsync+rename）。**产物只能用这个工具落盘**。
-  **没有第二次机会**：这一整轮你必须至少调用它一次，且只写 {{ outputs }} 里的路径。
+  **没有第二次机会**：这一整轮你必须至少调用它一次。
+{% if needs_web %}
+  【可写路径】产物 {{ outputs }} **和四件套**：
+  `{{ out_dir }}/{{ task_id }}.sources.json`、`{{ out_dir }}/{{ task_id }}.claims.json`。
+  只交正文不交四件套 = 验收判 no_sources_json/no_claims_json，等于没写。
+  写到 `artifacts/` 顶层或别的目录同样等于没写（验收只在 `{{ out_dir }}/` 下找）。
+{% else %}
+  只写 {{ outputs }} 里的路径。
+{% endif %}
 - read_range(path, offset, limit)：分页读文件（超过200行必须分页，别一次读整个文件）。
 {% if needs_web %}
 - search(query, max_results)：联网检索。**本任务时效性要求={{ freshness }}，关键问题：{{ key_questions | join("；") }}**
@@ -28,6 +36,10 @@
 1. **先 atomic_write 把产物写出来**。这是硬要求——产物没落盘，任务直接判失败。
    实测有模型把整轮花在 read_range + run_cmd 上，回复只写了 19 个字就结束，
    结果 no_artifacts_produced，前面读的全白读。**读完输入的下一步就是 atomic_write**。
+{% if needs_web %}
+   四件套（正文 + sources.json + claims.json）要**一次交齐**：search 一跑完就写，
+   别攒到最后一步——steps 超预算会被直接掐断，只交一半等于整轮白跑。
+{% endif %}
 2. 需要的话再 read_range 读回来自查，或 run_cmd 跑一次验证。
 3. **不要**为了"确认环境"反复 run_cmd/read_range。实测有模型把整个预算花在
    跑测试和翻代码上，一个字都没产出——那等于任务失败。
@@ -51,5 +63,6 @@
 3. 分片状态和 handoff 由执行器落库，**你不用自己更新**
 
 禁止：读master全量、读数据库、读其他任务分片、执行白名单外命令。
-原子写（atomic_write）只能写 {{ outputs }} 里的路径，越界会被拒绝并终止本次执行。
+原子写（atomic_write）只允许写 `{{ out_dir }}/` 目录（产物{% if needs_web %}与四件套{% endif %}）
+以及 outputs 里列的路径，写到别处会被拒绝并终止本次执行。
 **不要**造临时文件再"移动"到产物路径——直接写最终路径。

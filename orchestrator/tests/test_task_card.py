@@ -202,3 +202,25 @@ def test_card_demands_atomic_write_for_summary_tasks():
     assert "汇总/对比/复述类任务" in c
     # 加了这么多硬要求，token 门禁仍要过
     assert estimate_tokens(c) < 2000
+
+
+def test_card_writable_paths_include_the_four_set():
+    """可写路径必须**正面列全**，不能一边要四件套一边说"只能写 outputs"。
+
+    实测 2026-10-03：t3_hexagon 三次都只交了正文 .md、一个 JSON 都没交，
+    验收齐刷刷 no_claims_json/no_sources_json 直到 DEAD_LETTER——它其实是
+    三条线里最守规矩的：老卡写着"只写 outputs 里的路径，越界会被拒绝并终止
+    本次执行"，而四件套根本不在 outputs 里（tools._safe_path 实际只拦逃出
+    root，并不拦它）。卡上的规则互相矛盾，模型只能选一条遵守。
+    """
+    c = _card(task_id="t3", objective="调研",
+              outputs=["artifacts/2026-10-01/t3.md"],
+              needs_web=True, freshness="recent", key_questions=["问题一"])
+    assert "【可写路径】" in c
+    assert "artifacts/2026-10-01/t3.sources.json" in c
+    assert "artifacts/2026-10-01/t3.claims.json" in c
+    assert "no_sources_json/no_claims_json" in c     # 说清代价
+    # 排他表述回归：出现即自相矛盾
+    assert "且只写" not in c
+    assert "只能写" not in c
+    assert estimate_tokens(c) < 2000

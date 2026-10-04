@@ -138,6 +138,9 @@ def render_task_card(root: str | Path, *, task_id: str, plan_id: str, run_id: st
         "cmd_allowlist": cmd_allowlist,
         # out_dir：四件套的落盘目录 = 声明产物所在目录。模型要的是**逐字路径**，
         # 不是"推断一下"——推断错就写到 artifacts/ 顶层，验收直接 no_claims_json。
+        # 同时它也是任务卡里"可写路径"的正面清单（原来写的是"只能写 outputs"，
+        # 和四件套要求直接打架，实测把 t3 三次全打死）。
+        "out_dir": _out_dir(outputs),
         "four_set_schema": FOUR_SET_SCHEMA.replace(
             "{task_id}", task_id).replace("{out_dir}", _out_dir(outputs)),
     }

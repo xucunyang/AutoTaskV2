@@ -40,6 +40,10 @@ official_domains:
   - yicai.com         # 第一财经
   - 21jingji.com      # 21世纪经济报道
   - thepaper.cn       # 澎湃新闻
+  # --- 垂直行业媒体（2026-10-04 用户拍板）---
+  # 房产垂直门户，地产口径数据的主要出处之一；不进白名单则被 LLM 判 B，
+  # t1 的 A 类占比就卡在 0.20 边缘（实测加了 5/15=0.33，门槛 20% 稳过）。
+  - fangchan.com
 ugc_domains: [x.com, tiktok.com, douyin.com, weibo.com, zhihu.com]
 # A/B/C判据（分级prompt用，只喂url+域名+title+发布者，禁喂正文防注入）
 tier_criteria:
