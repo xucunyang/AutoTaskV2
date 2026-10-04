@@ -477,6 +477,37 @@ class Orchestrator:
                 continue
         return out
 
+    def promote_failed(self) -> list[dict]:
+        """FAILED→RETRY：执行器异常别再永久卡死（2026-10-04 加）。
+
+        RUNNING→FAILED 有三条来路：executor 抛异常（ToolDenied/LLM 超时）、
+        编排器中途被杀后租约过期被回收、DAG 校验失败。原来它们进 FAILED 就
+        没人管了——refresh_ready 只捞 PENDING/BLOCKED、promote_retries 只捞
+        RETRY，而 attempts 只在 RETRY→READY 时 +1，于是 a=0 的 FAILED
+        **既不重试、也永远够不到 attempts>=max 的死信判据**，只能人工改库。
+        实测 2026-10-04：t3_hexagon 想往 /tmp 写临时脚本被 path_escapes_root
+        拒绝 → FAILED a=0 → 挂死，t4 因依赖不满足一起停摆。
+
+        接进 RETRY 就等于接进统一通道：退避归 promote_retries、
+        attempts 归 RETRY→READY、超限归 dead_letter_if_exhausted。
+        attempts 已满的不在这里转（那是 escalate 的活，housekeeping 先跑），
+        否则会绕开死信判据在 FAILED↔RETRY 之间打转。
+        """
+        out = []
+        for t in self.store.list_by_status("FAILED"):
+            if t["attempts"] >= t["max_attempts"]:
+                continue                     # 该升死信的交给 escalate_dead_letters
+            try:
+                out.append(self.store.transition(
+                    t["plan_id"], t["task_id"], "RETRY", agent=self.owner,
+                    run_id=self._run_id(), expect_version=t["version"],
+                    payload={"reason": "failed_retry",
+                             "detail": lease_mod._last_error_of(self.store, t) or "",
+                             "from_status": "FAILED"}))
+            except (Conflict, IllegalTransition):
+                continue
+        return out
+
     # ---------- 收尾：SUBMITTED→VERIFYING、租约回收、死信 ----------
 
     def promote_submitted(self) -> list[dict]:
@@ -630,6 +661,7 @@ class Orchestrator:
         stats["retried"] = len(self.promote_retries())
         stats["aged"] = len(self.apply_aging())
         stats["backlog"] = self.backlog_check()
+        stats["failed_promoted"] = len(self.promote_failed())
         stats["dispatched"] = len(self.dispatch_split())
         stats["promoted"] = len(self.promote_submitted())
         stats["verify_dispatched"] = len(self.dispatch_verify_async())

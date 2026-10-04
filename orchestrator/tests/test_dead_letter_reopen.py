@@ -178,6 +178,83 @@ def test_promote_retries_still_promotes_normal_task(tmp_path):
     assert s.get_task(PLAN, "t1")["status"] == "READY"
 
 
+# ------------------------------------------------- FAILED 出口（2026-10-04 加）
+
+def _failed_task(root, task_id="t1", attempts=0, max_attempts=3):
+    """造一个停在 **FAILED** 且 attempts 未满的任务（executor 抛异常的常态）。
+
+    实测 2026-10-04：t3_hexagon 想往 /tmp 写临时脚本被 path_escapes_root 拒
+    → RUNNING→FAILED a=0，从此没人管——refresh_ready 只捞 PENDING/BLOCKED、
+    promote_retries 只捞 RETRY——t4 因依赖不满足一起停摆。
+    """
+    s = Store(root)
+    s.ensure_plan(PLAN, template="daily")
+    shard = enqueue.validate(json.dumps({
+        "task_id": task_id, "plan_id": PLAN, "objective": "x",
+        "outputs": [f"artifacts/{task_id}.md"],
+    }, ensure_ascii=False).encode("utf-8"), root=root)
+    s.insert_task(shard)
+    v = lambda: s.get_task(PLAN, task_id)["version"]      # noqa: E731
+    f = lambda: s.get_task(PLAN, task_id)["fencing_token"]  # noqa: E731
+    s.transition(PLAN, task_id, "READY", agent="o", run_id="r", expect_version=v())
+    s.transition(PLAN, task_id, "RUNNING", agent="o", run_id="r",
+                 expect_version=v(), lease_op="acquire")
+    s.transition(PLAN, task_id, "FAILED", agent="sub", run_id="r",
+                 expect_version=v(), expect_fencing=f(),
+                 payload={"error": "path_escapes_root:/tmp/check_t3.py",
+                          "reason": "exec_error"})
+    s._write_txn(lambda con: con.execute(
+        "UPDATE tasks SET attempts=?, max_attempts=? WHERE plan_id=? AND task_id=?",
+        (attempts, max_attempts, PLAN, task_id)))
+    return s
+
+
+def test_failed_task_is_promoted_to_retry(tmp_path):
+    """FAILED 没有自动出边 = 永久卡死，必须接进 RETRY 的统一通道。
+
+    attempts 只在 RETRY→READY 时 +1，所以 a=0 的 FAILED 连
+    attempts>=max_attempts 的死信判据都够不到：既不重试、也进不了死信，
+    唯一出路是手工改库（SOP §5 明令禁止，会让 version 与 events 对不上）。
+    """
+    from core.orchestrator import Orchestrator
+    r = _root(tmp_path)
+    s = _failed_task(r, attempts=0)
+    o = Orchestrator(r, executor_fn=lambda *a, **k: None, run_once=True)
+    out = o.promote_failed()
+    assert [t["task_id"] for t in out] == ["t1"]
+    t = s.get_task(PLAN, "t1")
+    assert t["status"] == "RETRY"
+    payload = next(json.loads(e["payload"]) for e in s.recent_events(PLAN)
+                   if e["to_s"] == "RETRY")
+    assert payload["reason"] == "failed_retry"        # store 强制要求 reason
+    assert "path_escapes_root" in payload["detail"]   # 要能看见原本错在哪
+    assert s.replay(PLAN)["ok"], "走正规事件流，重放必须仍一致"
+
+
+def test_failed_task_at_max_attempts_left_for_escalate(tmp_path):
+    """attempts 已满的不能被 promote_failed 转走——那会绕开死信判据。"""
+    from core.orchestrator import Orchestrator
+    r = _root(tmp_path)
+    s = _failed_task(r, attempts=3, max_attempts=3)
+    o = Orchestrator(r, executor_fn=lambda *a, **k: None, run_once=True)
+    assert o.promote_failed() == [], "重排了 attempts 已满的任务"
+    assert s.get_task(PLAN, "t1")["status"] == "FAILED"
+    # 它的出口是 escalate（housekeeping 每轮先跑）
+    assert [t["task_id"] for t in lease.escalate_dead_letters(s, run_id="r")] == ["t1"]
+    assert s.get_task(PLAN, "t1")["status"] == "DEAD_LETTER"
+
+
+def test_tick_wires_promote_failed(tmp_path):
+    """光有方法不算数，主循环得真的调它（verify 池那次教训还热着）。"""
+    from core.orchestrator import Orchestrator
+    r = _root(tmp_path)
+    s = _failed_task(r, attempts=0)
+    o = Orchestrator(r, executor_fn=lambda *a, **k: None, run_once=True)
+    stats = o.tick()
+    assert stats.get("failed_promoted") == 1, "tick 没调 promote_failed"
+    assert s.get_task(PLAN, "t1")["status"] == "RETRY"
+
+
 # ---------------------------------------------------------------- reopen
 
 def test_reopen_moves_to_retry(tmp_path):
