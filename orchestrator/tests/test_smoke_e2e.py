@@ -124,15 +124,18 @@ def _run_chain(root: Path, s: Store, max_ticks: int = 20) -> dict:
 def _root_with_project_tests(tmp_path):
     """冒烟需要一个"像真仓库"的root。
 
-    两点必须复刻生产布局，否则测出来的失败不是产品缺陷而是环境不对：
+    复刻生产布局，否则测出来的失败不是产品缺陷而是环境不对：
     1. 验收里的 `python_test` 以 `cwd=repo` 跑，而repo=store.root的父目录
        （生产里 orchestrator/ 是仓库子目录）。所以这里造 repo/orchestrator 两层。
-    2. acceptance_t2里有 pytest tests/test_clean.py，真实项目里这个文件存在。
+
+    2026-10-04：这里原来还手写了 tests/test_clean.py，理由写的是
+    "acceptance_t2里有 pytest tests/test_clean.py，真实项目里这个文件存在"——
+    真实项目里**不存在**（顶层连 tests/ 都没有），生产上 t2_clean 因此 rc=4
+    三轮进死信、当日日报没生成，而这里全绿。前置条件不该由测试自己补齐，
+    否则测的是"我给自己搭的环境"，不是产品。acceptance_t2 那条规则已删，
+    这里也不再造这个文件。
     """
     repo = tmp_path / "repo"
-    (repo / "tests").mkdir(parents=True, exist_ok=True)
-    (repo / "tests" / "test_clean.py").write_text(
-        "def test_clean_passes():\n    assert True\n", encoding="utf-8")
     return _root(repo / "orchestrator")
 
 

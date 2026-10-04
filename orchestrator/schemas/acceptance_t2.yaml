@@ -3,6 +3,17 @@
 - type: row_count
   path: artifacts/{date}/t2_clean.csv
   min: 1
-- type: python_test
-  cmd: pytest tests/test_clean.py -q
-  timeout_s: 120
+
+# 2026-10-04 删掉 `python_test: pytest tests/test_clean.py -q`。
+# 它在本仓库**没有对应文件**——顶层连 tests/ 目录都没有（测试全在
+# orchestrator/tests/），而 h_python_test 以 cwd=repo=store.root.parent 跑，
+# 于是 rc=4 每轮必挂，与模型表现完全无关。后果：daily_report_2026-10-03/
+# t2_clean 三轮烧完进死信 → t3_report 永远 PENDING → 当日日报没生成。
+#
+# 冒烟测试一直是绿的，因为 tests/test_smoke_e2e.py 在临时 repo 里自己手写了
+# tests/test_clean.py——**测试补齐前置条件，就把生产必现的配置错误藏住了**。
+# 这也是它能活到线上才发现的原因。
+#
+# 这条规则的本意是"被测代码要有测试"，但本 plan 的产物是模型现生成的 csv，
+# 根本没有实现代码可测，属于从设计上就不可满足的验收——不可满足的规则只会
+# 恒定地把任务推进死信，比没有规则更糟。
