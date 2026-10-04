@@ -222,6 +222,27 @@ def test_cli_rerun_rejects_illegal_edge(tmp_path, capsys):
     assert out["from_status"] == "PENDING"
 
 
+def test_dependent_tasks_declare_inputs():
+    """依赖上游却没声明 inputs → 卡片上是"（无输入产物）"，模型只能猜路径。
+
+    实测 2026-10-04：daily_plan.yaml 的 t3_report 只有 depends_on、没有 inputs，
+    objective 写的是"基于clean.csv"，而真实产物叫 artifacts/{date}/t2_clean.csv。
+    模型全仓库找不到这个文件名，把 {"error": "clean.csv not found..."} 当产物
+    交了上去 → json_schema violation → 连挂三轮，日报照样出不来。
+
+    housing_daily.yaml 的 t4_rollup 是正确写法（depends_on + inputs 都写）。
+    depends_on 决定**派发顺序**，inputs 决定**卡片里给不给路径**，缺一不可。
+    """
+    root = Path(__file__).resolve().parent.parent
+    for tpl in sorted((root / "templates").glob("*.yaml")):
+        data = yaml.safe_load(tpl.read_text(encoding="utf-8")) or {}
+        for t in data.get("tasks") or []:
+            if t.get("depends_on") and not t.get("inputs"):
+                raise AssertionError(
+                    f"{tpl.name}: 任务 {t.get('id')} 依赖 {t.get('depends_on')} "
+                    f"却没声明 inputs——任务卡会写（无输入产物），模型只能猜路径")
+
+
 def test_cli_rerun_reports_missing_task(tmp_path, capsys):
     _store(tmp_path)
     assert scheduler.main(["--root", str(tmp_path), "--date", "2026-09-01",

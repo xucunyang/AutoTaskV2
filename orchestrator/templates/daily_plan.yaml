@@ -11,6 +11,13 @@ tasks:
     name: 清洗数据
     objective: 清洗采集数据去空行，输出 clean.csv
     depends_on: [t1_collect]
+    # 2026-10-04 加 inputs：原来只写 depends_on，产物路径一个都没声明，
+    # 卡片上是"（无输入产物）"，模型只能靠 objective 里的"采集数据"自己猜。
+    # t3_report 就是这么挂的：它按 objective 猜 `clean.csv`，全仓库没有这个
+    # 文件名（实际叫 artifacts/{date}/t2_clean.csv），于是把一句
+    # {"error": "clean.csv not found..."} 当产物交了上去 → schema_violation。
+    # depends_on 决定**派发顺序**，inputs 决定**卡片里给不给路径**，缺一不可。
+    inputs: ["artifacts/{date}/t1_collect.csv"]
     outputs: ["artifacts/{date}/t2_clean.csv"]
     acceptance_ref: schemas/acceptance_t2.yaml
     max_attempts: 3
@@ -18,6 +25,7 @@ tasks:
     name: 生成日报
     objective: 基于clean.csv生成 summary.json + report.md
     depends_on: [t2_clean]
+    inputs: ["artifacts/{date}/t2_clean.csv"]
     outputs: ["artifacts/{date}/summary.json", "artifacts/{date}/report.md"]
     acceptance_ref: schemas/acceptance_t3.yaml
     max_attempts: 3
