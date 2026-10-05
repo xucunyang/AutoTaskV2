@@ -168,6 +168,48 @@ python -m core.governor --mode active    # 省档
 python -m core.governor --mode auto      # 交回自动
 ```
 
+## 每日自动触发
+
+两条链都由 **Windows 计划任务** 拉起，不依赖谁开着终端：
+
+| 任务 | 触发（Asia/Shanghai） | 干什么 |
+|---|---|---|
+| `\AutoTaskV2\daily_report` | 每天 08:00 | `scripts/run_daily.py --job daily_report` |
+| `\AutoTaskV2\housing_daily` | 每天 10:00 | `scripts/run_daily.py --job housing_daily` |
+
+一次 `run_daily` 串起三件事：**建 plan**（`ensure_plan`，幂等）→ **跑编排器**（VerifyPool + tick，直到全部任务进终态）→ **退出并交退出码**，让计划任务拿到干净的结果：
+
+| 退出码 | 含义 |
+|---|---|
+| 0 | 全部进终态且无死信 |
+| 1 | 还有任务在途（90 分钟墙钟到点，一次跑不完） |
+| 2 | 有死信，按 `docs/sop/dead-letter.md` 处理 |
+| 3 | 配置/存储层错误，含 `--job` 在 `schedule.yaml` 里查不到 |
+
+两个 job **错开 2 小时**不是随手定的：`tick()` 看的是全库 `active_plans`，同时跑会互相派发对方的任务、重复验收（派发有 `expect_version` 兜底不会串，但白干活还多出版本冲突重试）。daily 自带 `timeout-min 90`，最迟 09:30 退出，housing 10:00 起跑就不会撞上。
+
+`WakeToRun` + `StartWhenAvailable` 让机器在睡/关机时也会被叫醒补跑，**错过就补、不跳过这一期**。
+
+```powershell
+# 看状态：state / 下次触发 / 上次结果（267011 = 还没跑过）
+Get-ScheduledTask -TaskPath '\AutoTaskV2\' | Get-ScheduledTaskInfo
+
+# 手动补跑今天（注册时 StartBoundary 在未来，注册本身不会顺带触发）
+schtasks /run /tn "AutoTaskV2\daily_report"
+schtasks /run /tn "AutoTaskV2\housing_daily"     # 等上一条跑完再跑
+
+# 跑完看日志（计划任务的 stdout 没人收，run_daily 自己落了一份）
+Get-Content "reports\run_daily_daily_report_2026-10-05.log" -Tail 30
+
+# 换机器 / 改路径后重新注册（XML 必须是 UTF-16，UTF-8 会被拒）
+schtasks /create /tn "AutoTaskV2\daily_report"   /xml scripts\daily_report_task.xml /f
+schtasks /create /tn "AutoTaskV2\housing_daily"   /xml scripts\housing_daily_task.xml /f
+```
+
+`scripts/*.xml` 是 `Export-ScheduledTask` 从**注册成功的任务**导出来的，不是手写的——手写的版本被 `schtasks` 拒了三种错（UTF-8 编码、`WakeToRun` 放进 `<CalendarTrigger>`、`UserId` 写成机器名），教训都在 `tests/test_scheduled_task_xml.py` 里成了门禁。
+
+不想用 Windows 计划任务的话，等价的常驻写法是 `python -m core.scheduler --root .`（APScheduler 按 `schedule.yaml` 的 cron 建 plan，启动时 `--catchup` 补过去 3 天）+ `python -m core.orchestrator --root .`（派发执行）。两者都活着才算自动：**cron 只建计划，编排器只干活**。
+
 ## 架构
 
 ```text
