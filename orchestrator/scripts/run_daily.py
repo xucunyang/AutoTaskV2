@@ -78,6 +78,58 @@ def known_jobs(root: Path) -> list[str]:
     return [j.get("id") for j in (sched_mod.load_schedule(root).get("jobs") or [])]
 
 
+# 通知里要给"能一键打开"的产物。按钮顺序 = 人最想先点什么：
+# 日报正文 → housing 的投资观察汇总 → 图表。
+LINK_PRIORITY = ("report.md", "t4_investment_watch.md", "charts.md")
+LINK_LABELS = {
+    "report.md": "日报",
+    "t4_investment_watch.md": "投资观察",
+    "charts.md": "图表",
+    "t1_tier.md": "分线跟踪",
+    "t2_xuzhou_nanjing.md": "徐州南京",
+    "t3_hexagon_cities.md": "六边形城市",
+}
+BODY_SUFFIXES = (".md", ".html", ".pdf", ".txt")
+
+
+def report_links(root: Path, date: str, rows: list[dict]) -> list[tuple[str, str]]:
+    """跑完通知里可点击的报告链接：(按钮文字, 绝对路径)，最多 3 条。
+
+    用户要的是"通知里带报告链接，方便我打开"——只把路径印成一行文字不够：
+    toast 里的文字点不动，得是 activationType=protocol 的按钮。
+
+    三条约束：
+    - 只挑**本 plan 声明的**产物。`artifacts/{date}/` 是两条链共用目录，
+      拿目录里所有 md 去链接，housing 的通知就会点开 daily 的日报。
+    - 只挑已落盘的。声明了却没写出来的文件做成按钮 = 点了没反应，
+      比没有按钮更糟。
+    - 最后一条永远是"产物目录"：报告不止一份时，人更想自己进去挑。
+    """
+    found: dict[str, Path] = {}
+    for r in rows:
+        for o in (r.get("shard") or {}).get("outputs") or []:
+            o = str(o).replace("\\", "/")
+            if not o.endswith(BODY_SUFFIXES):
+                continue
+            p = root / o
+            if p.is_file():
+                found[o] = p
+
+    def _key(o: str) -> tuple[int, str]:
+        name = Path(o).name
+        try:
+            return (LINK_PRIORITY.index(name), o)
+        except ValueError:
+            return (len(LINK_PRIORITY), o)
+
+    links = [(LINK_LABELS.get(Path(o).name, Path(o).stem), str(found[o]))
+             for o in sorted(found, key=_key)][:2]
+    out_dir = root / "artifacts" / date
+    if out_dir.is_dir():
+        links.append(("产物目录", str(out_dir)))
+    return links[:3]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="run_daily")
     ap.add_argument("--date", default=None, help="默认今天（上海时区）")
@@ -245,6 +297,8 @@ def main(argv: list[str] | None = None) -> int:
         rc = 0
     # 弹框 + 声音收尾。计划任务跑批时没人看终端，退出码与日志都等于
     # 没发生；这条通知是这套自动化里唯一会主动找人的东西。
+    # links：通知里带上能一键打开的报告按钮（正文里也印一份路径，
+    # 气泡回退没有按钮时仍可复制）。见 report_links()。
     winnotify.notify_summary(
         root, args.job, date, rc=rc,
         done=sum(1 for t in summary["tasks"]
@@ -253,7 +307,8 @@ def main(argv: list[str] | None = None) -> int:
         not_terminal=[t["task_id"] for t in summary["tasks"]
                       if t["status"] not in TERMINAL],
         elapsed_min=(time.monotonic() - t0) / 60.0,
-        enabled=not args.no_notify)
+        enabled=not args.no_notify,
+        links=report_links(root, date, rows))
     return rc
 
 

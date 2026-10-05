@@ -197,6 +197,7 @@ python -m core.governor --mode auto      # 交回自动
 - 通道：WinRT Toast，失败回退 `NotifyIcon` 气泡；**不装任何模块**，全程 15s 超时保护，通知坏了绝不连累跑批
 - 音效：退出码 0 用 `Notification.Default`，非 0 用 `Notification.LoopingAlarm`——**失败必须比成功更响**
 - 内容：`✅ 跑完了 daily_report · 2026-10-05` / `用时 12.3 分钟 · 完成 4 · 死信 0 · 未终态 1`
+- **链接**：toast 上带可点按钮（`file:///` + `activationType="protocol"`）——`打开日报`、`打开投资观察`、`打开产物目录`，点一下就用系统默认程序打开；正文里同时印一份绝对路径，气泡回退没有按钮时还能复制。只挑**本 plan 声明的、已落盘的**正文文件：`artifacts/{date}/` 是两条链共用目录，按目录乱链会点开别人家的报告（`scripts/run_daily.py::report_links`）
 - 关掉它：`run_daily --no-notify`
 - 弹框标题显示 **Windows PowerShell**（借用它的 AUMID，本模块没注册自己的）；开了专注助手或锁屏会被压掉
 

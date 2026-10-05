@@ -16,6 +16,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.run_daily import main as run_daily_main     # noqa: E402
+from scripts.run_daily import report_links               # noqa: E402
 from core.store import Store                             # noqa: E402
 
 ROOT_TPL = Path(__file__).resolve().parents[1]
@@ -138,3 +139,49 @@ def test_run_daily_wires_the_desktop_notification():
     assert "winnotify.notify_summary(" in src, "收尾通知被摘掉了"
     assert "winnotify.notify(" in src, "unknown_job 那条不弹了"
     assert "--no-notify" in src, "没有关闭开关"
+    # 通知必须带报告链接：路径印成文字点不动，链接靠 report_links 传进去
+    assert "report_links(" in src, "报告链接没接进 run_daily"
+    assert "links=report_links(" in src, "links 参数没传给 notify_summary"
+
+
+def test_report_links_picks_own_existing_reports(tmp_path):
+    """链接只挑**本 plan 声明的、已落盘的**正文，最后一条是产物目录。
+
+    `artifacts/{date}/` 是两条链共用的：不按声明挑，housing 的通知就会
+    点开 daily 的日报（用户打开的是别人的报告，比没有按钮更误导）。
+    """
+    date = "2026-10-06"
+    d = tmp_path / "artifacts" / date
+    d.mkdir(parents=True)
+    for name in ("report.md", "charts.md", "t4_investment_watch.md",
+                 "other_chain.md"):
+        (d / name).write_text("x", encoding="utf-8")
+    (d / "summary.json").write_text("{}", encoding="utf-8")
+    rows = [
+        {"shard": {"outputs": [f"artifacts/{date}/report.md",
+                               f"artifacts/{date}/summary.json"]}},
+        {"shard": {"outputs": [f"artifacts/{date}/t4_investment_watch.md"]}},
+        {"shard": {"outputs": [f"artifacts/{date}/charts.md",
+                               f"artifacts/{date}/missing.md"]}},
+        # other_chain.md 只在盘上、**没被本 plan 声明** → 绝不能进链接
+    ]
+    got = report_links(tmp_path, date, rows)
+    paths = [p for _lab, p in got]
+    assert [lab for lab, _p in got] == ["日报", "投资观察", "产物目录"]
+    assert str(d / "report.md") in paths
+    assert str(d / "t4_investment_watch.md") in paths
+    assert str(d / "missing.md") not in paths, "没落盘的文件不能做成按钮"
+    assert str(d / "summary.json") not in paths, "json 不是给人读的正文"
+    # other_chain.md 虽然在盘上，但**不是本 plan 声明的** → 不进链接
+    assert not any("other_chain" in p for p in paths), "串了别人家的产物"
+    assert len(got) <= 3, "toast 按钮最多 3 个"
+
+
+def test_report_links_without_artifacts_dir(tmp_path):
+    """目录都还没有时不能凭空造一个按钮（点了没反应比没按钮更糟）。"""
+    assert report_links(tmp_path, "2099-01-01",
+                        [{"shard": {"outputs": []}}]) == []
+    # 没有任何 md，但目录在 → 只剩目录
+    (tmp_path / "artifacts" / "2099-01-01").mkdir(parents=True)
+    got = report_links(tmp_path, "2099-01-01", [{"shard": {"outputs": []}}])
+    assert [lab for lab, _p in got] == ["产物目录"]

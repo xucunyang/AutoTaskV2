@@ -8,6 +8,7 @@
 import base64
 import re
 import subprocess
+import urllib.parse
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -176,3 +177,83 @@ def test_notify_summary_always_calls_notify(tmp_path, monkeypatch, rc):
                              elapsed_min=5.0) is True
     assert seen["fail"] is (rc != 0)
     assert "housing_daily" in seen["title"]
+
+
+def test_toast_xml_renders_clickable_report_buttons(tmp_path):
+    """用户要"通知里带报告链接方便打开"：路径印成文字点不动，得是按钮。
+
+    activationType=protocol 才会让 Windows 拿 URI 去调系统默认程序——
+    用 foreground/background 这类别的值，点了什么都不会发生。
+    """
+    report = tmp_path / "报告 2026.md"          # 空格+中文，逼出百分号编码
+    report.write_text("x", encoding="utf-8")
+    links = [("日报", str(report)), ("产物目录", str(tmp_path))]
+    root = ET.fromstring(wn.toast_xml("标题", "正文", links=links))
+    btns = root.findall("./actions/action")
+    assert [b.get("content") for b in btns] == ["日报", "产物目录"]
+    assert all(b.get("activationType") == "protocol" for b in btns)
+    uri = btns[0].get("arguments")
+    assert uri.startswith("file:///")
+    assert " " not in uri, "URI 里有空格 = 点了没反应"
+    assert "%20" in urllib.parse.unquote(uri) or "%E" in uri.upper()
+    assert "2026.md" in urllib.parse.unquote(uri)
+    # XML 元素顺序必须 visual → actions → audio，插错整个 toast 不显示
+    assert [c.tag for c in root] == ["visual", "actions", "audio"]
+
+
+def test_toast_without_links_keeps_the_old_shape():
+    root = ET.fromstring(wn.toast_xml("t", "b"))
+    assert root.find("actions") is None
+    assert [c.tag for c in root] == ["visual", "audio"]
+
+
+def test_broken_link_is_dropped_not_rendered(tmp_path):
+    """拿不到合法 URI 的链接必须跳过，绝不塞坏按钮进去（点了没反应）。"""
+    links = [("日报", ""), ("目录", str(tmp_path))]
+    root = ET.fromstring(wn.toast_xml("t", "b", links=links))
+    btns = root.findall("./actions/action")
+    assert [b.get("content") for b in btns] == ["目录"]
+
+
+def test_deleted_file_gets_no_button(tmp_path):
+    """文件没了就不做按钮。空路径会被 `Path("").resolve()` 解析成当前目录、
+    不存在的路径点了没反应——两种都比"没有按钮"更误导。"""
+    links = [("日报", str(tmp_path / "gone.md")), ("目录", str(tmp_path))]
+    root = ET.fromstring(wn.toast_xml("t", "b", links=links))
+    assert [b.get("content")
+            for b in root.findall("./actions/action")] == ["目录"]
+
+
+def test_links_are_capped_at_three(tmp_path):
+    links = [("l", str(tmp_path)) for _ in range(6)]
+    root = ET.fromstring(wn.toast_xml("t", "b", links=links))
+    assert len(root.findall("./actions/action")) == 3
+
+
+def test_body_carries_the_path_for_balloon_fallback(tmp_path):
+    """气泡回退没有按钮：路径必须印在正文里，否则回退时链接就没了。"""
+    p = str(tmp_path / "report.md")
+    _, body, _ = wn.daily_summary_message(
+        "daily_report", "2026-10-06", rc=0, done=4, dead=0,
+        not_terminal=[], elapsed_min=3.0, links=[("日报", p)])
+    assert f"日报: {p}" in body
+    # 没给链接时正文保持原样（不渲染空行）
+    _, body2, _ = wn.daily_summary_message(
+        "daily_report", "2026-10-06", rc=0, done=4, dead=0,
+        not_terminal=[], elapsed_min=3.0)
+    assert "日报:" not in body2
+
+
+def test_notify_sends_the_links_into_the_powershell_script(tmp_path,
+                                                           monkeypatch):
+    """端到端：链接要真的进到 toast XML（经 base64 内联），不是只算了一遍。"""
+    monkeypatch.setattr(wn, "_is_windows", lambda: True)
+    runner = FakeRunner(_proc(out=b"TOAST_OK\n"))
+    report = tmp_path / "report.md"
+    report.write_text("x", encoding="utf-8")
+    assert wn.notify("标题", "正文", runner=runner,
+                     links=[("日报", str(report))]) is True
+    script = runner.calls[0]["input"].decode("ascii")
+    xml = base64.b64decode(_b64_in(script)).decode("utf-8")
+    assert "activationType=\"protocol\"" in xml
+    assert "report.md" in urllib.parse.unquote(xml)
