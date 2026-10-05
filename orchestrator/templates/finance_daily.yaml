@@ -1,0 +1,87 @@
+plan_template: finance_daily
+# 每日股票与投资理财跟踪（2026-10-05 新增，用户点名要）。
+#
+# 与 daily/housing 共用 artifacts/{date}/ 目录，但**产物名全部独立**：
+# summary.json / report.md / charts.md 都是 daily 的，这条链一律不碰
+# （10-05 实测过共用路径的后果：后跑的把先跑的覆盖掉，tests/test_job_matrix.py
+#  现在把"不许撞车"钉成了门禁）。
+#
+# 时刻：08:30（用户指定）。A 股 9:30 才开盘 → t1 采到的必然是**上一交易日**
+# 收盘 + 昨夜美股，这是口径不是缺陷，但必须写进 objective：
+# 不写死的话模型会把"今天的涨跌"编出来（它跑的时候今天还没开盘）。
+tasks:
+  - id: t1_stocks
+    name: 行情采集
+    complexity: complex
+    key_questions:
+      - "上一交易日上证/深成/创业板/科创50 收盘点位与涨跌幅是多少？"
+      - "港股恒指、隔夜美股三大指数收在哪里？成交与资金面如何？"
+      - "领涨领跌的行业板块有哪些？涨跌幅与成交额分别是多少？"
+      - "当期有哪些影响市场的政策或公司层面的重大消息？"
+    objective: >-
+      检索并采集**上一交易日**（不是"今天"——跑批时 A 股尚未开盘）的
+      真实公开行情数据，输出 artifacts/{date}/t1_stocks.csv：
+      **至少 15 行、至少 6 列**，列须含：标的（指数/板块/个股）、
+      市场（A股/港股/美股）、收盘点位或收盘价、涨跌幅(%)、成交额、
+      交易日(YYYY-MM-DD)。每个数字必须能在你引用的原文里逐字找到；
+      查不到的项留空并写"未查到"，**不许估算或凭记忆补**。
+      同时交齐 sources.json / claims.json，优先引交易所、指数公司、
+      证监会与主流财经数据门户（验收要求 A 类来源占比 ≥20%）。
+    depends_on: []
+    outputs: ["artifacts/{date}/t1_stocks.csv"]
+    acceptance_ref: schemas/acceptance_finance_t1.yaml
+    needs_web: true
+    freshness: recent
+    max_attempts: 3
+    budget: {max_steps: 12, timeout_s: 720}
+
+  - id: t2_investment
+    name: 投资理财动态
+    complexity: complex
+    key_questions:
+      - "近期公募基金发行与收益情况如何？哪些品类表现靠前？"
+      - "银行理财、存款、国债、货币基金的收益率水平各是多少？"
+      - "监管与货币政策有什么新动向（降准降息、新规、并购重组）？"
+      - "当期普通投资者面临的主要风险与机会是什么？"
+    objective: >-
+      检索并汇总当前的投资理财动态：基金发行与业绩、银行理财与存款利率、
+      债券与货基收益、监管与货币政策动向。写入
+      artifacts/{date}/t2_investment.md，正文至少 800 字节、**至少 1 张
+      mermaid 图**（收益对比或期次走势，数据逐字取自来源原文），
+      每条结论标注来源与统计口径，查不到的写"未查到"而不是估。
+      **只做事实汇总与观察，不给具体买卖建议、不做收益预测**。
+    depends_on: []
+    outputs: ["artifacts/{date}/t2_investment.md"]
+    # {output} 让这份验收被多条 md 任务共用，各查各的产物
+    acceptance_ref: schemas/acceptance_market.yaml
+    needs_web: true
+    freshness: recent
+    max_attempts: 3
+    budget: {max_steps: 10, timeout_s: 600}
+
+  - id: t3_finance_report
+    name: 生成日报
+    complexity: complex
+    objective: >-
+      基于 artifacts/{date}/t1_stocks.csv 与 artifacts/{date}/t2_investment.md 生成：
+      ① artifacts/{date}/finance_summary.json——顶层**必须**有这 5 个字段，
+         缺一个或类型不对 = rule_2 schema_violation：
+         {"date": "YYYY-MM-DD", "data_period": "YYYY-MM-DD",
+          "rows": <整数行数>, "market_summary": <按市场的汇总对象>,
+          "key_findings": ["结论1", "结论2"]}
+         `rows` 是 t1_stocks.csv 的**整数行数**（如 18）：不是数组、不放个股明细；
+         market_summary 按 A股/港股/美股 汇总涨跌与成交额；
+         key_findings 每条一句话，数字要对得上输入文件。字段含义见卡上的「JSON 形状」小节；
+      ② artifacts/{date}/finance_report.md——先给结论与关键数字，再把
+         t2_investment.md 里的 mermaid 图块**原样贴进**对应小节
+         （正文至少 1 张图，验收按 mermaid 计数），最后注明数据期次与来源。
+         只贴表格不贴图 = FAIL。
+    # 上游两条互相独立（并行），汇总要等它们都完
+    depends_on: [t1_stocks, t2_investment]
+    inputs: ["artifacts/{date}/t1_stocks.csv", "artifacts/{date}/t2_investment.md"]
+    outputs: ["artifacts/{date}/finance_summary.json", "artifacts/{date}/finance_report.md"]
+    # 汇总类验收：不含 source_* 三条（本任务不检索、不产 sources.json）
+    acceptance_ref: schemas/acceptance_finance_t3.yaml
+    needs_web: false
+    max_attempts: 3
+    budget: {max_steps: 8, timeout_s: 420}

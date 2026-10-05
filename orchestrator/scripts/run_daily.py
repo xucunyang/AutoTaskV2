@@ -79,15 +79,23 @@ def known_jobs(root: Path) -> list[str]:
 
 
 # 通知里要给"能一键打开"的产物。按钮顺序 = 人最想先点什么：
-# 日报正文 → housing 的投资观察汇总 → 图表。
-LINK_PRIORITY = ("report.md", "t4_investment_watch.md", "charts.md")
+# 各链的汇总正文 → housing 的投资观察 → 图表。
+# 2026-10-05 分家后 housing 的图叫 charts_housing.md；再新增 finance /
+# hardware 两条链，各自的日报正文排在图表之前（报告比图先看）。
+LINK_PRIORITY = ("report.md", "finance_report.md", "hardware_report.md",
+                 "t4_investment_watch.md", "charts.md", "charts_housing.md")
 LINK_LABELS = {
     "report.md": "日报",
+    "finance_report.md": "股票日报",
+    "hardware_report.md": "硬件日报",
     "t4_investment_watch.md": "投资观察",
     "charts.md": "图表",
+    "charts_housing.md": "图表",
     "t1_tier.md": "分线跟踪",
     "t2_xuzhou_nanjing.md": "徐州南京",
     "t3_hexagon_cities.md": "六边形城市",
+    "t2_investment.md": "理财动态",
+    "t2_hw_news.md": "硬件新闻",
 }
 BODY_SUFFIXES = (".md", ".html", ".pdf", ".txt")
 

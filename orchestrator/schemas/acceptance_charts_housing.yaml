@@ -1,0 +1,23 @@
+# housing 的图表汇总（t5_charts）专用验收。
+#
+# 为什么单独一份、不再复用 acceptance_charts.yaml：
+# 两条链曾经**共用** artifacts/{date}/charts.md——daily 08:00 写，housing 10:00 覆盖，
+# 2026-10-05 实测到了后果：charts.md 的标题变成 housing_daily 的，而 daily 的
+# report.md（当天 16:01 补跑时贴图）贴进去的 13 张图与 housing 的 charts.md
+# **逐字相同**——日报正文里的图是另一条链画的，daily 自己 t4_charts 的产物已被冲掉。
+# 规则内容与 acceptance_charts.yaml 完全一致，只是 path 各查各的。
+#
+# min:2 而不是 1：一张图可以是顺手画的，两张才说明它真把上游三份产物整理过一遍。
+- type: file_exists
+  path: artifacts/{date}/charts_housing.md
+
+# 800 字节约合 400+ 汉字，排除"两张图+一句话"式交差
+- type: business_rule
+  expr: "bytes >= 800"
+  path: artifacts/{date}/charts_housing.md
+
+# 只认 xychart/pie/gantt（见 verifier.h_mermaid），且**语法错的图不算数**
+# （2026-10-05 加 lint：y-axis 少了 `-->` 的图渲染不出来，块数再够也是白搭）
+- type: mermaid
+  path: artifacts/{date}/charts_housing.md
+  min: 2

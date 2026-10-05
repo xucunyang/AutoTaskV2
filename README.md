@@ -170,12 +170,18 @@ python -m core.governor --mode auto      # 交回自动
 
 ## 每日自动触发
 
-两条链都由 **Windows 计划任务** 拉起，不依赖谁开着终端：
+四条链都由 **Windows 计划任务** 拉起，不依赖谁开着终端：
 
 | 任务 | 触发（Asia/Shanghai） | 干什么 |
 |---|---|---|
-| `\AutoTaskV2\daily_report` | 每天 08:00 | `scripts/run_daily.py --job daily_report` |
-| `\AutoTaskV2\housing_daily` | 每天 10:00 | `scripts/run_daily.py --job housing_daily` |
+| `\AutoTaskV2\daily_report` | 每天 08:00 | `scripts/run_daily.py --job daily_report`（宏观 5 项 → `summary.json` / `report.md` / `charts.md`） |
+| `\AutoTaskV2\finance_daily` | 每天 08:30 | `--job finance_daily`（行情 + 理财 → `finance_report.md` / `finance_summary.json`） |
+| `\AutoTaskV2\housing_daily` | 每天 10:00 | `--job housing_daily`（楼市三条线 → `t4_investment_watch.md` / `charts_housing.md`） |
+| `\AutoTaskV2\hardware_daily` | 每天 14:00 | `--job hardware_daily`（显卡内存价格 + 硬件新闻 → `hardware_report.md` / `hardware_summary.json`） |
+
+四条链**共用** `artifacts/{date}/` 目录，但**产物名一个都不许撞车**——2026-10-05 实测过撞车的后果：housing 的 `t5_charts` 把 daily 的 `charts.md` 覆盖了，日报正文里贴的 13 张图全是另一条链画的。现在由 `tests/test_job_matrix.py` 把「产物路径两两不相交」「cron 与 XML 的 StartBoundary 一致」钉成门禁，谁改漏一边当场红。
+
+股票链特意排在 **08:30**（A 股 09:30 才开盘）：`t1_stocks` 采到的必然是**上一交易日**收盘 + 昨夜美股，这是口径不是缺陷，模板 objective 里写死了，免得模型把「今天的涨跌」编出来。
 
 一次 `run_daily` 串起三件事：**建 plan**（`ensure_plan`，幂等）→ **跑编排器**（VerifyPool + tick，直到全部任务进终态）→ **退出并交退出码**，让计划任务拿到干净的结果：
 
@@ -186,7 +192,9 @@ python -m core.governor --mode auto      # 交回自动
 | 2 | 有死信，按 `docs/sop/dead-letter.md` 处理 |
 | 3 | 配置/存储层错误，含 `--job` 在 `schedule.yaml` 里查不到 |
 
-两个 job **错开 2 小时**不是随手定的：`tick()` 看的是全库 `active_plans`，同时跑会互相派发对方的任务、重复验收（派发有 `expect_version` 兜底不会串，但白干活还多出版本冲突重试）。daily 自带 `timeout-min 90`，最迟 09:30 退出，housing 10:00 起跑就不会撞上。
+job 之间要**错开**不是随手定的：`tick()` 看的是全库 `active_plans`，同时跑会互相派发对方的任务、重复验收（派发有 `expect_version` 兜底不会串，但白干活还多出版本冲突重试）。`schedule.yaml` 里 08:00 / 08:30 / 10:00 / 14:00 的间距由 `test_job_matrix::test_jobs_are_spread_out_in_time` 保证 ≥30 分钟。
+
+已知余量：daily 自带 `timeout-min 90`，但常态 10–12 分钟就退出（08:12 前），到 08:30 还有 18 分钟余量；万一 daily 越跑越久挤进 finance 的窗口，两条链会短暂重叠（`expect_version` 兜底不会串，只是白干活）。housing 10:00、hardware 14:00 与前后都差 ≥90 分钟。
 
 `WakeToRun` + `StartWhenAvailable` 让机器在睡/关机时也会被叫醒补跑，**错过就补、不跳过这一期**。
 
@@ -197,7 +205,7 @@ python -m core.governor --mode auto      # 交回自动
 - 通道：WinRT Toast，失败回退 `NotifyIcon` 气泡；**不装任何模块**，全程 15s 超时保护，通知坏了绝不连累跑批
 - 音效：退出码 0 用 `Notification.Default`，非 0 用 `Notification.LoopingAlarm`——**失败必须比成功更响**
 - 内容：`✅ 跑完了 daily_report · 2026-10-05` / `用时 12.3 分钟 · 完成 4 · 死信 0 · 未终态 1`
-- **链接**：toast 上带可点按钮（`file:///` + `activationType="protocol"`）——`打开日报`、`打开投资观察`、`打开产物目录`，点一下就用系统默认程序打开；正文里同时印一份绝对路径，气泡回退没有按钮时还能复制。只挑**本 plan 声明的、已落盘的**正文文件：`artifacts/{date}/` 是两条链共用目录，按目录乱链会点开别人家的报告（`scripts/run_daily.py::report_links`）
+- **链接**：toast 上带可点按钮（`file:///` + `activationType="protocol"`）——`打开日报`、`打开投资观察`、`打开产物目录`，点一下就用系统默认程序打开（四条链的按钮文案各不相同：股票链是 `股票日报`、硬件链是 `硬件日报`、housing 的图表是 `图表`）；正文里同时印一份绝对路径，气泡回退没有按钮时还能复制。只挑**本 plan 声明的、已落盘的**正文文件，按 `LINK_PRIORITY`（各链的汇总正文 → housing 的投资观察 → 图表）取前两个：`artifacts/{date}/` 是四条链共用目录，按目录乱链会点开别人家的报告（`scripts/run_daily.py::report_links`）
 - 关掉它：`run_daily --no-notify`
 - 弹框标题显示 **Windows PowerShell**（借用它的 AUMID，本模块没注册自己的）；开了专注助手或锁屏会被压掉
 
@@ -207,17 +215,21 @@ Get-ScheduledTask -TaskPath '\AutoTaskV2\' | Get-ScheduledTaskInfo
 
 # 手动补跑今天（注册时 StartBoundary 在未来，注册本身不会顺带触发）
 schtasks /run /tn "AutoTaskV2\daily_report"
-schtasks /run /tn "AutoTaskV2\housing_daily"     # 等上一条跑完再跑
+schtasks /run /tn "AutoTaskV2\finance_daily"     # 等上一条跑完再跑
+schtasks /run /tn "AutoTaskV2\housing_daily"     # 同上
+schtasks /run /tn "AutoTaskV2\hardware_daily"    # 同上
 
 # 跑完看日志（计划任务的 stdout 没人收，run_daily 自己落了一份）
 Get-Content "reports\run_daily_daily_report_2026-10-05.log" -Tail 30
 
 # 换机器 / 改路径后重新注册（XML 必须是 UTF-16，UTF-8 会被拒）
 schtasks /create /tn "AutoTaskV2\daily_report"   /xml scripts\daily_report_task.xml /f
-schtasks /create /tn "AutoTaskV2\housing_daily"   /xml scripts\housing_daily_task.xml /f
+schtasks /create /tn "AutoTaskV2\finance_daily"  /xml scripts\finance_daily_task.xml /f
+schtasks /create /tn "AutoTaskV2\housing_daily"  /xml scripts\housing_daily_task.xml /f
+schtasks /create /tn "AutoTaskV2\hardware_daily" /xml scripts\hardware_daily_task.xml /f
 ```
 
-`scripts/*.xml` 是 `Export-ScheduledTask` 从**注册成功的任务**导出来的，不是手写的——手写的版本被 `schtasks` 拒了三种错（UTF-8 编码、`WakeToRun` 放进 `<CalendarTrigger>`、`UserId` 写成机器名），教训都在 `tests/test_scheduled_task_xml.py` 里成了门禁。
+`scripts/*.xml` 是 `Export-ScheduledTask` 从**注册成功的任务**导出来的，不是手写的——手写的版本被 `schtasks` 拒了三种错（UTF-8 编码、`WakeToRun` 放进 `<CalendarTrigger>`、`UserId` 写成机器名），教训都在 `tests/test_scheduled_task_xml.py` 里成了门禁。finance / hardware 两份是**从 daily 的 XML 克隆**的（`Temp\opencode\make_task_xml.py`）：只换任务名、起始时刻、命令行参数与描述，`WakeToRun` / `StartWhenAvailable` / `ExecutionTimeLimit` 这些节点保证逐字节一致，不靠手抄。
 
 不想用 Windows 计划任务的话，等价的常驻写法是 `python -m core.scheduler --root .`（APScheduler 按 `schedule.yaml` 的 cron 建 plan，启动时 `--catchup` 补过去 3 天）+ `python -m core.orchestrator --root .`（派发执行）。两者都活着才算自动：**cron 只建计划，编排器只干活**。
 

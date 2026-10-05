@@ -1,0 +1,31 @@
+# finance t1_stocks：与 daily t1_collect 同一套口径（够行、够列、能追来源、够新够权威）。
+#
+# 时刻有讲究：08:30 跑批时 A 股 9:30 才开盘，采到的必然是**上一交易日**收盘
+# （外加昨夜已收盘的美股）。这是口径，不是缺陷——但 objective 里必须写死，
+# 否则模型会把"今天的涨跌"编出来（它跑的时候今天还没开盘）。
+#
+# row_count min:15 / cols >= 6：指数+板块+个股 15 行不算苛刻，但也不卡死 70 行——
+# 卡太死只会把检索不顺的那一轮推进死信（acceptance_t2 的教训）。
+# freshness 365 天对 T-1 数据毫无压力，它防的是拿一年前的旧行情交差。
+- type: file_exists
+  path: artifacts/{date}/t1_stocks.csv
+
+- type: row_count
+  path: artifacts/{date}/t1_stocks.csv
+  min: 15
+
+# 只有表头没有列的 csv 也能过 file_exists，所以列数单独判。
+# cols/rows 由 h_business_rule 从表头+行数注入，模型不需要自己申报。
+- type: business_rule
+  expr: "cols >= 6"
+  path: artifacts/{date}/t1_stocks.csv
+
+# 联网三件套：来源可追、够新、够权威（与 acceptance_t1/acceptance_market 同口径）
+- type: source_traceable
+
+- type: freshness
+  freshness_days: 365
+
+# 交易所/指数公司/证监会 = A；只引自媒体的话 A 占比到不了 20%
+- type: source_quality
+  source_tier_min_ratio: {A: 0.2}

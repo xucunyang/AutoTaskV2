@@ -1,0 +1,29 @@
+# hardware t1_gpu_ram：价格统计，与 t1_collect/t1_stocks 同一套口径。
+#
+# 价格类数据的特殊性：**一天一变**，凭模型记忆写出来的价格必错（而且错得
+# 看不出来）。所以 source_traceable + freshness 是这条链真正的命门——
+# 每个价格都得挂到能追的来源上，且价格日期要在 365 天内。
+#
+# 行/列门槛：显卡 8-10 个主流型号 + 内存 4-6 个规格，15 行 6 列是下限不是目标；
+# 卡太死只会把检索不顺的那一轮推进死信（acceptance_t2 的教训）。
+- type: file_exists
+  path: artifacts/{date}/t1_gpu_ram.csv
+
+- type: row_count
+  path: artifacts/{date}/t1_gpu_ram.csv
+  min: 15
+
+# 只有表头没有列的 csv 也能过 file_exists，所以列数单独判。
+- type: business_rule
+  expr: "cols >= 6"
+  path: artifacts/{date}/t1_gpu_ram.csv
+
+# 联网三件套：来源可追、够新、够权威
+- type: source_traceable
+
+- type: freshness
+  freshness_days: 365
+
+# 厂商官网/自营商品页 = A；只引论坛或自媒体报价的话 A 占比到不了 20%
+- type: source_quality
+  source_tier_min_ratio: {A: 0.2}

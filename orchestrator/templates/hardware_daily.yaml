@@ -1,0 +1,84 @@
+plan_template: hardware_daily
+# 每日硬件跟踪：显卡/内存价格统计 + 硬件新闻（2026-10-05 新增，用户点名要）。
+#
+# 与 daily/housing/finance 共用 artifacts/{date}/ 目录，产物名全部独立
+# （撞车已有门禁：tests/test_job_matrix.py::test_no_two_tasks_share_an_output_path）。
+#
+# 时刻：14:00。与 08:00 daily / 08:30 finance / 10:00 housing 错开，
+# 避免两条链同时往 state.db 写（两个 run_daily 并行是没验证过的姿势）。
+tasks:
+  - id: t1_gpu_ram
+    name: 价格统计
+    complexity: complex
+    key_questions:
+      - "当前主流显卡（RTX 50 系 / RX 9000 系）各型号的到手价是多少？"
+      - "DDR5 内存 16G/32G 套条的当前价格，与一周前相比涨跌多少？"
+      - "近期价格是涨是跌？驱动因素（新品、产能、存储晶圆）是什么？"
+      - "各型号的涨跌幅能不能追到公开来源与价格日期？"
+    objective: >-
+      检索并采集**当前**主流显卡与内存的真实公开价格，输出
+      artifacts/{date}/t1_gpu_ram.csv：**至少 15 行、至少 6 列**，
+      列须含：部件类型（显卡/内存）、型号、当前价格(CNY)、
+      上期价格(CNY)、涨跌幅(%)、价格日期(YYYY-MM-DD)。
+      每个数字必须能在你引用的原文里逐字找到；查不到的留空写"未查到"，
+      **不许估算或凭记忆补**——显卡内存价格一天一变，凭记忆必错，
+      而且错得从表面看不出来。同时交齐 sources.json / claims.json，
+      优先引厂商官网、自营商品页与主流硬件媒体（A 类来源占比 ≥20%）。
+    depends_on: []
+    outputs: ["artifacts/{date}/t1_gpu_ram.csv"]
+    acceptance_ref: schemas/acceptance_hardware_t1.yaml
+    needs_web: true
+    freshness: recent
+    max_attempts: 3
+    budget: {max_steps: 12, timeout_s: 720}
+
+  - id: t2_hw_news
+    name: 硬件新闻
+    complexity: complex
+    key_questions:
+      - "近期 CPU / 显卡 / 内存存储 / 整机有哪些新品发布或价格调整？"
+      - "上游产能、供应链、出口管制有什么影响硬件价格的动向？"
+      - "内存与显卡的供需关系发生了什么变化？"
+      - "哪些消息会直接影响当期装机成本？"
+    objective: >-
+      检索并汇总当期的硬件新闻：CPU、显卡、内存与存储、整机与外设，
+      重点是**会影响价格与装机成本**的消息（新品、调价、产能、供应链、
+      政策）。写入 artifacts/{date}/t2_hw_news.md，正文至少 800 字节、
+      **至少 1 张 mermaid 图**（价格走势或型号间价格对比，数据逐字取自
+      来源原文），每条新闻标注来源与发布时间，查不到发布时间的写
+      "未查到"而不是估。
+    depends_on: []
+    outputs: ["artifacts/{date}/t2_hw_news.md"]
+    # {output} 让这份验收被多条 md 任务共用，各查各的产物
+    acceptance_ref: schemas/acceptance_market.yaml
+    needs_web: true
+    freshness: recent
+    max_attempts: 3
+    budget: {max_steps: 10, timeout_s: 600}
+
+  - id: t3_hw_report
+    name: 生成日报
+    complexity: complex
+    objective: >-
+      基于 artifacts/{date}/t1_gpu_ram.csv 与 artifacts/{date}/t2_hw_news.md 生成：
+      ① artifacts/{date}/hardware_summary.json——顶层**必须**有这 5 个字段，
+         缺一个或类型不对 = rule_2 schema_violation：
+         {"date": "YYYY-MM-DD", "data_period": "YYYY-MM-DD",
+          "rows": <整数行数>, "price_summary": <按部件类别的价格汇总>,
+          "key_findings": ["结论1", "结论2"]}
+         `rows` 是 t1_gpu_ram.csv 的**整数行数**（如 18）：不是数组、不放型号明细；
+         price_summary 按显卡/内存汇总均价与周环比；
+         key_findings 每条一句话，数字要对得上输入文件。字段含义见卡上的「JSON 形状」小节；
+      ② artifacts/{date}/hardware_report.md——先给结论与关键价格，再把
+         t2_hw_news.md 里的 mermaid 图块**原样贴进**对应小节
+         （正文至少 1 张图，验收按 mermaid 计数），最后注明数据期次与来源。
+         只贴表格不贴图 = FAIL。
+    # 上游两条互相独立（并行），汇总要等它们都完
+    depends_on: [t1_gpu_ram, t2_hw_news]
+    inputs: ["artifacts/{date}/t1_gpu_ram.csv", "artifacts/{date}/t2_hw_news.md"]
+    outputs: ["artifacts/{date}/hardware_summary.json", "artifacts/{date}/hardware_report.md"]
+    # 汇总类验收：不含 source_* 三条（本任务不检索、不产 sources.json）
+    acceptance_ref: schemas/acceptance_hardware_t3.yaml
+    needs_web: false
+    max_attempts: 3
+    budget: {max_steps: 8, timeout_s: 420}

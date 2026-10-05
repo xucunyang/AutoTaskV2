@@ -85,7 +85,7 @@ tasks:
     objective: >-
       读取 artifacts/{date}/ 下 t1_tier.md、t2_xuzhou_nanjing.md、
       t3_hexagon_cities.md 三份产物里的表格，把**可对比的量**画成
-      mermaid 曲线/柱状图，输出 artifacts/{date}/charts.md：
+      mermaid 曲线/柱状图，输出 artifacts/{date}/charts_housing.md：
       **至少 2 张图**，每张图前一行"图N：标题（口径 / 期间 / 来源）"。
       优先画：①分能级价格环比走势 ②徐州 vs 南京的价格与去化对比
       ③六边形候选城市三维打分对比。
@@ -97,8 +97,12 @@ tasks:
       - artifacts/{date}/t1_tier.md
       - artifacts/{date}/t2_xuzhou_nanjing.md
       - artifacts/{date}/t3_hexagon_cities.md
-    outputs: ["artifacts/{date}/charts.md"]
-    acceptance_ref: schemas/acceptance_charts.yaml
+    # 2026-10-05 分家：原来与 daily 的 t4_charts 共用 charts.md，10:00 的
+    # 这条把 08:00 那条的产物覆盖了——当天实测 report.md 里的 13 张图与
+    # housing 的 charts.md 逐字相同，日报贴成了另一条链的图。
+    # tests/test_job_matrix.py 现在钉住"两条链不许共用任何产物路径"。
+    outputs: ["artifacts/{date}/charts_housing.md"]
+    acceptance_ref: schemas/acceptance_charts_housing.yaml
     # 不联网：数据全部来自上游三份产物，再检索一遍只会引入两套口径。
     needs_web: false
     max_attempts: 3
@@ -109,12 +113,12 @@ tasks:
     complexity: complex
     objective: >-
       基于本日 t1_tier、t2_xuzhou_nanjing、t3_hexagon_cities 三份产物、
-      t5_charts 的 charts.md，以及 artifacts/ 下历史日期的同类产物，
+      t5_charts 的 charts_housing.md，以及 artifacts/ 下历史日期的同类产物，
       做纵向对比：
       哪些指标相对上次是改善/恶化、哪些已连续多期同向。
       汇总成 artifacts/{date}/t4_investment_watch.md，
       给出当前观察清单与需要继续跟踪的指标。
-      **图表必须来自 charts.md**：把其中对应的 mermaid 图块贴进正文小节
+      **图表必须来自 charts_housing.md**：把其中对应的 mermaid 图块贴进正文小节
       （验收按 mermaid 计数，正文一张图都没有 = FAIL），不要重画、
       也不要只贴数据表代替图。
       **只做记录与对比，不给具体买卖建议**，也不给价格预测；
@@ -126,7 +130,7 @@ tasks:
       - artifacts/{date}/t1_tier.md
       - artifacts/{date}/t2_xuzhou_nanjing.md
       - artifacts/{date}/t3_hexagon_cities.md
-      - artifacts/{date}/charts.md
+      - artifacts/{date}/charts_housing.md
     outputs: ["artifacts/{date}/t4_investment_watch.md"]
     # 汇总类专用验收：不含 freshness/source_quality/source_traceable，
     # 因为 t4 不检索、不产生 sources.json，那三条对它永远 FAIL。

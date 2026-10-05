@@ -12,10 +12,40 @@ jobs:
   # 每日房地产跟踪（分能级 / 徐州南京 / 六边形战士 / 纵向汇总）。
   # plan_id 按 job_id 分立：daily_report_YYYY-MM-DD vs housing_daily_YYYY-MM-DD，
   # 两个 job 各自的 plan/tasks/产物目录互不干扰（同一日期也能并存）。
+  # cron 10:00 而不是 08:00（2026-10-05 修正）：Windows 计划任务
+  # （scripts/housing_daily_task.xml 的 StartBoundary）一直是 10:00，
+  # 这里长期写着 08:00——谁哪天启了 APScheduler 守护进程，两条链就会挤在
+  # 8 点同时跑。cron 与 XML 不一致本身就被 test_job_matrix 钉住了。
   - id: housing_daily
-    cron: "0 8 * * *"
+    cron: "0 10 * * *"
     timezone: Asia/Shanghai
     template: templates/housing_daily.yaml
+    coalesce: true
+    max_instances: 1
+    misfire_grace_time: 3600
+    catchup: true
+    max_workers: 4
+    poll_interval_s: 30
+  # 每日股票与投资理财跟踪（2026-10-05 新增，用户点名）。
+  # 08:30 = A 股开盘（9:30）之前，采到的必然是**上一交易日**收盘
+  # + 昨夜美股——这是口径，模板 objective 里写死了，免得模型编"今天的涨跌"。
+  - id: finance_daily
+    cron: "30 8 * * *"
+    timezone: Asia/Shanghai
+    template: templates/finance_daily.yaml
+    coalesce: true
+    max_instances: 1
+    misfire_grace_time: 3600
+    catchup: true
+    max_workers: 4
+    poll_interval_s: 30
+  # 每日硬件跟踪（显卡/内存价格 + 硬件新闻，2026-10-05 新增）。
+  # 14:00：与 08:00 / 08:30 / 10:00 都错开 ≥2h，避免两条链同时写 state.db
+  # （两个 run_daily 并行是没验证过的姿势）。
+  - id: hardware_daily
+    cron: "0 14 * * *"
+    timezone: Asia/Shanghai
+    template: templates/hardware_daily.yaml
     coalesce: true
     max_instances: 1
     misfire_grace_time: 3600
