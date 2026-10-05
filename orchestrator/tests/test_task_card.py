@@ -337,7 +337,7 @@ def test_json_schema_ref_is_inlined_as_shape():
     ]
     c = _card(task_id="t3_report", objective="生成日报",
               outputs=["artifacts/2026-10-05/summary.json"], acceptance=acc)
-    assert "schemas/summary.schema.json（rule_2）要求" in c
+    assert "schemas/summary.schema.json（rule_2）必需字段" in c
     assert '"rows": <integer>' in c, "形状示例里必须能看出 rows 是标量"
     assert "rows=integer" in c
     assert "不是数组" in c
@@ -370,4 +370,8 @@ def test_t3_real_acceptance_says_rows_is_integer():
     assert "rows=integer" in c, c
     assert "不是数组" in c
     assert "rule_2" in c, "卡上的编号要和 verifier 报的 rule_2 对得上"
+    # 必需字段与 description 必须一起进卡：只给类型，模型知道 rows 要整数，
+    # 却不知道该填什么整数、也不知道 data_period/tier_summary 存在。
+    assert "data_period" in c and "tier_summary" in c and "key_findings" in c
+    assert "数据期次" in c, "schema 的 description 没进卡 = 字段含义丢了"
     assert estimate_tokens(c) < 2000

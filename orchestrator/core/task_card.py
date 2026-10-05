@@ -95,8 +95,8 @@ def _schema_hint(root: Path, acceptance) -> str:
 
     三条护栏：
     - 读不到文件/不是合法 JSON → 返回空串，卡上仍保留原路径，绝不把卡渲染炸掉；
-    - hint 超过 600 字就放弃内联（大 schema 会把卡片顶过 2k token 门禁）；
-    - 只展开 required 字段，optional 字段不进卡（每行都是 token）。
+    - hint 超过 800 字就放弃内联（大 schema 会把卡片顶过 2k token 门禁）；
+    - 只展开 required 字段（连同 schema 里的 description），optional 不进卡。
     """
     for i, rule in enumerate(acceptance or []):
         if not isinstance(rule, dict) or rule.get("type") != "json_schema":
@@ -112,26 +112,31 @@ def _schema_hint(root: Path, acceptance) -> str:
             continue
         props = data.get("properties") or {}
         required = data.get("required") or list(props)
-        fields = []
+        fields = []                            # (字段名, 类型, description)
         for k in required:
             spec = props.get(k)
             if isinstance(spec, dict) and spec.get("type"):
-                fields.append((k, str(spec["type"])))
+                desc = str(spec.get("description") or "").strip()[:48]
+                fields.append((k, str(spec["type"]), desc))
         if not fields:
             continue
         # 形状示例：required 按类型占位，一眼看出 rows 该写标量还是数组
         sample = "{" + ", ".join(
             f'"{k}": "<{t}>"' if t == "string" else f'"{k}": <{t}>'
-            for k, t in fields) + "}"
-        hint = (f"{ref}（{rule.get('rule_id') or f'rule_{i}'}）要求：\n"
-                f"  {sample}\n"
-                f"  字段类型：" + "，".join(f"{k}={t}" for k, t in fields))
-        scalars = [k for k, t in fields if t in ("integer", "number", "boolean")]
+            for k, t, _d in fields) + "}"
+        # description 是"这个字段到底放什么"的唯一说明，必须跟着进卡——
+        # 只给类型的话，模型知道 rows 要整数，却不知道该填什么整数。
+        kinds = "；".join(f"{k}={t}" + (f" {d}" if d else "")
+                          for k, t, d in fields)
+        hint = (f"{ref}（{rule.get('rule_id') or f'rule_{i}'}）必需字段"
+                f"（缺一个或类型不对=整条 schema_violation）：\n"
+                f"  {sample}\n  {kinds}")
+        scalars = [k for k, t, _d in fields
+                   if t in ("integer", "number", "boolean")]
         if scalars:
             hint += ("\n  " + "、".join(scalars) +
-                     " 必须写成对应标量（整数/小数/布尔），**不是数组或对象**"
-                     "——写成数组会 schema_violation。")
-        if len(hint) > 600:
+                     " 写成对应标量（整数/小数/布尔），不是数组或对象。")
+        if len(hint) > 800:
             return ""
         return hint
     return ""

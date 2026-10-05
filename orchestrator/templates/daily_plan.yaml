@@ -73,10 +73,14 @@ tasks:
     name: 生成日报
     objective: >-
       基于 artifacts/{date}/t2_clean.csv 与 artifacts/{date}/charts.md 生成：
-      ① artifacts/{date}/summary.json——**逐字按这个形状写**：
-         {"date": "YYYY-MM-DD", "rows": <整数行数>}，
-         `rows` 是**整数**（如 70），不是数组/对象；城市明细请另放 city_rows。
-         形状以验收的 json_schema 为准（卡上已把类型列出）；
+      ① artifacts/{date}/summary.json——顶层**必须**有这 5 个字段，
+         缺一个或类型不对 = rule_2 schema_violation：
+         {"date": "YYYY-MM-DD", "data_period": "YYYY-MM",
+          "rows": <整数行数>, "tier_summary": <按能级汇总的对象>,
+          "key_findings": ["结论1", "结论2"]}
+         `rows` 是 clean.csv 的**整数行数**（如 69）：不是数组、不放城市明细；
+         tier_summary 按一线/二线/三四线汇总环比；key_findings 每条一句话、
+         数字要对得上输入文件。字段含义见卡上的「JSON 形状」小节；
       ② artifacts/{date}/report.md——先给结论与关键数字，再把 charts.md 里的
       mermaid 图块**原样贴进**对应小节（正文至少 1 张图，验收按 mermaid 计数），
       最后注明数据期次与来源。只贴表格不贴图 = FAIL。

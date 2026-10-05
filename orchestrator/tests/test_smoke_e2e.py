@@ -117,8 +117,15 @@ def _provider_for(store, plan_id, task_id):
                         "claim_id": "c1", "text": "stub 结论",
                         "source_ids": ["s1"]}]), encoding="utf-8")
                 elif p.suffix == ".json":
-                    p.write_text(json.dumps({"date": DATE, "rows": 2,
-                                            "note": "stub"}), encoding="utf-8")
+                    # summary.json 的形状由 schemas/summary.schema.json 定死：
+                    # 只写 {date, rows} 的空壳自 2026-10-05 起会被 rule_2 打回
+                    # （当天真实跑批就靠交空壳混过了一次验收）。
+                    # 其余 .json 产物多带几个字段无妨（schema 没禁 additionalProperties）。
+                    p.write_text(json.dumps({
+                        "date": DATE, "data_period": DATE[:7], "rows": 2,
+                        "tier_summary": {"一线": {"note": "stub"}},
+                        "key_findings": ["stub 结论：数字取自输入文件。"],
+                        "note": "stub"}, ensure_ascii=False), encoding="utf-8")
                 elif p.suffix in (".md", ".txt"):
                     p.write_text(_stub_md(p.name, "\n".join(paths)),
                                  encoding="utf-8")

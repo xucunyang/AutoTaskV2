@@ -5,7 +5,7 @@
 验收标准：
 {{ acceptance_yaml }}
 {% if schema_hint %}
-【JSON 形状：json_schema 按下面这个读，类型写错=整条失败】
+【JSON 形状：json_schema 的必需字段，缺一个或类型不对=整条失败】
 {{ schema_hint }}
 {% endif %}
 幂等键：{{ idempotency_key }}（若本任务已DONE直接退出，不要重复副作用）
