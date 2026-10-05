@@ -904,3 +904,69 @@ def test_mermaid_missing_file_and_path_escape_fail(tmp_path):
 def test_mermaid_registered_in_handlers():
     """新规则类型必须同时进 HANDLERS，否则验收走到它就 handler_error。"""
     assert "mermaid" in vf.HANDLERS
+
+
+# ---------- 图要**渲染得出来**：mermaid 语法 lint ----------
+
+_MD_NO_ARROW = """# 报告
+
+```mermaid
+xychart-beta
+    x-axis ["8月", "9月"]
+    y-axis "环比%" -0.5 0.5
+    bar [0.1, -0.1]
+```
+
+正文……
+"""
+
+
+def _mermaid_rule(root, body, min_=1):
+    _art(root, f"artifacts/{DATE}/charts.md", body)
+    return vf.h_mermaid(_ctx(root), {"path": f"artifacts/{DATE}/charts.md",
+                                     "min": min_, "rule_id": "r"})
+
+
+def test_mermaid_chart_without_range_arrow_rejected(tmp_path):
+    """2026-10-05 的真实故障：y-axis 写成空格分隔，13 张图 12 张渲染失败
+    （mermaid 报 `Expecting 'ARROW_DELIMITER'`），验收却因为只数块数全绿。
+
+    语法错的图不算"有图"，而且 detail 必须把**怎么改**写出来——
+    失败详情会回流给模型重试，只报"不通过"它下一轮还是同一个错。
+    """
+    root = _root(tmp_path)
+    got = _mermaid_rule(root, _MD_NO_ARROW)
+    assert got["ok"] is False, got
+    assert "mermaid_charts=0" in got["detail"]
+    assert "bad=1" in got["detail"]
+    assert "-->" in got["detail"], "没告诉模型改成什么样"
+
+
+def test_mermaid_single_arrow_rejected(tmp_path):
+    """`0 -> 10` 单箭头同样不是 ARROW_DELIMITER——t2 正是这么写的。"""
+    root = _root(tmp_path)
+    got = _mermaid_rule(root, _MD_LINE.replace("0 --> 1", "0 -> 1"))
+    assert got["ok"] is False and "bad=1" in got["detail"], got
+
+
+def test_mermaid_unbalanced_brackets_rejected(tmp_path):
+    """`bar [1, 2` 这种截断写法一定解析失败，同样不算"有图"。"""
+    root = _root(tmp_path)
+    got = _mermaid_rule(root, _MD_LINE.replace("line [0.1, 0.2]",
+                                                "line [0.1, 0.2"))
+    assert got["ok"] is False and "方括号不配平" in got["detail"], got
+
+
+def test_mermaid_lint_has_no_false_positive(tmp_path):
+    """没写 y-axis 的块（自动刻度）mermaid 照样渲染。
+
+    lint 只判**有把握**的错：误杀会把好图判死，而无人值守的跑批没人盯着
+    重试到绿；漏判的代价只是"图可能丑"。这条钉住"宁可漏判不误判"。
+    """
+    root = _root(tmp_path)
+    body = _MD_LINE.replace('    y-axis "环比%" 0 --> 1\n', "")
+    got = _mermaid_rule(root, body)
+    assert got["ok"] is True, got
+    assert "bad=" not in got["detail"]
+    # 正常图也不受影响
+    assert _mermaid_rule(_root(tmp_path / "b"), _MD_LINE)["ok"] is True

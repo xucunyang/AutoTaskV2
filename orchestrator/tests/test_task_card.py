@@ -287,6 +287,11 @@ def test_card_shows_chart_block_only_when_mermaid_rule_present():
     assert "【图表：验收规则 mermaid 要求 2 张起】" in c
     assert "artifacts/2026-09-29/charts.md" in c
     assert "xychart-beta" in c
+    # 10-05 的真实故障：卡上只说"要图"却没给骨架，模型把 y-axis 写成空格
+    # 分隔（`y-axis "环比%" -0.5 0.5`），13 张图 12 张解析失败。卡必须给出
+    # **能直接抄**的正确形状，并把两个坑点名。
+    assert 'y-axis "单位" -0.5 --> 0.5' in c, "卡上没给 y-axis 的正确写法"
+    assert "0 -> 10" in c, "没点名单箭头这个坑"
     assert estimate_tokens(c) < 2000
 
     # 没有 mermaid 规则的任务卡不该出现图表段

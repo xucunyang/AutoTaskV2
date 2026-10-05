@@ -195,15 +195,52 @@ def h_business_rule(ctx: dict, rule: dict) -> dict:
     return {"ok": ok, "detail": detail or f"expr={expr}"}
 
 
+def lint_chart_block(body: str) -> str | None:
+    """mermaid 块的**渲染**判据：返回"这张图渲染不出来"的原因，看不出问题返回 None。
+
+    为什么要有它：`h_mermaid` 原来只数块数，2026-10-05 报告里 13 张图
+    12 张挂了同一个错——模型把 y-axis 写成空格分隔：
+
+        y-axis "环比%" -0.5 0.5        解析失败：Expecting 'ARROW_DELIMITER'
+        y-axis "环比%" -0.5 --> 0.5    正确
+
+    于是"有 13 张图"和"13 张全渲染失败"同时成立，验收全绿。用 mermaid-cli
+    实测过这个错（本机 node22 + mmdc：63 块修复前 FAIL 12、修复后全 PASS）。
+
+    **只判有把握的**，宁可漏判也不误判：
+    - y-axis 必须含 `-->`——这是 mermaid 语法强制的范围箭头，上面那个错的
+      充分必要条件就是它缺失；带引号/不带引号的标题都不影响这一条。
+      （没写 y-axis 的块直接放过：范围轴是可选的。）
+    - xychart 的方括号必须配平——`bar [1, 2` 这种截断写法一定解析失败。
+    刻意**不**查"有没有 x-axis / 有没有数据项"：那些 mermaid 可能容错，
+    误杀会把好图判死，而明早的跑批没人盯着重试（漏判的代价只是"图丑"）。
+    """
+    if not body.strip():
+        return "空块"
+    lines = [ln for ln in body.splitlines() if ln.strip()]
+    is_xy = bool(re.match(r"\s*xychart", lines[0], re.I))
+    if is_xy and body.count("[") != body.count("]"):
+        return (f"方括号不配平：[{body.count('[')} 个 [ 对 "
+                f"{body.count(']')} 个 ]（块被截断了）")
+    for ln in lines:
+        if re.match(r"\s*y-axis\b", ln, re.I) and "-->" not in ln:
+            return (f'y-axis 缺范围箭头，要写成 y-axis "标签" 最小 --> 最大：'
+                    f"{ln.strip()}")
+    return None
+
+
 def h_mermaid(ctx: dict, rule: dict) -> dict:
     """md 里 mermaid **图表**块数量 ≥ min——"报告要有图"的机械判据。
 
     为什么需要它：原来验收只查"文件在不在/多大/有没有来源"，四份报告全是
     表格和长段文字，没有一处曲线，任务照样全绿——"有数据"和"看得懂"是两件事。
 
-    判不了"图画得对不对"（那得人看），但能判"有没有图、够不够几张"。
     计数只认**图表类**图（xychart/pie/gantt），mindmap/sequence 这类不算，
     免得模型贴个不相干的块凑数；`blocks` 一并报出来，方便看出"贴了但不会画"。
+
+    2026-10-05 加了 `lint_chart_block`：数进去的必须是**渲染得出来**的图
+    （见该函数 docstring）。`detail` 保持 `mermaid_charts= blocks= need>=`
+    的老顺序——下游与测试都按子串匹配它，坏块信息追加在末尾。
     """
     p, err = normalize_path(rule.get("path"), ctx["date"])
     if err:
@@ -215,10 +252,13 @@ def h_mermaid(ctx: dict, rule: dict) -> dict:
     blocks = re.findall(r"```mermaid\s*\n(.*?)```", text, re.S | re.I)
     charts = [b for b in blocks
               if re.search(r"^\s*(xychart|pie|gantt)", b, re.I | re.M)]
+    bad = [p for p in (lint_chart_block(b) for b in charts) if p]
+    good = len(charts) - len(bad)
     need = int(rule.get("min") or 1)
-    return {"ok": len(charts) >= need,
-            "detail": f"mermaid_charts={len(charts)} blocks={len(blocks)} "
-                      f"need>={need}"}
+    detail = f"mermaid_charts={good} blocks={len(blocks)} need>={need}"
+    if bad:
+        detail += f" bad={len(bad)} first={bad[0]}"
+    return {"ok": good >= need, "detail": detail}
 
 
 # ---------- 调研质量 4 handlers（§2.2b） ----------
