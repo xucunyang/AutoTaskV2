@@ -190,6 +190,16 @@ python -m core.governor --mode auto      # 交回自动
 
 `WakeToRun` + `StartWhenAvailable` 让机器在睡/关机时也会被叫醒补跑，**错过就补、不跳过这一期**。
 
+### 跑完会弹通知（弹框 + 声音）
+
+跑批在 08:00 发生时没人盯着终端——退出码、日志、结构化事件全都等于没发生。所以 `run_daily` 收尾时会发一条 Windows 桌面通知（`core/winnotify.py`）：
+
+- 通道：WinRT Toast，失败回退 `NotifyIcon` 气泡；**不装任何模块**，全程 15s 超时保护，通知坏了绝不连累跑批
+- 音效：退出码 0 用 `Notification.Default`，非 0 用 `Notification.LoopingAlarm`——**失败必须比成功更响**
+- 内容：`✅ 跑完了 daily_report · 2026-10-05` / `用时 12.3 分钟 · 完成 4 · 死信 0 · 未终态 1`
+- 关掉它：`run_daily --no-notify`
+- 弹框标题显示 **Windows PowerShell**（借用它的 AUMID，本模块没注册自己的）；开了专注助手或锁屏会被压掉
+
 ```powershell
 # 看状态：state / 下次触发 / 上次结果（267011 = 还没跑过）
 Get-ScheduledTask -TaskPath '\AutoTaskV2\' | Get-ScheduledTaskInfo

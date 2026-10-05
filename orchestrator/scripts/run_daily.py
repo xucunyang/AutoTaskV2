@@ -37,7 +37,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import executor, power, scheduler as sched_mod   # noqa: E402
+from core import executor, power, scheduler as sched_mod, winnotify   # noqa: E402
 from core.orchestrator import Orchestrator                  # noqa: E402
 from core.store import Store                                # noqa: E402
 from core.utils import jlog                                 # noqa: E402
@@ -92,10 +92,13 @@ def main(argv: list[str] | None = None) -> int:
                     help="验收 worker 数（读 config workers.verifier_idle）")
     ap.add_argument("--root", default=None)
     ap.add_argument("--dry-run", action="store_true", help="只建计划不执行")
+    ap.add_argument("--no-notify", action="store_true",
+                    help="不弹桌面通知（默认弹框+声音，见 core/winnotify.py）")
     args = ap.parse_args(argv)
 
     root = Path(args.root) if args.root else ROOT
     date = args.date or shanghai_today()
+    t0 = time.monotonic()
 
     # 计划任务跑的时候没人盯着终端：Task Scheduler 会把 stdout 丢掉，
     # 于是"今天到底跑没跑、跑到哪一步"只剩结构化事件可查。这里把进度行
@@ -114,11 +117,19 @@ def main(argv: list[str] | None = None) -> int:
     else:
         tpl = template_for(root, args.job)
         if tpl is None:
+            jobs = known_jobs(root)
             _say(json.dumps({"error": "unknown_job", "job": args.job,
-                             "known_jobs": known_jobs(root),
+                             "known_jobs": jobs,
                              "detail": "schedule.yaml 里没有这个 job_id，"
                                        "拒绝用别的模板凑合"},
                             ensure_ascii=False, indent=2))
+            # 起都起不来更要弹：不通知的话，这台机器"每天都在跑"其实是
+            # 每天都在静默退出，没人会发现。
+            winnotify.notify(
+                f"❌ 起不来 {args.job} · {date}",
+                "退出码 3：schedule.yaml 里没有这个 job_id\n"
+                f"已知 job：{', '.join(str(j) for j in jobs)}",
+                fail=True)
             return 3
 
     store = Store(root)
@@ -227,10 +238,23 @@ def main(argv: list[str] | None = None) -> int:
          dead=len(summary["dead_letter"]),
          open=len(summary["not_terminal"]))
     if summary["not_terminal"]:
-        return 1
-    if summary["dead_letter"]:
-        return 2
-    return 0
+        rc = 1
+    elif summary["dead_letter"]:
+        rc = 2
+    else:
+        rc = 0
+    # 弹框 + 声音收尾。计划任务跑批时没人看终端，退出码与日志都等于
+    # 没发生；这条通知是这套自动化里唯一会主动找人的东西。
+    winnotify.notify_summary(
+        root, args.job, date, rc=rc,
+        done=sum(1 for t in summary["tasks"]
+                 if t["status"] in ("DONE", "SKIPPED", "SKIPPED_CACHED")),
+        dead=len(summary["dead_letter"]),
+        not_terminal=[t["task_id"] for t in summary["tasks"]
+                      if t["status"] not in TERMINAL],
+        elapsed_min=(time.monotonic() - t0) / 60.0,
+        enabled=not args.no_notify)
+    return rc
 
 
 if __name__ == "__main__":

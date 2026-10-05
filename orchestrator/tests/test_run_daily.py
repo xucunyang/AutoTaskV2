@@ -125,3 +125,16 @@ def test_unknown_job_fails_loudly(tmp_path, capsys):
     assert out["job"] == "housing_dayly"
     assert set(out["known_jobs"]) == {"daily_report", "housing_daily"}
     assert _plan_ids(tmp_path) == set()
+
+
+def test_run_daily_wires_the_desktop_notification():
+    """接线门禁：跑批收尾必须弹框+声音，"起不来"那条也不能漏。
+
+    计划任务跑批时没人看终端——退出码、reports/*.log、结构化事件
+    全都等于没发生。这条桌面通知是这套自动化里唯一会主动找人的东西，
+    被谁顺手删掉就等于通知功能静默失效（测试还全绿）。
+    """
+    src = (ROOT_TPL / "scripts" / "run_daily.py").read_text(encoding="utf-8")
+    assert "winnotify.notify_summary(" in src, "收尾通知被摘掉了"
+    assert "winnotify.notify(" in src, "unknown_job 那条不弹了"
+    assert "--no-notify" in src, "没有关闭开关"
