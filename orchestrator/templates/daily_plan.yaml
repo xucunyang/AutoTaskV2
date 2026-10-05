@@ -73,7 +73,10 @@ tasks:
     name: 生成日报
     objective: >-
       基于 artifacts/{date}/t2_clean.csv 与 artifacts/{date}/charts.md 生成：
-      ① artifacts/{date}/summary.json（形状见验收，date + rows 必填）；
+      ① artifacts/{date}/summary.json——**逐字按这个形状写**：
+         {"date": "YYYY-MM-DD", "rows": <整数行数>}，
+         `rows` 是**整数**（如 70），不是数组/对象；城市明细请另放 city_rows。
+         形状以验收的 json_schema 为准（卡上已把类型列出）；
       ② artifacts/{date}/report.md——先给结论与关键数字，再把 charts.md 里的
       mermaid 图块**原样贴进**对应小节（正文至少 1 张图，验收按 mermaid 计数），
       最后注明数据期次与来源。只贴表格不贴图 = FAIL。

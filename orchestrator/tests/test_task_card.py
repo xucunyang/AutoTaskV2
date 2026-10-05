@@ -321,3 +321,53 @@ def test_rule_ids_in_card_follow_acceptance_order():
     assert "时效（硬验收 rule_3）" not in c
     # 门槛数字本身也要照抄验收
     assert "≥ 20%" in c and "365" in c
+
+
+def test_json_schema_ref_is_inlined_as_shape():
+    """schema_ref 只是一行**路径**，形状必须连类型一起渲染进卡。
+
+    实测 2026-10-05：t3_report 连挂两轮进死信——卡上只给
+    `schema_ref: schemas/summary.schema.json`，objective 又只说"date + rows
+    必填"，模型把 rows 写成城市明细数组（schema 实际要 integer 行数）。
+    模型不会为了核对一个类型专门去读文件，类型得摆在它眼前。
+    """
+    acc = ACCEPTANCE + [
+        {"type": "json_schema", "path": "artifacts/2026-10-05/summary.json",
+         "schema_ref": "schemas/summary.schema.json", "rule_id": "rule_2"},
+    ]
+    c = _card(task_id="t3_report", objective="生成日报",
+              outputs=["artifacts/2026-10-05/summary.json"], acceptance=acc)
+    assert "schemas/summary.schema.json（rule_2）要求" in c
+    assert '"rows": <integer>' in c, "形状示例里必须能看出 rows 是标量"
+    assert "rows=integer" in c
+    assert "不是数组" in c
+    assert estimate_tokens(c) < 2000
+
+
+def test_schema_hint_falls_back_when_ref_unreadable():
+    """schema 文件读不到时退回"只给路径"，绝不能把整张卡渲染炸掉。"""
+    acc = ACCEPTANCE + [{"type": "json_schema", "path": "artifacts/x.json",
+                         "schema_ref": "schemas/nope.schema.json"}]
+    c = _card(acceptance=acc)
+    assert "【JSON 形状" not in c
+    assert estimate_tokens(c) < 2000
+
+
+def test_card_without_json_schema_has_no_shape_block():
+    """没有 json_schema 规则的任务不该被塞一段无关形状说明（每行都是 token）。"""
+    assert "【JSON 形状" not in _card()
+
+
+def test_t3_real_acceptance_says_rows_is_integer():
+    """回归门禁：拿真 acceptance_t3 渲染，卡上必须点明 rows 是整数、编号对得上。"""
+    import yaml
+    acc = yaml.safe_load((ROOT / "schemas" / "acceptance_t3.yaml")
+                         .read_text(encoding="utf-8"))
+    c = _card(task_id="t3_report", objective="生成日报",
+              outputs=["artifacts/2026-10-05/summary.json",
+                       "artifacts/2026-10-05/report.md"],
+              acceptance=acc)
+    assert "rows=integer" in c, c
+    assert "不是数组" in c
+    assert "rule_2" in c, "卡上的编号要和 verifier 报的 rule_2 对得上"
+    assert estimate_tokens(c) < 2000

@@ -6,6 +6,7 @@ needs_web=true时追加"仅基于检索资料"注记（禁参数内知识）。
 """
 from __future__ import annotations
 
+import json
 import math
 from datetime import date, timedelta
 from pathlib import Path
@@ -81,6 +82,58 @@ def _rule_id(acceptance, rule_type: str) -> str:
     for i, rule in enumerate(acceptance or []):
         if isinstance(rule, dict) and rule.get("type") == rule_type:
             return rule.get("rule_id") or f"rule_{i}"
+    return ""
+
+
+def _schema_hint(root: Path, acceptance) -> str:
+    """把 json_schema 规则的 schema_ref **内联成形状**渲染进卡，取不到就返回空串。
+
+    实测 2026-10-05：acceptance_t3 只写 `schema_ref: schemas/summary.schema.json`，
+    卡上于是只有这一行**路径**，objective 又只说"date + rows 必填"——模型自己把
+    rows 理解成城市明细数组（schema 实际要 integer 行数），连挂两轮进死信。
+    路径不是形状：模型不会为了核对一个类型专门去读文件，类型得摆在它眼前。
+
+    三条护栏：
+    - 读不到文件/不是合法 JSON → 返回空串，卡上仍保留原路径，绝不把卡渲染炸掉；
+    - hint 超过 600 字就放弃内联（大 schema 会把卡片顶过 2k token 门禁）；
+    - 只展开 required 字段，optional 字段不进卡（每行都是 token）。
+    """
+    for i, rule in enumerate(acceptance or []):
+        if not isinstance(rule, dict) or rule.get("type") != "json_schema":
+            continue
+        ref = str(rule.get("schema_ref") or "")
+        if not ref:
+            continue
+        try:
+            data = json.loads((root / ref).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):        # schema 文件不是对象 → 不猜，保持原样
+            continue
+        props = data.get("properties") or {}
+        required = data.get("required") or list(props)
+        fields = []
+        for k in required:
+            spec = props.get(k)
+            if isinstance(spec, dict) and spec.get("type"):
+                fields.append((k, str(spec["type"])))
+        if not fields:
+            continue
+        # 形状示例：required 按类型占位，一眼看出 rows 该写标量还是数组
+        sample = "{" + ", ".join(
+            f'"{k}": "<{t}>"' if t == "string" else f'"{k}": <{t}>'
+            for k, t in fields) + "}"
+        hint = (f"{ref}（{rule.get('rule_id') or f'rule_{i}'}）要求：\n"
+                f"  {sample}\n"
+                f"  字段类型：" + "，".join(f"{k}={t}" for k, t in fields))
+        scalars = [k for k, t in fields if t in ("integer", "number", "boolean")]
+        if scalars:
+            hint += ("\n  " + "、".join(scalars) +
+                     " 必须写成对应标量（整数/小数/布尔），**不是数组或对象**"
+                     "——写成数组会 schema_violation。")
+        if len(hint) > 600:
+            return ""
+        return hint
     return ""
 
 
@@ -165,6 +218,8 @@ def render_task_card(root: str | Path, *, task_id: str, plan_id: str, run_id: st
                           if manifest else "（无输入产物）",
         "acceptance_yaml": yaml.safe_dump(acceptance, allow_unicode=True,
                                           sort_keys=False).strip(),
+        # json_schema 的形状内联进卡（schema_ref 只是路径，模型不会照着路径去读）
+        "schema_hint": _schema_hint(root, acceptance),
         "idempotency_key": idempotency_key,
         "budget": budget,
         "outputs": "、".join(outputs) if outputs else "（未声明）",
