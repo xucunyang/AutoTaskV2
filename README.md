@@ -192,6 +192,10 @@ python -m core.governor --mode auto      # 交回自动
 | 2 | 有死信，按 `docs/sop/dead-letter.md` 处理 |
 | 3 | 配置/存储层错误，含 `--job` 在 `schedule.yaml` 里查不到 |
 
+**2 优先于 1**：死信和在途同时存在时报 2（`run_daily.exit_code`）。死信是系统主动放弃的那一条，报 1 会把失败压成"再等等就好"的语气，监控和通知也就看不见了。
+
+**卡死会提前收工**（`run_daily.stuck_on_dead`）：死信会把下游依赖挡住，那些任务永远停在 `PENDING`——只认"waiting 空 or 墙钟到点"的话要干等满 90 分钟。判据是三条同时成立才算卡死：至少一个死信、剩余任务里没有一个在自己动（RUNNING/SUBMITTED/VERIFYING/RETRY）、每个剩余任务的依赖链上都能追溯到死信。命中就直接退出，把机器让给下一个 job（退出码仍按死信报 2）。
+
 job 之间要**错开**不是随手定的：`tick()` 看的是全库 `active_plans`，同时跑会互相派发对方的任务、重复验收（派发有 `expect_version` 兜底不会串，但白干活还多出版本冲突重试）。`schedule.yaml` 里 08:00 / 08:30 / 10:00 / 14:00 的间距由 `test_job_matrix::test_jobs_are_spread_out_in_time` 保证 ≥30 分钟。
 
 已知余量：daily 自带 `timeout-min 90`，但常态 10–12 分钟就退出（08:12 前），到 08:30 还有 18 分钟余量；万一 daily 越跑越久挤进 finance 的窗口，两条链会短暂重叠（`expect_version` 兜底不会串，只是白干活）。housing 10:00、hardware 14:00 与前后都差 ≥90 分钟。

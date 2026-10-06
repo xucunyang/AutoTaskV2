@@ -263,20 +263,12 @@ def h_mermaid(ctx: dict, rule: dict) -> dict:
 
 # ---------- 调研质量 4 handlers（§2.2b） ----------
 
-def _load_four_set(ctx: dict, task_id: str) -> tuple[list, list, str]:
-    """读四件套。查找顺序：声明的 outputs → 产物所在目录 → plan 逻辑日期 → ctx 日期。
+def _four_paths(ctx: dict, task_id: str) -> dict[str, Path]:
+    """四件套的候选路径（查找顺序见 _load_four_set 的 docstring）。
 
-    为什么不能只按 `artifacts/{date}/` 找（`date` 取的是入队时间）：
-    任务入队日和 plan 的**逻辑日期**经常不一致——补跑历史日期、或 plan 建得早
-    而任务跑得晚，都会让两者差几天。实测 2026-10-03 就是这样：
-    plan 逻辑日期 10-05（acceptance 的 path 在建 plan 时已展开成 10-05，
-    所以 file_exists/business_rule 能过），而入队时间是 10-02，
-    于是四件套去 `artifacts/2026-10-02/` 找，那里只有 .md 没有 claims/sources，
-    三条 source 规则齐刷刷报 no_claims_json/no_sources_json——
-    同一次验收里两套日期各走各的，必然自相矛盾。
-
-    按 outputs 的父目录找是最可靠的：模型的 .md / .claims.json / .sources.json
-    一定写在同一个目录（它就在那个目录下工作）。
+    单独抽出来，是为了让「读数据」和「读不出来时说清为什么」用**同一套**
+    路径规则——两处各找各的，就会出现"文件明明在，detail 却说 no_sources_json"
+    这种自相矛盾的话（2026-10-05 排查 t1_stocks 死信时就卡在这）。
     """
     root = Path(ctx["root"])
     declared = [str(o).replace("\\", "/")
@@ -305,12 +297,59 @@ def _load_four_set(ctx: dict, task_id: str) -> tuple[list, list, str]:
                 return d / want
         return uniq[0] / want                    # 都没有 → 返回首选，报"文件不存在"
 
-    src, clm, rep = (_pick(".sources.json"), _pick(".claims.json"),
-                     _pick(".report.md"))
-    sources = _safe_json(root, src)
-    claims = _safe_json(root, clm)
+    return {"sources": _pick(".sources.json"),
+            "claims": _pick(".claims.json"),
+            "report": _pick(".report.md")}
+
+
+def _load_four_set(ctx: dict, task_id: str) -> tuple[list, list, str]:
+    """读四件套。查找顺序：声明的 outputs → 产物所在目录 → plan 逻辑日期 → ctx 日期。
+
+    为什么不能只按 `artifacts/{date}/` 找（`date` 取的是入队时间）：
+    任务入队日和 plan 的**逻辑日期**经常不一致——补跑历史日期、或 plan 建得早
+    而任务跑得晚，都会让两者差几天。实测 2026-10-03 就是这样：
+    plan 逻辑日期 10-05（acceptance 的 path 在建 plan 时已展开成 10-05，
+    所以 file_exists/business_rule 能过），而入队时间是 10-02，
+    于是四件套去 `artifacts/2026-10-02/` 找，那里只有 .md 没有 claims/sources，
+    三条 source 规则齐刷刷报 no_claims_json/no_sources_json——
+    同一次验收里两套日期各走各的，必然自相矛盾。
+
+    按 outputs 的父目录找是最可靠的：模型的 .md / .claims.json / .sources.json
+    一定写在同一个目录（它就在那个目录下工作）。
+    """
+    root = Path(ctx["root"])
+    p = _four_paths(ctx, task_id)
+    sources = _safe_json(root, p["sources"])
+    claims = _safe_json(root, p["claims"])
+    rep = p["report"]
     report = rep.read_text(encoding="utf-8", errors="ignore") if rep.exists() else ""
     return _normalize_sources(sources), _normalize_claims(claims), report
+
+
+def sources_issue_detail(ctx: dict, task_id: str) -> str:
+    """sources 读不出条目时，说清到底是「没文件」「文件坏了」还是「形状不对」。
+
+    为什么值得单列：2026-10-05 t1_stocks 死信，detail 只写 `no_sources_json`，
+    可 `t1_stocks.sources.json` 就在产物目录里躺着——真实原因是标题里的
+    英文双引号没转义（`A股2026"开门红"`），整份 JSON 解析不了，
+    `_safe_json` 按"没有可用数据"吞掉并记 WARN。排查时间全花在
+    "文件到底在不在"上。三种坏法的修法完全不同：
+    没文件 = 模型没交；文件坏了 = 模型交了但写坏（retry 时照着改就行）；
+    形状不对 = 交错了结构。**detail 要指向能改的那一层。**
+    """
+    p = _four_paths(ctx, task_id)["sources"]
+    if not p.exists():
+        return "no_sources_json"
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except (ValueError, OSError) as e:
+        return (f"sources_json_invalid:{type(e).__name__}:{str(e)[:120]} "
+                f"@{p.name}")
+    if not _normalize_sources(raw):
+        return f"sources_json_bad_shape @{p.name}"
+    # 走到这说明"文件好好的但 _load_four_set 却读不出条目"——同一套路径和
+    # 解析器不该自相矛盾，真出现就是代码有问题，别再套上"没文件"的话术。
+    return f"sources_unexplained_empty @{p.name}"
 
 
 def plan_date_of(plan_id: str) -> str:
@@ -399,6 +438,12 @@ def h_source_traceable(ctx: dict, rule: dict) -> dict:
     sources, claims, _ = _load_four_set(ctx, task_id)
     if not claims:
         return {"ok": False, "detail": "no_claims_json"}
+    if not sources:
+        # claims 在、sources 却读不出来 → 十有八九是 sources.json 写坏了。
+        # 不拦这一下会掉进下面的 validate_claims：每条 claim 的 source_id
+        # 都"找不到来源"，报成 hallucination —— 把人引去查"claim 挂错来源"，
+        # 而真正要改的是那个解析不了的文件。
+        return {"ok": False, "detail": sources_issue_detail(ctx, task_id)}
     bad = search_pipeline.validate_claims(claims, sources)
     bad_urls = [s.get("url", "") for s in sources
                 if not str(s.get("url", "")).startswith(("http://", "https://"))]
@@ -414,7 +459,7 @@ def h_freshness(ctx: dict, rule: dict) -> dict:
     task_id = ctx["task_id"]
     sources, _, _ = _load_four_set(ctx, task_id)
     if not sources:
-        return {"ok": False, "detail": "no_sources_json"}
+        return {"ok": False, "detail": sources_issue_detail(ctx, task_id)}
     days = int(rule.get("freshness_days")
                or FRESHNESS_DAYS.get(ctx.get("freshness", "none"), 730))
     now = datetime.now(timezone.utc)
@@ -447,7 +492,7 @@ def h_source_quality(ctx: dict, rule: dict) -> dict:
     task_id = ctx["task_id"]
     sources, _, _ = _load_four_set(ctx, task_id)
     if not sources:
-        return {"ok": False, "detail": "no_sources_json"}
+        return {"ok": False, "detail": sources_issue_detail(ctx, task_id)}
     min_ratio = float((rule.get("source_tier_min_ratio") or {}).get("A", A_TIER_MIN_RATIO))
     counted = [s for s in sources if str(s.get("tier_reason", "")).strip()]
     if not counted:

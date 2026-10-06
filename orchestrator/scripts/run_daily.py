@@ -14,6 +14,9 @@
     2  有死信（DEAD_LETTER），需要人工按 SOP 处理
     3  配置/存储层错误（含 --job 在 schedule.yaml 里查不到）
 
+    2 与 1 同时成立时报 **2**：死信是系统主动放弃的那一条，比"还没跑完"
+    更需要人看；报 1 会把失败压成"再等等就好"的语气（见 exit_code）。
+
 plan 归属：`--job` 同时决定模板**和** plan_id 前缀（`{job}_{date}`）。
 漏传 job_id 会让 housing 的活儿挂到 `daily_report_{date}` 上，且因为
 ensure_plan 对"存在且有任务"一律 skip，当天日报**静默不跑**——踩过。
@@ -53,6 +56,58 @@ TERMINAL = ("DONE", "SKIPPED", "SKIPPED_CACHED", "CANCELLED", "DEAD_LETTER")
 # 一个都没派发出去。必须把 PENDING 算进在途。
 WAITING = ("PENDING", "BLOCKED", "READY", "RUNNING", "SUBMITTED",
            "VERIFYING", "RETRY", "YIELDING")
+
+# 这些状态是"任务自己还在动"，等一等可能有结果（做完 / 新死一个）
+IN_FLIGHT = ("RUNNING", "SUBMITTED", "VERIFYING", "RETRY")
+
+
+def exit_code(not_terminal: int, dead_letter: int) -> int:
+    """退出码：死信优先于在途。
+
+    2026-10-05 加：stuck_on_dead 提前收工后，被死信挡住的任务还停在
+    PENDING，`not_terminal` 必然非 0 —— 按"先判 not_terminal"的老顺序
+    一律报 1，死信反被遮住，监控和通知都只会说"还在跑"。
+    """
+    if dead_letter:
+        return 2
+    if not_terminal:
+        return 1
+    return 0
+
+
+def stuck_on_dead(rows: list[dict]) -> bool:
+    """剩下的任务**全被死信挡住**，且没有一个在自己动 → 再等也不会有终态。
+
+    2026-10-05 实测：t1_stocks 三次验收不过进死信后，t3 永远 PENDING
+    （每 tick 被拒一次 `deps_unsatisfied`），而主循环只认"waiting 空 or
+    墙钟到点"，于是干等满 90 分钟 timeout 才退出。08:30 起跑的链一旦这样
+    收场，会一路占到 10:00 撞上 housing 起跑，两条链并行写同一个库——
+    **卡死不等于还在跑**，该收就收，退出码按死信报 2。
+
+    判据三条，缺一不可：
+    1. 至少有一个死信（没死信就只是还没跑完，属于正常等待）；
+    2. 在途任务里没有"自己还在动"的（有的话它可能做完、也可能新死一个）；
+    3. 每个剩余任务的依赖链上都能追溯到死信（有一条链通着，就还有希望）。
+    """
+    dead = {r["task_id"] for r in rows if r["status"] == "DEAD_LETTER"}
+    if not dead:
+        return False
+    waiting = [r for r in rows if r["status"] in WAITING]
+    if not waiting:
+        return False                       # 全进终态了，走正常出口
+    if any(r["status"] in IN_FLIGHT for r in waiting):
+        return False
+    deps = {r["task_id"]: list((r.get("shard") or {}).get("depends_on") or [])
+            for r in rows}
+
+    def _blocked(tid: str, seen: frozenset = frozenset()) -> bool:
+        if tid in dead:
+            return True
+        if tid in seen or tid not in deps:
+            return False                   # 依赖已完成 / 不在本 plan，没被挡住
+        return any(_blocked(d, seen | {tid}) for d in deps[tid])
+
+    return all(_blocked(r["task_id"]) for r in waiting)
 
 
 def shanghai_today() -> str:
@@ -236,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
             rows = store.list_plan_tasks(plan_id)
             return {
                 "plan_id": plan_id,
+                "rows": rows,
                 "waiting": [r for r in rows if r["status"] in WAITING],
                 "dead": [r for r in rows if r["status"] == "DEAD_LETTER"],
                 "done": [r for r in rows if r["status"]
@@ -258,6 +314,17 @@ def main(argv: list[str] | None = None) -> int:
                     if not waiting:
                         _say(f"全部任务进终态：done={len(done)} "
                              f"dead={len(dead)}")
+                        return
+                    if stuck_on_dead(st_["rows"]):
+                        # 剩下的全被死信挡住、又没人在动：等满墙钟也不会变，
+                        # 提前收工把机器让给下一个 job（退出码仍按死信报 2）
+                        _say(f"卡死收工：剩余 {len(waiting)} 个任务的依赖链上"
+                             f"都有死信 dead="
+                             f"{[r['task_id'] for r in dead]} "
+                             f"waiting={[r['task_id'] for r in waiting][:5]}")
+                        jlog(root, "WARN", "daily_run_stuck_dead", date=date,
+                             dead=",".join(r["task_id"] for r in dead[:10]),
+                             waiting=",".join(r["task_id"] for r in waiting[:10]))
                         return
                     _say(f"[{time.strftime('%H:%M:%S')}] "
                          f"done={len(done)} waiting={len(waiting)} "
@@ -297,12 +364,9 @@ def main(argv: list[str] | None = None) -> int:
     jlog(root, "INFO", "daily_run_finished", date=date,
          dead=len(summary["dead_letter"]),
          open=len(summary["not_terminal"]))
-    if summary["not_terminal"]:
-        rc = 1
-    elif summary["dead_letter"]:
-        rc = 2
-    else:
-        rc = 0
+    # 死信优先（见 exit_code 的注释）：被死信挡住的任务会一直停在 PENDING，
+    # 只看 not_terminal 的话，死信那一次会被报成"还在跑"。
+    rc = exit_code(len(summary["not_terminal"]), len(summary["dead_letter"]))
     # 弹框 + 声音收尾。计划任务跑批时没人看终端，退出码与日志都等于
     # 没发生；这条通知是这套自动化里唯一会主动找人的东西。
     # links：通知里带上能一键打开的报告按钮（正文里也印一份路径，

@@ -970,3 +970,75 @@ def test_mermaid_lint_has_no_false_positive(tmp_path):
     assert "bad=" not in got["detail"]
     # 正常图也不受影响
     assert _mermaid_rule(_root(tmp_path / "b"), _MD_LINE)["ok"] is True
+
+
+# ---- sources 读不出来时，detail 必须指向"能改的那一层"（2026-10-05） ----
+
+def _four_ctx(tmp_path: Path) -> dict:
+    return {"root": tmp_path, "date": "2026-10-05",
+            "plan_id": "finance_daily_2026-10-05", "task_id": "t1_stocks",
+            "shard": {"outputs": ["artifacts/2026-10-05/t1_stocks.csv"]}}
+
+
+def test_sources_issue_detail_distinguishes_three_failures(tmp_path):
+    """「没文件 / 文件坏了 / 形状不对」三种坏法，detail 各说各的。
+
+    真实事故：t1_stocks 的 sources.json 就在产物目录里，title 里一个没转义
+    的英文双引号（`A股2026"开门红"`）让整份 JSON 解析不了，可三条 source
+    规则统统报 `no_sources_json`——排查先怀疑"模型没写文件"，白翻半天目录。
+    文件坏了和压根没交，修法完全不一样，detail 得把人送到该改的地方。
+    """
+    d = tmp_path / "artifacts" / "2026-10-05"
+    d.mkdir(parents=True)
+    ctx = _four_ctx(tmp_path)
+
+    # ① 真没文件
+    assert vf.sources_issue_detail(ctx, "t1_stocks") == "no_sources_json"
+
+    # ② 文件在，但 JSON 解析不了（这次的死因）
+    (d / "t1_stocks.sources.json").write_text(
+        '[{"source_id": "s1", "title": "A股2026"开门红" 机构看好"}]',
+        encoding="utf-8")
+    got = vf.sources_issue_detail(ctx, "t1_stocks")
+    assert got.startswith("sources_json_invalid:"), got
+    assert "t1_stocks.sources.json" in got, got
+
+    # ③ 文件在、JSON 也没坏，但结构不是验收认得的形状
+    (d / "t1_stocks.sources.json").write_text('{"foo": 1}', encoding="utf-8")
+    assert vf.sources_issue_detail(ctx, "t1_stocks").startswith(
+        "sources_json_bad_shape")
+
+    # ④ 好文件照常读得出条目（issue 分支不误伤）
+    (d / "t1_stocks.sources.json").write_text(
+        json.dumps([{"source_id": "s1", "url": "https://a.com",
+                     "tier_reason": "官方机构"}]), encoding="utf-8")
+    sources, _, _ = vf._load_four_set(ctx, "t1_stocks")
+    assert len(sources) == 1
+
+
+def test_broken_sources_detail_reaches_all_three_source_rules(tmp_path):
+    """三条 source 规则的 detail 都要说明白——它们是 retry 时的反馈。
+
+    尤其 h_source_traceable：claims 在、sources 坏时，老逻辑会掉进
+    validate_claims，把每条 claim 报成 hallucination，把人引去查
+    "claim 挂错来源"，而真正要改的是那个解析不了的文件。
+    """
+    d = tmp_path / "artifacts" / "2026-10-05"
+    d.mkdir(parents=True)
+    (d / "t1_stocks.sources.json").write_text(
+        '[{"source_id": "s1", "title": "坏的"引号"}]', encoding="utf-8")
+    (d / "t1_stocks.claims.json").write_text(json.dumps([
+        {"claim_id": "c1", "text": "上证涨0.31%",
+         "source_ids": ["s1"], "quote": "上证指数报3842.19点，涨0.31%"}]),
+        encoding="utf-8")
+    ctx = _four_ctx(tmp_path)
+
+    checks = {
+        "freshness": vf.h_freshness(ctx, {"freshness_days": 365}),
+        "source_quality": vf.h_source_quality(
+            ctx, {"source_tier_min_ratio": {"A": 0.2}}),
+        "source_traceable": vf.h_source_traceable(ctx, {}),
+    }
+    for name, got in checks.items():
+        assert got["ok"] is False, (name, got)
+        assert got["detail"].startswith("sources_json_invalid:"), (name, got)

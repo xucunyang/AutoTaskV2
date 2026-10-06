@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.run_daily import main as run_daily_main     # noqa: E402
 from scripts.run_daily import report_links               # noqa: E402
+from scripts.run_daily import exit_code, stuck_on_dead   # noqa: E402
 from core.store import Store                             # noqa: E402
 
 ROOT_TPL = Path(__file__).resolve().parents[1]
@@ -185,3 +186,58 @@ def test_report_links_without_artifacts_dir(tmp_path):
     (tmp_path / "artifacts" / "2099-01-01").mkdir(parents=True)
     got = report_links(tmp_path, "2099-01-01", [{"shard": {"outputs": []}}])
     assert [lab for lab, _p in got] == ["产物目录"]
+
+
+# ---- 卡死提前收工 + 退出码优先级（2026-10-05 finance 首跑实测） ----
+
+def _row(task_id: str, status: str, deps=()) -> dict:
+    return {"task_id": task_id, "status": status,
+            "shard": {"depends_on": list(deps)}}
+
+
+def test_exit_code_dead_letter_wins_over_in_flight():
+    """死信优先于在途：被死信挡住的任务会一直 PENDING。
+
+    按老顺序（先判 not_terminal）会一律报 1，通知和监控只说"还在跑"，
+    真正需要人处理的死信反被遮住。
+    """
+    assert exit_code(0, 0) == 0
+    assert exit_code(2, 0) == 1
+    assert exit_code(0, 1) == 2
+    assert exit_code(2, 1) == 2, "死信被在途遮住，监控就看不见了"
+
+
+def test_stuck_when_every_waiting_task_is_blocked_by_dead():
+    """全被死信挡住 → 再等也不会有终态，提前收工把机器让给下一个 job。"""
+    # 直接依赖：t3 → t1(死)
+    assert stuck_on_dead([_row("t1", "DEAD_LETTER"),
+                          _row("t3", "PENDING", ["t1"]),
+                          _row("t2", "DONE")]) is True
+    # 间接依赖：t3 → t2(PENDING) → t1(死)，照样卡死
+    assert stuck_on_dead([_row("t1", "DEAD_LETTER"),
+                          _row("t2", "PENDING", ["t1"]),
+                          _row("t3", "PENDING", ["t2"])]) is True
+    # 自环/未知依赖不能把判断卡住
+    assert stuck_on_dead([_row("t1", "DEAD_LETTER"),
+                          _row("t2", "PENDING", ["t2", "ghost"])]) is False
+
+
+def test_not_stuck_when_still_have_something_to_wait_for():
+    """只在"没死信 / 还有人在动 / 依赖链还通着"时才算没卡死。"""
+    # 没死信：正常等待
+    assert stuck_on_dead([_row("t1", "PENDING")]) is False
+    # 有死信但另一条链还在动 → 它可能做完，也可能新死一个，再等等
+    assert stuck_on_dead([_row("t1", "DEAD_LETTER"),
+                          _row("t2", "RUNNING")]) is False
+    assert stuck_on_dead([_row("t1", "DEAD_LETTER"),
+                          _row("t2", "VERIFYING")]) is False
+    # READY 的依赖是满足的，它随时能被派发 → 不是卡死
+    assert stuck_on_dead([_row("t1", "DEAD_LETTER"),
+                          _row("t2", "READY")]) is False
+    # 剩下的任务依赖链通着（上游 DONE）→ 不是卡死
+    assert stuck_on_dead([_row("t1", "DEAD_LETTER"),
+                          _row("t2", "PENDING", ["t3"]),
+                          _row("t3", "DONE")]) is False
+    # 全进终态 → 走正常出口，别抢在这报卡死
+    assert stuck_on_dead([_row("t1", "DEAD_LETTER"),
+                          _row("t2", "DONE")]) is False
