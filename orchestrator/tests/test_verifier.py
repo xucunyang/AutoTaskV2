@@ -357,6 +357,90 @@ def test_dod8_all_answered_passes(tmp_path):
     assert got["ok"] is True
 
 
+# ---------- business_rule 注入 json（per-market data_period 用例） ----------
+
+def test_business_rule_injects_json_when_path_ends_with_json(tmp_path):
+    """j_get(j, [...]) 的 expr 能从 json 产物读字段——finance data_period 校验收口。"""
+    root = _root(tmp_path)
+    p = root / "artifacts" / DATE / "finance_summary.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({
+        "date": DATE, "data_period": {"A股": "2026-09-30", "港股": "2026-09-29",
+                                       "美股": "2026-10-05"},
+        "rows": 20, "market_summary": {"A股": {}}, "key_findings": ["x"]},
+        ensure_ascii=False), encoding="utf-8")
+    rule = {"expr": 'j_get(j, ["data_period", "美股"], "") >= "2026-10-05"',
+            "path": f"artifacts/{DATE}/finance_summary.json"}
+    assert vf.h_business_rule(_ctx(root), rule)["ok"] is True
+
+    # 反例：美股日期回退到 9-30 → FAIL
+    p.write_text(json.dumps({
+        "data_period": {"A股": "2026-09-30", "美股": "2026-09-30"}}, ensure_ascii=False),
+        encoding="utf-8")
+    got = vf.h_business_rule(_ctx(root), rule)
+    assert got["ok"] is False
+    # detail 不许悄悄过——失败要带点东西
+    assert "美股" in got["detail"] or "expr=" in got["detail"]
+
+
+def test_business_rule_injects_empty_dict_when_json_breaks(tmp_path):
+    """json 坏掉时注入 `j={}`，让这条 business_rule 走 not_fact 而不抛异常。"""
+    root = _root(tmp_path)
+    p = root / "artifacts" / DATE / "finance_summary.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("这根本不是 json {", encoding="utf-8")
+    rule = {"expr": 'j_get(j, ["data_period", "美股"], "") >= "2026-10-05"',
+            "path": f"artifacts/{DATE}/finance_summary.json"}
+    got = vf.h_business_rule(_ctx(root), rule)
+    # 注入 {} → j_get(j, ["data_period","美股"], "") = ""，比较失败 → ok=False
+    assert got["ok"] is False
+    # 也不能是 eval_error（异常路径已吞掉）
+    assert "eval_error" not in got["detail"]
+
+
+def test_eval_expr_unknown_var_still_blocks_call_target():
+    """`Call` 进白名单是为了 j_get，不是放 `open()`/`os.system()`。
+    Attribute **没**放进白名单——`rows.__class__` 仍被 forbidden_node 拒。
+    `os.system(...)` 因为 `Call.func=Attribute(value=Name('os'),...)`，
+    AST walk 先碰到 Attribute 节点就 forbidden_node 拦下——attr/access 越
+    早拦越好（Attribute 一进来就能爬 __class__/__bases__/__subclasses__，
+    是沙箱测试一直在拦的注入面）。
+    """
+    ok, detail = vf.eval_expr("os.system('rm -rf /')", {})
+    assert ok is False
+    # Attribute 节点在最外层 Call.func 上先碰到 → forbidden_node 拦下
+    assert ("forbidden_node:Attribute" in detail) or ("unknown_var:os" in detail)
+    ok, detail = vf.eval_expr("rows.__class__ > 1", {"rows": 1})
+    assert ok is False
+    assert "forbidden_node:Attribute" in detail
+
+
+def test_eval_expr_allows_j_get_helper():
+    """正向：j_get(j, [...], default) 是白名单里的 helper，能正常取值。"""
+    ok, detail = vf.eval_expr(
+        'j_get(j, ["k"], {}) == {}',
+        {"j": {"k": {}}})
+    assert ok is True, detail
+    ok, _ = vf.eval_expr('j_get(j, ["a"], "") == "x"', {"j": {"a": "x"}})
+    assert ok is True
+    # 路径不存在 → 走 default
+    ok, _ = vf.eval_expr('j_get(j, ["missing"], "D") == "D"',
+                         {"j": {"k": "v"}})
+    assert ok is True
+    # None / 非 dict 走 default
+    ok, _ = vf.eval_expr('j_get(j, ["a", "b"], "D") == "D"',
+                         {"j": {"a": None}})
+    assert ok is True
+
+
+def test_eval_expr_rejects_arbitrary_builtins():
+    """`open`/`len`/`sum` 这种不能用——只在 BUILTIN_FNS 白名单里的能调。"""
+    for expr in ["open('/etc/passwd')", "len(rows) > 0", "sum(rows) > 0"]:
+        ok, why = vf.eval_expr(expr, {"rows": [1, 2]})
+        assert ok is False, expr
+        assert "unknown_var:" in why, (expr, why)
+
+
 def test_dod8_bracket_annotation_also_counts(tmp_path):
     root = _root(tmp_path)
     _four_set(root, sources=[], claims=[], report="# R\n[要点1] 已回答\n")

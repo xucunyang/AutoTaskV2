@@ -8,6 +8,7 @@ housing_daily.yaml、4 个任务全 CANCELLED）就是这么来的，而且因�
 `ensure_plan` 对"存在且有任务"一律 skip，当天的日报**静默不跑**。
 """
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -18,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.run_daily import main as run_daily_main     # noqa: E402
 from scripts.run_daily import report_links               # noqa: E402
 from scripts.run_daily import exit_code, stuck_on_dead   # noqa: E402
+from scripts.run_daily import _write_desktop_marker      # noqa: E402
 from core.store import Store                             # noqa: E402
 
 ROOT_TPL = Path(__file__).resolve().parents[1]
@@ -241,3 +243,89 @@ def test_not_stuck_when_still_have_something_to_wait_for():
     # 全进终态 → 走正常出口，别抢在这报卡死
     assert stuck_on_dead([_row("t1", "DEAD_LETTER"),
                           _row("t2", "DONE")]) is False
+
+
+# ---- 桌面 marker（不依赖通知中心也能看到） ----
+
+def _summary(tasks, dead=(), open_=()):
+    return {
+        "date": "2026-10-06",
+        "plan_id": "finance_daily_2026-10-06",
+        "tasks": [{"task_id": tid, "status": st} for tid, st in tasks],
+        "dead_letter": list(dead),
+        "not_terminal": list(open_),
+    }
+
+
+def test_desktop_marker_drops_file_in_desktop_with_summary(tmp_path):
+    """happy path：rc=0、3/3 done，桌面文件含 OK/任务/链接。
+
+    用显式 `desktop_dir=` 参数避开 os.path.expanduser 的环境变量缓存
+    副作用（import 时的 HOME 已被 Python 快照，monkeypatch.setenv 在
+    静态 `os.path.expanduser` 上的覆盖不可靠）。
+    """
+    desk = tmp_path / "Desktop"
+    desk.mkdir(parents=True)
+    root = tmp_path
+    _write_desktop_marker(
+        root, "finance_daily", "2026-10-06", rc=0,
+        summary=_summary([
+            ("t1_stocks", "DONE"), ("t2_investment", "DONE"),
+            ("t3_finance_report", "DONE")]),
+        links=[("股票日报", str(root / "artifacts" / "2026-10-06" / "finance_report.md"))],
+        desktop_dir=desk,
+    )
+    out = desk / "AutoTask_finance_daily_2026-10-06.txt"
+    body = out.read_text(encoding="utf-8-sig")
+    assert "[OK]" in body
+    assert "finance_daily 2026-10-06" in body
+    assert "t1_stocks" in body and "DONE" in body
+    assert "股票日报" in body
+    assert "run_daily_finance_daily_2026-10-06.log" in body
+
+
+def test_desktop_marker_uses_dead_icon_when_rc_2(tmp_path):
+    """死信 → [DEAD]，且提示 SOP。"""
+    desk = tmp_path / "Desktop"
+    desk.mkdir(parents=True)
+    _write_desktop_marker(
+        tmp_path, "finance_daily", "2026-10-06", rc=2,
+        summary=_summary([
+            ("t1_stocks", "DEAD_LETTER"), ("t2_investment", "DONE"),
+            ("t3_finance_report", "PENDING")],
+            dead=["t1_stocks"], open_=["t3_finance_report"]),
+        links=[],
+        desktop_dir=desk,
+    )
+    body = (desk / "AutoTask_finance_daily_2026-10-06.txt").read_text(
+        encoding="utf-8-sig")
+    assert "[DEAD]" in body
+    assert "死信处理" in body
+    assert "core.scheduler --rerun" in body
+
+
+def test_desktop_marker_passes_under_unwritable_dir(tmp_path):
+    """marker 写失败不抛异常——它不能反过来把整个 notify 链路炸掉。"""
+    # 把 desktop_dir 设成一个文件而不是目录，write_text 必然 OSError
+    bad = tmp_path / "not_a_dir"
+    bad.write_text("占位", encoding="utf-8")
+    # 不传 desktop_dir 时默认走 expanduser——可能写到真桌面，但即便写到
+    # 真桌面也只是「在测试环境多写一个文件」。重要的是这里**不能炸**。
+    _write_desktop_marker(
+        tmp_path, "housing_daily", "2026-10-06", rc=0,
+        summary=_summary([("t1_collect", "DONE")]),
+        links=[],
+        desktop_dir=bad,
+    )
+
+
+def test_run_daily_wires_desktop_marker():
+    """接线门禁：跑批收尾必须写桌面 marker（与 toast 并行，不是替代）。
+
+    toast 在锁屏会被系统丢掉（横幅 duration 到期 + 用户不在 → 进通知
+    中心）；人抬头能看见的只有桌面文件。摘掉这行就等于"人不在就错过"。
+    """
+    src = (ROOT_TPL / "scripts" / "run_daily.py").read_text(encoding="utf-8")
+    assert "_write_desktop_marker" in src, "桌面 marker 函数被摘掉了"
+    assert "_write_desktop_marker(root, args.job, date, rc, summary," \
+        in src, "main 末尾没调用桌面 marker"

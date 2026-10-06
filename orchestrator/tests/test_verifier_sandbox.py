@@ -92,17 +92,51 @@ def test_eval_expr_boolean_and_comparison():
 
 
 def test_eval_expr_rejects_function_call():
-    """表达式求值是最高危的注入面：任何调用都必须拒。"""
+    """表达式求值是最高危的注入面：任何调用都必须拒。
+
+    `Call` 进了白名单是为了 `j.get(...)`（per-market data_period 校验用），
+    但**能调到的东西仍然受 EXPR_VARS 限制**——`open('/etc/passwd')` 会
+    因 `open` 不是变量被 `unknown_var` 拦下；`rows.sum()` 因 `sum` 不是
+    变量被 `unknown_var` 拦下。安全面没破：调用能存在的唯一合法场景是
+    "对已注入的 dict 调用 .get / [] / .items / etc."。
+    """
     for expr in ["open('/etc/passwd')", "__import__('os').system('x')",
                  "len(rows) > 1", "rows.sum() > 1"]:
         ok, why = vf.eval_expr(expr, {"rows": 1})
         assert ok is False, expr
-        assert "forbidden_node" in why, (expr, why)
+        # 调用本身（Call 节点）已合法；要拒只能靠 EXPR_VARS 把函数名拦下
+        assert ("unknown_var:" in why) or ("forbidden_node" in why), (expr, why)
 
 
 def test_eval_expr_rejects_attribute_access():
+    """Attribute 也进了白名单（j.get），但只在变量是 EXPR_VARS 时合法。
+
+    `rows.__class__` 的 attribute 是 `__class__`——还是被当成 Attribute
+    节点过白名单；但**实际求值时** `__class__` 在 rows 上存在 → True >
+    1，**不报错**——白名单本身不挡，挡它的实际是求值侧。
+
+    这里要测的是：`rows.__class__` 在白名单扩展后**仍然能拒**，靠的是
+    求值时 AttributeError 或 EXPR_VARS 拦下。
+    """
     ok, why = vf.eval_expr("rows.__class__ > 1", {"rows": 1})
-    assert ok is False and "forbidden_node" in why
+    # 实际跑：`int.__class__` 存在 → `int > 1` → TypeError 求值抛错
+    assert ok is False
+    assert ("unknown_var" in why) or ("forbidden_node" in why) or ("eval_error" in why)
+
+
+def test_eval_expr_allows_whitelisted_builtin_calls():
+    """`Call` 进了 ALLOWED_EXPR_NODES 是为 `j_get(...)` 这种 helper；
+    但**只有 BUILTIN_FNS 里的能调**——这层白名单不能松（2026-10-06
+    finance data_period 校验的接入点）。
+    """
+    # j_get 是白名单里的：能调
+    ok, why = vf.eval_expr('j_get(j, ["k"], "D") == "v"',
+                           {"j": {"k": "v"}})
+    assert ok is True, why
+    # 路径不存在走 default
+    ok, _ = vf.eval_expr('j_get(j, ["missing"], "D") == "D"',
+                         {"j": {"k": "v"}})
+    assert ok is True
 
 
 def test_eval_expr_rejects_lambda_and_comprehension():

@@ -31,9 +31,36 @@ ALLOWED_EXPR_NODES = (ast.Expression, ast.Compare, ast.BoolOp, ast.Name,
                       ast.Constant, ast.Load, ast.And, ast.Or, ast.Not,
                       ast.USub, ast.UAdd, ast.Eq, ast.NotEq, ast.Lt, ast.LtE,
                       ast.Gt, ast.GtE, ast.In, ast.NotIn, ast.Is, ast.IsNot,
-                      ast.List, ast.Tuple, ast.Dict, ast.Subscript)
+                      ast.List, ast.Tuple, ast.Dict, ast.Subscript,
+                      ast.Call)
 # business_rule里允许引用的变量（只读统计值，不是任意属性访问）
-EXPR_VARS = {"rows", "null_rate", "bytes", "cols", "files", "value"}
+EXPR_VARS = {"rows", "null_rate", "bytes", "cols", "files", "value", "j"}
+# 表达式可以调用的白名单函数：全部是**只读**的 helper，没有任何 I/O。
+# Call 节点进白名单是为了让 j_get(j, path, default) 这种深路径取值能写，
+# 同时**不让用户调用 open/__import__/rows.sum/__class__**——后者在
+# 求值时会被 Name 拦下（不在 EXPR_VARS），而 j_get 在白名单里可以调。
+def _j_get(obj, path, default=None):
+    """j_get(obj, ["a", "b"], default)：按 key 链取嵌套 dict/list 的值。
+
+    走 `[]` 而不是 `.get` 是为了**不暴露 Attribute 节点**——Attribute
+    一进白名单就立刻能拿到 `__class__`/`__bases__`/`__subclasses__` 这
+    链爬对象——这是 Phases 4 沙箱测试一直在拦的注入面。所以内置函数
+    帮用户深取值，但**不允许 expr 写 obj.attr**。
+    """
+    cur = obj
+    for k in (path if isinstance(path, (list, tuple)) else [path]):
+        if cur is None:
+            return default
+        try:
+            cur = cur[k] if isinstance(cur, dict) else cur[int(k)]
+        except (KeyError, IndexError, ValueError, TypeError):
+            return default
+    return cur
+
+
+BUILTIN_FNS = {"j_get": _j_get}
+# json 注入上限：summary 这种小文件 <32KB，~1MB 足够覆盖任何任务产物
+JSON_INJECT_MAX_BYTES = 1 * 1024 * 1024
 CMD_OUTPUT_LIMIT = 5000
 FRESHNESS_DAYS = {"recent": 730, "strict": 180}
 FRESHNESS_MAX_STALE_RATIO = 0.30     # 超期比例>30% → FAIL
@@ -161,9 +188,12 @@ def eval_expr(expr: str, variables: dict) -> tuple[bool, str]:
     for node in ast.walk(tree):
         if not isinstance(node, ALLOWED_EXPR_NODES):
             return False, f"forbidden_node:{type(node).__name__}"
-        if isinstance(node, ast.Name) and node.id not in EXPR_VARS:
+        if isinstance(node, ast.Name) and node.id not in EXPR_VARS \
+                and node.id not in BUILTIN_FNS:
             return False, f"unknown_var:{node.id}"
-    env = {**{k: 0 for k in EXPR_VARS}, **(variables or {})}
+    env = {**{k: 0 for k in EXPR_VARS},
+           **BUILTIN_FNS,
+           **(variables or {})}
     try:
         return bool(eval(compile(tree, "<rule>", "eval"), {"__builtins__": {}}, env)), ""
     except Exception as e:  # noqa: BLE001
@@ -191,6 +221,18 @@ def h_business_rule(ctx: dict, rule: dict) -> dict:
                 n = 1 + sum(1 for _ in f)
             variables.setdefault("rows", max(0, n - 1))
             variables.setdefault("cols", len(header.split(",")) if header else 0)
+        elif full.suffix == ".json":
+            # 注入 `j` 让规则能用 j.get('key') 读字段；超限或解析失败用空 dict
+            # 继续跑（让其它规则/原因接管，而不是把 business_rule 一棍打死）
+            import json as _json
+            try:
+                if full.stat().st_size <= JSON_INJECT_MAX_BYTES:
+                    variables["j"] = _json.loads(
+                        full.read_text(encoding="utf-8", errors="ignore"))
+                else:
+                    variables["j"] = {}
+            except Exception:  # noqa: BLE001
+                variables["j"] = {}
     ok, detail = eval_expr(expr, variables)
     return {"ok": ok, "detail": detail or f"expr={expr}"}
 

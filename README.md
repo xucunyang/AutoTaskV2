@@ -181,7 +181,7 @@ python -m core.governor --mode auto      # 交回自动
 
 四条链**共用** `artifacts/{date}/` 目录，但**产物名一个都不许撞车**——2026-10-05 实测过撞车的后果：housing 的 `t5_charts` 把 daily 的 `charts.md` 覆盖了，日报正文里贴的 13 张图全是另一条链画的。现在由 `tests/test_job_matrix.py` 把「产物路径两两不相交」「cron 与 XML 的 StartBoundary 一致」钉成门禁，谁改漏一边当场红。
 
-股票链特意排在 **08:30**（A 股 09:30 才开盘）：`t1_stocks` 采到的必然是**上一交易日**收盘 + 昨夜美股，这是口径不是缺陷，模板 objective 里写死了，免得模型把「今天的涨跌」编出来。
+股票链特意排在 **08:30**（A 股 09:30 才开盘）：`t1_stocks` 采到的必然是**各市场各自的最近行情交易日**——A 股用 9-30 节前最后，**美股必须用 10-05 美东**（北京时间 10-06 凌晨 04:00 已出齐；不能套 A 股 9-30 糊弄），港股同节假期取港股最近交易日。这是口径不是缺陷，模板 objective 里写死了，免得模型把"今天的涨跌"编出来或把全市场统一成一个日期。`finance_summary.data_period` 现在是 per-market 对象（`{A股, 港股, 美股}`），验收按 `j_get(j, ["data_period","美股"], "") >= "2026-10-05"` 卡死（见 `schemas/finance_summary.schema.json` + `acceptance_finance_t3.yaml`）。
 
 一次 `run_daily` 串起三件事：**建 plan**（`ensure_plan`，幂等）→ **跑编排器**（VerifyPool + tick，直到全部任务进终态）→ **退出并交退出码**，让计划任务拿到干净的结果：
 
@@ -212,6 +212,7 @@ job 之间要**错开**不是随手定的：`tick()` 看的是全库 `active_pla
 - **链接**：toast 上带可点按钮（`file:///` + `activationType="protocol"`）——`打开日报`、`打开投资观察`、`打开产物目录`，点一下就用系统默认程序打开（四条链的按钮文案各不相同：股票链是 `股票日报`、硬件链是 `硬件日报`、housing 的图表是 `图表`）；正文里同时印一份绝对路径，气泡回退没有按钮时还能复制。只挑**本 plan 声明的、已落盘的**正文文件，按 `LINK_PRIORITY`（各链的汇总正文 → housing 的投资观察 → 图表）取前两个：`artifacts/{date}/` 是四条链共用目录，按目录乱链会点开别人家的报告（`scripts/run_daily.py::report_links`）
 - 关掉它：`run_daily --no-notify`
 - 弹框标题显示 **Windows PowerShell**（借用它的 AUMID，本模块没注册自己的）；开了专注助手或锁屏会被压掉
+- **桌面冗余 marker**（`scripts/run_daily.py::_write_desktop_marker`）：人在电脑前未必能看到 toast——锁屏 `duration=long` 也只 25 秒，过期就只剩通知中心里的卡片，多数人不会去翻。`~/Desktop/AutoTask_{job}_{date}.txt` 写一份 ASCII 摘要（`[OK]/[DEAD]`、每任务状态、报告路径、SOP 一句 指引），与 toast **并行**而不是替代：toast 弹过就删，文件在桌面上能看若干天。Win `~/Desktop` 找不到就降级 `~/OneDrive/Desktop`，再不行 `~/`，写失败不让 notify 链路炸
 
 ```powershell
 # 看状态：state / 下次触发 / 上次结果（267011 = 还没跑过）

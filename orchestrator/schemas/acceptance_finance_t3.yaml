@@ -28,3 +28,18 @@
 - type: mermaid
   path: artifacts/{date}/finance_report.md
   min: 1
+
+# 10-05 美股先于 10-06 凌晨 04:00 已出齐；data_period.美股 < 10-05 一律 FAIL
+# （不让美股数据继续套 A 股节前最后交易日 9-30 的口径）
+# 用 j_get(j, ["a","b"], default) 取代 j.get("a").get("b")——后者需要 Attribute
+# 节点，Attribute 一进白名单就能爬 __class__/__bases__/__subclasses__，
+# 沙箱测试一直在拦的注入面就不能再挡了（见 core/verifier.eval_expr 注释）。
+- type: business_rule
+  path: artifacts/{date}/finance_summary.json
+  expr: 'j_get(j, ["data_period", "美股"], "") >= "2026-10-05"'
+- type: business_rule
+  path: artifacts/{date}/finance_summary.json
+  expr: 'j_get(j, ["data_period", "A股"], "") >= "2026-09-30"'
+- type: business_rule
+  path: artifacts/{date}/finance_summary.json
+  expr: 'j_get(j, ["data_period", "港股"], "") >= "2026-09-29"'

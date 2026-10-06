@@ -193,6 +193,69 @@ def report_links(root: Path, date: str, rows: list[dict]) -> list[tuple[str, str
     return links[:3]
 
 
+def _write_desktop_marker(root: Path, job: str, date: str, rc: int,
+                          summary: dict,
+                          links: list[tuple[str, str]],
+                          *, desktop_dir: Path | None = None) -> None:
+    """在用户桌面写一份 ASCII 跑批结果，**不依赖通知中心就能看到**。
+
+    触发场景：用户不在电脑前、toast 横幅过期（duration=long 仍只 25 秒，
+    锁屏更不弹），人开电脑后 Win+N 才能翻通知中心。桌面 marker 是
+    "人抬头就能看见"的冗余渠道——和 toast 是**并行**的，不是替代。
+
+    桌面路径用 `~/Desktop`（Win10/11 默认），找不到就 fall back 到
+    `~/OneDrive/Desktop`，再 fallback 到 `~/`（不抛错，避免 marker 写
+    失败让整个 notify 链路挂掉）。
+
+    `desktop_dir` 仅测试用：默认 None → 从 expanduser 推；测试可显式
+    传入隔离目录，避开 os.environ 缓存的副作用（见 tests/test_run_daily.py
+    _setup_desktop_marker_env）。
+    """
+    if desktop_dir is None:
+        home = Path(os.path.expanduser("~"))
+        candidates = [home / "Desktop", home / "OneDrive" / "Desktop", home]
+        desktop_dir = next((d for d in candidates if d.is_dir()), home)
+    out_path = desktop_dir / f"AutoTask_{job}_{date}.txt"
+
+    icon = {0: "[OK]", 1: "[..]", 2: "[DEAD]", 3: "[CFG]"}.get(rc, "[??]")
+    lines = [
+        f"{icon} {job} {date}  rc={rc}",
+        f"任务：{sum(1 for t in summary['tasks'])} 条 "
+        f"(完成 {sum(1 for t in summary['tasks'] if t['status'] in ('DONE','SKIPPED','SKIPPED_CACHED'))}，"
+        f"死信 {len(summary['dead_letter'])}，在途 {len(summary['not_terminal'])})",
+        "",
+        "状态：",
+    ]
+    for t in summary["tasks"]:
+        marker = {
+            "DONE": "  +", "SKIPPED": "  -", "SKIPPED_CACHED": "  =",
+            "DEAD_LETTER": "  X", "FAILED": "  !",
+        }.get(t["status"], "  ?")
+        lines.append(f"{marker} {t['task_id']:<24} {t['status']}")
+
+    if summary["dead_letter"]:
+        lines += ["", f"死信处理：详见 reports/run_daily_{job}_{date}.log 的 "
+                       "verify_failed 段；改完后用 "
+                       f"`core.scheduler --rerun <task> --date {date} --job {job} "
+                       "--reason \"<why>\"` 重开。"]
+    if summary["not_terminal"]:
+        lines.append(f"在途：{', '.join(summary['not_terminal'])}")
+    if links:
+        lines += ["", "报告："]
+        for label, path in links:
+            lines.append(f"  - {label}: {path}")
+    lines += [
+        "",
+        f"完整日志：{root}/reports/run_daily_{job}_{date}.log",
+        f"本份为 2026-10-06 起每次跑批的桌面冗余通知（与 toasts 并行）",
+    ]
+    try:
+        out_path.write_text("\n".join(lines), encoding="utf-8-sig")
+    except OSError:
+        # marker 写失败不影响主流程退出码；用户通知已经发了
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="run_daily")
     ap.add_argument("--date", default=None, help="默认今天（上海时区）")
@@ -381,6 +444,12 @@ def main(argv: list[str] | None = None) -> int:
         elapsed_min=(time.monotonic() - t0) / 60.0,
         enabled=not args.no_notify,
         links=report_links(root, date, rows))
+    # 桌面 marker：toast 在锁屏会被系统丢掉（横幅 duration 到期 + 用户
+    # 不在 → 进通知中心）；人开电脑第一眼能看见的东西只有桌面文件。
+    # 不依赖通知中心、不依赖锁屏行为；ASCII 摘要含退出码/任务/链接，
+    # 失败也能定位是哪条任务挂的（toast 正文只有 4 行装不下）。
+    if not args.no_notify:
+        _write_desktop_marker(root, args.job, date, rc, summary, report_links(root, date, rows))
     return rc
 
 
