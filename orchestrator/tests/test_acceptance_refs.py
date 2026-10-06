@@ -191,3 +191,27 @@ def test_acceptance_paths_point_at_declared_outputs():
                     bad.append(f"{tpl.name}:{t.get('id')} 的 {r.get('type')} "
                                f"path={p} 不在 outputs={sorted(outs)} 里")
     assert not bad, "验收查的文件没人声明要产出：\n" + "\n".join(bad)
+
+
+def test_hardware_daily_drops_source_quality_in_t2():
+    """硬件消费品的"来源分级"无意义——A 类在硬件新闻里天然不存在。
+
+    2026-10-06 hardware_daily t2_hw_news 用 acceptance_market.yaml 共用时
+    卡 rule_4 source_quality（A=1/12=0.08 < 0.2 bar），3 次尝试全死后死信
+    → t3_hw_report 因 deps_unsatisfied 永远不动 → 当日 hardware_summary.json
+    缺失。共用 acceptance_market.yaml 在 finance/政策类是合理的，在硬件
+    不是——给 hardware_daily t2 单独建 acceptance_hardware_t2.yaml，把
+    source_quality 拿掉（仍留 traceable + freshness + 正文够长够图）。
+
+    这是产品判断：硬件新闻就是市场定价的科技媒体，套"A 类官方源"是金融
+    街/政策口径用到不属于它的领域。
+    """
+    f = SCHEMAS / "acceptance_hardware_t2.yaml"
+    assert f.exists(), "acceptance_hardware_t2.yaml 不存在"
+    rule_types = [r.get("type") for r in _rules(f)]
+    assert "source_quality" not in rule_types, (
+        "hardware_daily t2 不该有 source_quality：A 类在硬件消费品领域"
+        " 不存在（NVIDIA/AMD/Intel 官方不是新闻源）")
+    # 其余该有的门禁不能漏
+    for needed in ("source_traceable", "freshness", "mermaid"):
+        assert needed in rule_types, f"hardware_t2 缺 {needed}"

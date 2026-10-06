@@ -1,0 +1,35 @@
+# hardware t2_hw_news 的验收：硬件消费品的"来源分级"在 A/B/C 三层上没意义——
+# 显卡内存价格与新闻的主要来源就是市场定价的科技媒体（Tom's Hardware、
+# AnandTech、Reuters Tech、华尔街见闻科技板块等），全是 B/C 级，**A 级**
+# 天然就不存在（NVIDIA/AMD/Intel 官方"不是新闻源"——它们发的是产品规格
+# 与财报，没有消费品新闻的流通）。强行套上 source_quality 20% 是用
+# 金融街/政策口径去卡一个根本不存在的"官方数据源"。
+#
+# 这条只在 housing/daily/finance 三类"政策/统计/官方数据"语境下才有意义，
+# hardware 直接拿掉——源保留 traceable + freshness + 正文够长够图 即可。
+#
+# 与 acceptance_market.yaml 的差别只在 source_quality 这一条；其余完全一致。
+# 复用 path="{output}"，本任务在 hardware_daily.yaml 里 declared outputs=[t2_hw_news.md]。
+- type: file_exists
+  path: "{output}"
+
+# 正文有实质内容：800 字列 = 400+ 汉字，排除"一句话交差"。
+- type: business_rule
+  expr: "bytes >= 800"
+  path: "{output}"
+
+# 幻觉拒收：每条论断必须挂到真实存在的来源上。
+- type: source_traceable
+
+# 时效：硬件新闻一条新闻 ≤7 天才有价值，30 天已过气。
+# 用 60 天而不是默认 180：硬件定价的"产品发布价→首发→半年后"会到 60-180 天。
+# 60 天 = "近 24 个月的产品上市新闻仍能算"，但不卡"半年以上的陈年新闻"。
+- type: freshness
+  freshness_days: 60
+
+# 不查 source_quality：硬件消费品的来源分级里 A 类无意义。
+
+# 报告要有图：硬件新闻里常有价格趋势、对比表，原样贴一张 xychart 即可。
+- type: mermaid
+  path: "{output}"
+  min: 1

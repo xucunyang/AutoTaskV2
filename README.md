@@ -177,7 +177,7 @@ python -m core.governor --mode auto      # 交回自动
 | `\AutoTaskV2\daily_report` | 每天 08:00 | `scripts/run_daily.py --job daily_report`（宏观 5 项 → `summary.json` / `report.md` / `charts.md`） |
 | `\AutoTaskV2\finance_daily` | 每天 08:30 | `--job finance_daily`（行情 + 理财 → `finance_report.md` / `finance_summary.json`） |
 | `\AutoTaskV2\housing_daily` | 每天 10:00 | `--job housing_daily`（楼市三条线 → `t4_investment_watch.md` / `charts_housing.md`） |
-| `\AutoTaskV2\hardware_daily` | 每天 14:00 | `--job hardware_daily`（显卡内存价格 + 硬件新闻 → `hardware_report.md` / `hardware_summary.json`） |
+| `\AutoTaskV2\hardware_daily` | 每天 14:00 | `--job hardware_daily`（显卡内存价格 + 硬件新闻 → `hardware_report.md` / `hardware_summary.json`）。t2_hw_news 走专用 `acceptance_hardware_t2.yaml`（**没有** source_quality：硬件消费品的来源就是市场定价的科技媒体，A 类天然不存在——金融街口径用错地方就会死信，见 `schemas/acceptance_hardware_t2.yaml`） |
 
 四条链**共用** `artifacts/{date}/` 目录，但**产物名一个都不许撞车**——2026-10-05 实测过撞车的后果：housing 的 `t5_charts` 把 daily 的 `charts.md` 覆盖了，日报正文里贴的 13 张图全是另一条链画的。现在由 `tests/test_job_matrix.py` 把「产物路径两两不相交」「cron 与 XML 的 StartBoundary 一致」钉成门禁，谁改漏一边当场红。
 

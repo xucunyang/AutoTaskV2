@@ -49,8 +49,12 @@ tasks:
       "未查到"而不是估。
     depends_on: []
     outputs: ["artifacts/{date}/t2_hw_news.md"]
-    # {output} 让这份验收被多条 md 任务共用，各查各的产物
-    acceptance_ref: schemas/acceptance_market.yaml
+    # hardware 不套 finance/政策类口径：A 类来源在硬件消费品领域**不存在**
+    # （NVIDIA/AMD/Intel 官方不是新闻源，B 级主流媒体 Tom's Hardware/AnandTech
+    # /Reuters Tech 才是）。改用专门的 acceptance_hardware_t2.yaml，去掉
+    # source_quality（仍留 traceable + freshness + 正文够长够图）。
+    # freshness 60 天（不是默认 180）：硬件"产品发布→半年后"会跨过窗口。
+    acceptance_ref: schemas/acceptance_hardware_t2.yaml
     needs_web: true
     freshness: recent
     max_attempts: 3
