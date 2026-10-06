@@ -325,14 +325,32 @@ def main(argv: list[str] | None = None) -> int:
         if t is None:
             print(json.dumps({"error": "task_not_found", "task_id": args.rerun}))
             return 2
-        # 死信没有普通转移边（TERMINAL），必须走显式的 reopen：
-        # 它会重置 attempts，否则重开等于白开（跑一次失败又立刻升级死信）。
+        # DEAD_LETTER 与 DONE 都是终结状态（TERMINAL），没有自动出边——
+        # 必须走显式的 reopen 路径，重置 attempts + 写审计 + 留 sop_ref。
+        # 否则要么"重跑等于白跑"（attempts 不重置立刻又死信），要么
+        # "破坏数据完整性"（手工改库会破 replay 一致性校验）。
+        # 其它状态走 transition('RETRY') 普通状态机边。
         if t["status"] == "DEAD_LETTER":
             try:
                 task = store.reopen_dead_letter(
                     pid, args.rerun, reason=args.reason or "manual_cli_rerun",
                     operator="cli", run_id="manual_rerun")
                 print(json.dumps({"task_id": args.rerun, "from": "DEAD_LETTER",
+                                  "to": task["status"],
+                                  "attempts": task["attempts"],
+                                  "reopened": True}, ensure_ascii=False))
+            except (IllegalTransition, Conflict, StoreError) as e:
+                print(json.dumps({"error": "reopen_failed",
+                                  "task_id": args.rerun, "detail": str(e)[:200]},
+                                 ensure_ascii=False))
+                return 2
+            return 0
+        if t["status"] == "DONE":
+            try:
+                task = store.reopen_done(
+                    pid, args.rerun, reason=args.reason or "manual_cli_rerun",
+                    operator="cli", run_id="manual_rerun")
+                print(json.dumps({"task_id": args.rerun, "from": "DONE",
                                   "to": task["status"],
                                   "attempts": task["attempts"],
                                   "reopened": True}, ensure_ascii=False))

@@ -662,18 +662,14 @@ class Store:
                            sop_ref: str = "docs/sop/dead-letter.md",
                            operator: str = "cli", run_id: str = "manual_reopen",
                            expect_version: int | None = None) -> dict:
-        """把死信重开成 RETRY。**唯一的显式出死信路径**。
+        """把死信重开成 RETRY。**死信没有普通转移边（TERMINAL）**，
+        必须走显式的 reopen：它会重置 attempts，否则重开等于白开
+        （跑一次失败又立刻升级死信）。
 
-        为什么需要它：死信原本**没有任何出边**，于是"死信无法恢复"——
+        为什么需要它：死信原本没有任何出边，于是"死信无法恢复"——
         唯一的办法是手工改 state.db，而那会让 version 与 events 对不上，
         `replay` 一致性校验随即失败（SOP §5 又明确禁止改库）。
         换句话说，"无出边"实际上等于"死信是永久的，除非有人破坏数据完整性"。
-        一份死信三必填里强制填 `sop_ref` 指向处理文档，而那份文档给的却是
-        一条不存在的边——照着做只会失败。
-
-        **必须重置 attempts**：`escalate_dead_letters` 的判据是
-        `attempts >= max_attempts`，而 RETRY→READY 每次还会 +1。
-        不重置的话重开等于白开：跑一次、失败、立刻又升级成死信。
 
         必须带 reason：没有理由的重开等于"我看着办重试"，
         而死信是系统**主动放弃**的结果，随手重开会变成无限循环。
@@ -687,7 +683,60 @@ class Store:
             raise StoreError(
                 f"not_dead_letter:{t['status']}（只有死信需要reopen，"
                 "其他状态用 scheduler --rerun）")
-        ver = t["version"] if expect_version is None else expect_version
+        return self._reopen_terminal(
+            plan_id, task_id, from_status="DEAD_LETTER",
+            reason=reason, sop_ref=sop_ref,
+            operator=operator, run_id=run_id,
+            expect_version=expect_version if expect_version is not None
+            else t["version"])
+
+    def reopen_done(self, plan_id: str, task_id: str, *, reason: str,
+                    sop_ref: str = "docs/sop/manual-rerun.md",
+                    operator: str = "cli", run_id: str = "manual_rerun",
+                    expect_version: int | None = None) -> dict:
+        """把 DONE 重开成 RETRY。**DONE 也是 TERMINAL**，没有自动出边。
+
+        为什么需要这条：原来 `--rerun` 走 `transition('RETRY')`，DONE 是
+        终态里唯一一个没有显式 reopen 路径的——验收全绿的"产物其实写错
+        了"（如 2026-10-06 finance 的 data_period=2026-09-30 全市场统一）
+        就只能手工改库或放弃当天的产物。改库会破 `replay` 一致性校验
+        （SOP §5 明确禁止），等于"想改就只能破坏数据完整性"。
+
+        **重置 attempts**：与 reopen_dead_letter 同理。
+        **必须带 sop_ref**：与死信 reopen 一致的可审计要求——人重开不
+        是随手按按钮，得能解释为什么重开、改了什么东西。
+        **只接受 DONE**：其它状态（DONE/CANCELLED/SKIPPED）暂不开放
+        ——CANCELLED/SKIPPED 是另一种语义（CANCELLED 是上游取消、SKIPPED
+        是上游说不该跑），混入 rerun 流程会把语义搞乱。
+        """
+        if not reason:
+            raise StoreError("reopen_requires_reason")
+        t = self.get_task(plan_id, task_id)
+        if t is None:
+            raise StoreError(f"task_not_found:{plan_id}/{task_id}")
+        if t["status"] != "DONE":
+            raise StoreError(
+                f"not_done:{t['status']}（只有验收全绿但产物/口径需要刷新"
+                "的才用 reopen_done；其他状态用 scheduler --rerun）")
+        return self._reopen_terminal(
+            plan_id, task_id, from_status="DONE",
+            reason=reason, sop_ref=sop_ref,
+            operator=operator, run_id=run_id,
+            expect_version=expect_version if expect_version is not None
+            else t["version"])
+
+    def _reopen_terminal(self, plan_id: str, task_id: str, *,
+                         from_status: str, reason: str, sop_ref: str,
+                         operator: str, run_id: str,
+                         expect_version: int) -> dict:
+        """DONE/DEAD_LETTER 重开的共享实现：审计+attempts 重置+version+1。
+
+        两个调用点的差异只有 `from_status` 与审计事件的 from_s，其余全
+        一样。抽出来是为了让两边都享受「attempts 重置+reason+sop_ref
+        +alert」这一套门槛——单写一遍容易漏一项（2026-10-03 那次漏
+        `sop_ref` 就是分开写的）。
+        """
+        attempts_holder = {"old": 0}
 
         def _fn(con):
             now = now_utc_iso()
@@ -695,19 +744,21 @@ class Store:
                 "SELECT attempts, fencing_token FROM tasks"
                 " WHERE plan_id=? AND task_id=?", (plan_id, task_id)).fetchone()
             attempts, fen = cur[0], cur[1]
+            attempts_holder["old"] = attempts
             con.execute(
                 "UPDATE tasks SET status='RETRY', attempts=0, owner=NULL,"
                 " lease_until=NULL, version=?, updated_at=?"
                 " WHERE plan_id=? AND task_id=?",
-                (ver + 1, now, plan_id, task_id))
+                (expect_version + 1, now, plan_id, task_id))
             con.execute(
                 "INSERT INTO events(ts,plan_id,task_id,from_s,to_s,run_id,"
                 "agent,payload) VALUES (?,?,?,?,?,?,?,?)",
-                (now, plan_id, task_id, "DEAD_LETTER", "RETRY", run_id,
+                (now, plan_id, task_id, from_status, "RETRY", run_id,
                  operator,
                  json.dumps({"reason": reason, "sop_ref": sop_ref,
                              "attempts_reset_from": attempts,
                              "operator": operator,
+                             "reopened_from": from_status,
                              "reopened": True}, ensure_ascii=False)))
             return con.execute(
                 "SELECT * FROM tasks WHERE plan_id=? AND task_id=?",
@@ -715,11 +766,22 @@ class Store:
 
         row = self._write_txn(_fn)
         task = self._row_to_task(row)
-        # 死信是系统主动放弃的结果，人工重开必须留痕且可见
-        self.alert("P1", "dead_letter_reopened", plan_id=plan_id,
-                   task_id=task_id, reason=reason[:200], operator=operator,
-                   attempts_reset_from=t["attempts"])
-        self.record_metric("dead_letter_reopened", 1,
+        attempts_old = attempts_holder["old"]
+        # 重开是显式的人工动作，必须留痕且可见——但**两种 from_status 的
+        # 告警分级不同**：DEAD_LETTER 是"系统放弃+人工救活"，P1；
+        # DONE 是"产物其实写错了，重写"，P2（不可漏、但不要把 P0 当
+        # 半夜打电话来用——见 alerts.notifier.level_for）。
+        if from_status == "DEAD_LETTER":
+            self.alert("P1", "dead_letter_reopened", plan_id=plan_id,
+                       task_id=task_id, reason=reason[:200], operator=operator,
+                       attempts_reset_from=attempts_old)
+        else:
+            self.alert("P2", "task_done_reopened", plan_id=plan_id,
+                       task_id=task_id, reason=reason[:200], operator=operator,
+                       attempts_reset_from=attempts_old)
+        # metrics 表没有 from_status 列——把它合并到 name 里
+        # （终端敲死 "terminal_reopened_done" vs "terminal_reopened_dead_letter"）
+        self.record_metric(f"terminal_reopened_{from_status.lower()}", 1,
                            plan_id=plan_id, task_id=task_id, run_id=run_id)
         return task
 

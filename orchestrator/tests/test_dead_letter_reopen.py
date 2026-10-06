@@ -63,6 +63,36 @@ def _dead_letter(root, task_id="t1", attempts=3, max_attempts=3):
     return s
 
 
+def _done(root, task_id="t1", attempts=1):
+    """造一个 DONE 的任务：验收全绿、但产物可能写错（需要 reopen_done 重写）。"""
+    s = Store(root)
+    s.ensure_plan(PLAN, template="daily")
+    shard = enqueue.validate(json.dumps({
+        "task_id": task_id, "plan_id": PLAN, "objective": "x",
+        "outputs": [f"artifacts/{task_id}.md"],
+    }, ensure_ascii=False).encode("utf-8"), root=root)
+    s.insert_task(shard)
+    v = lambda: s.get_task(PLAN, task_id)["version"]      # noqa: E731
+    f = lambda: s.get_task(PLAN, task_id)["fencing_token"]  # noqa: E731
+    s.transition(PLAN, task_id, "READY", agent="o", run_id="r",
+                 expect_version=v())
+    s.transition(PLAN, task_id, "RUNNING", agent="o", run_id="r",
+                 expect_version=v(), lease_op="acquire")
+    s.transition(PLAN, task_id, "SUBMITTED", agent="sub", run_id="r",
+                 expect_version=v(), expect_fencing=f(),
+                 handoff={"task_id": task_id, "status": "SUBMITTED",
+                          "artifacts": [], "self_test": []})
+    s.transition(PLAN, task_id, "VERIFYING", agent="orchestrator", run_id="r",
+                 expect_version=v())
+    s.transition(PLAN, task_id, "DONE", agent="verifier", run_id="r",
+                 expect_version=v(), expect_fencing=f(),
+                 payload={"rules": 0, "failed": []})
+    s._write_txn(lambda con: con.execute(
+        "UPDATE tasks SET attempts=? WHERE plan_id=? AND task_id=?",
+        (attempts, PLAN, task_id)))
+    return s
+
+
 # ---------------------------------------------------------------- 状态机
 
 def test_dead_letter_has_exactly_one_out_edge():
@@ -415,3 +445,109 @@ def test_scheduler_rerun_unknown_task(tmp_path):
     _dead_letter(root)
     assert scheduler.main(["--root", str(root), "--date", DATE,
                            "--rerun", "ghost"]) == 2
+
+
+# --------------------------------------------------- DONE 重开（2026-10-06 加）
+#
+# 背景：验收全绿（DONE）但产物其实写错了——2026-10-06 finance 的
+# data_period=2026-09-30 全市场统一就是这种。原来 `--rerun` 只能
+# DEAD_LETTER / 其它非终态，DONE 是 TERMINAL 里唯一一个**没有**显式
+# reopen 路径的——只能改库，而改库会破 replay 一致性校验。
+
+def test_reopen_done_moves_to_retry(tmp_path):
+    s = _done(_root(tmp_path))
+    assert s.get_task(PLAN, "t1")["status"] == "DONE"
+    got = s.reopen_done(PLAN, "t1", reason="data_period 改 per-market")
+    assert got["status"] == "RETRY"
+
+
+def test_reopen_done_resets_attempts(tmp_path):
+    """DONE 重开也必须重置 attempts（与死信 reopen 一致）。"""
+    s = _done(_root(tmp_path), attempts=1)
+    assert s.get_task(PLAN, "t1")["attempts"] == 1
+    got = s.reopen_done(PLAN, "t1", reason="产物口径错了")
+    assert got["attempts"] == 0, f"attempts 未重置: {got['attempts']}"
+
+
+def test_reopen_done_requires_reason(tmp_path):
+    """与死信 reopen 同门槛：没有理由的"重做"会变成随手按按钮的循环。"""
+    s = _done(_root(tmp_path))
+    with pytest.raises(StoreError, match="reopen_requires_reason"):
+        s.reopen_done(PLAN, "t1", reason="")
+
+
+def test_reopen_done_rejects_non_done(tmp_path):
+    """DONE 是唯一的语义——RETRY/DEAD_LETTER 各自有自己的 reopen 路径。
+
+    测试分别用**两次不同 tmp_path**（tmp_path 是函数级 fixture，
+    不能在同一函数里复用——见 _root 不带 exist_ok），每个场景一次独立 root。
+    """
+    # DEAD_LETTER 任务不能走 reopen_done（要走 reopen_dead_letter）
+    s = _dead_letter(_root(tmp_path))
+    with pytest.raises(StoreError, match="not_done"):
+        s.reopen_done(PLAN, "t1", reason="x")
+    # task 不存在 → task_not_found 优先于 not_done
+    with pytest.raises(StoreError, match="task_not_found"):
+        s.reopen_done(PLAN, "ghost", reason="x")
+
+
+def test_reopen_done_writes_audit_event(tmp_path):
+    """DONE→RETRY 必须留审计——与死信 reopen 同一套可审计要求。"""
+    s = _done(_root(tmp_path))
+    s.reopen_done(PLAN, "t1", reason="产物口径改", operator="alice")
+    row = s._connect().execute(
+        "SELECT agent,payload,from_s,to_s FROM events WHERE plan_id=?"
+        " AND to_s='RETRY' ORDER BY rowid DESC LIMIT 1",
+        (PLAN,)).fetchone()
+    assert row is not None
+    agent, payload, from_s, to_s = row
+    assert agent == "alice"
+    assert from_s == "DONE"
+    assert to_s == "RETRY"
+    p = json.loads(payload)
+    assert p["reopened"] is True
+    assert p["reopened_from"] == "DONE"
+    assert p["operator"] == "alice"
+    assert p["reason"] == "产物口径改"
+    assert p["sop_ref"] == "docs/sop/manual-rerun.md"  # 默认 sop
+
+
+def test_reopen_done_emits_p2_alert(tmp_path):
+    """DONE 重开是 P2——不可漏（产物被覆盖了人就用了），但不要半夜炸。"""
+    root = _root(tmp_path)
+    s = _done(root)
+    s.reopen_done(PLAN, "t1", reason="x")
+    p = root / "reports" / "alerts.jsonl"
+    assert p.exists()
+    rows = [json.loads(l) for l in
+            p.read_text(encoding="utf-8").splitlines() if l.strip()]
+    got = [r for r in rows if r.get("kind") == "task_done_reopened"]
+    assert got, "DONE 重开没有告警——产物覆盖事件不该悄无声息"
+    # 死信重开仍应是 P1（这条测死信 reopen 留作保护）
+    s2 = _dead_letter(root)
+    s2.reopen_dead_letter(PLAN, "t1", reason="x")
+    rows = [json.loads(l) for l in
+            p.read_text(encoding="utf-8").splitlines() if l.strip()]
+    p1 = [r for r in rows if r.get("kind") == "dead_letter_reopened"]
+    assert p1, "死信 reopen 的 P1 不能被 DONE reopen 的 P2 误吃"
+
+
+def test_replay_stays_consistent_after_reopen_done(tmp_path):
+    """DONE reopen 走的是正规事件流，所以 replay 仍应一致——这正是
+    不必改库的原因。"""
+    s = _done(_root(tmp_path))
+    s.reopen_done(PLAN, "t1", reason="x")
+    rep = s.replay(PLAN)
+    assert rep["ok"], f"重开后重放不一致: {rep.get('mismatches')}"
+
+
+def test_scheduler_rerun_reopens_done(tmp_path):
+    """CLI 那条路：DONE 任务走 `scheduler --rerun` 也能 reopen。"""
+    root = _root(tmp_path)
+    _done(root)
+    assert scheduler.main(["--root", str(root), "--date", DATE,
+                           "--rerun", "t1",
+                           "--reason", "data_period 改 per-market"]) == 0
+    s = Store(root)
+    assert s.get_task(PLAN, "t1")["status"] == "RETRY"
+    assert s.get_task(PLAN, "t1")["attempts"] == 0
