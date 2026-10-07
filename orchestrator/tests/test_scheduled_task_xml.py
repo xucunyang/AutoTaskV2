@@ -19,7 +19,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
-JOBS = ("daily_report", "housing_daily", "policy_daily")
+# 每天跑一次的链：ScheduleByDay + DaysInterval=1
+DAILY_JOBS = ("daily_report", "housing_daily", "policy_daily")
+# 2026-10-07 新增的慢链：**不是**每天跑，触发器换成 ScheduleByMonth +
+# DaysOfMonth。Windows 的 ScheduleByDay/DaysInterval 表达不出"每月 1 号和 15 号"
+# （DaysInterval=14 在 31 天的月份会跑成 1/16/31 三次），
+# 所以这两条与上面三条的触发器形状本就不同，断言必须分开写。
+CALENDAR_JOBS = {
+    # job -> 每月第几天
+    "housing_fortnight": {"1", "15"},
+    "housing_monthly": {"8"},
+}
+JOBS = DAILY_JOBS + tuple(CALENDAR_JOBS)
 # 只能出现在 <Settings> 里，放进 trigger 就是 schema 错误
 SETTINGS_ONLY = ("WakeToRun", "StartWhenAvailable", "RunOnlyIfNetworkAvailable")
 
@@ -89,7 +100,7 @@ def test_principal_is_an_account_not_the_machine_name():
 def test_jobs_do_not_overlap():
     """daily 先跑（timeout-min 90 → 最迟 09:30 退出），housing 才起跑。"""
     hours = {}
-    for job in JOBS:
+    for job in DAILY_JOBS:
         sb = _tree(job).findtext(".//t:StartBoundary", default="", namespaces=NS)
         assert len(sb) >= 13 and sb[4] == "-" and sb[7] == "-", \
             f"{job}: StartBoundary 格式不对：{sb!r}"
@@ -100,7 +111,56 @@ def test_jobs_do_not_overlap():
         f"daily 的 --timeout-min 90 需要至少 1.5h 错开，实际只差 " \
         f"{hours['housing_daily'] - hours['daily_report']}h：{hours}"
     # 同一天各跑一次
-    for job in JOBS:
+    for job in DAILY_JOBS:
         root = _tree(job)
         assert root.findtext(".//t:DaysInterval", namespaces=NS) == "1", \
             f"{job} 不是每天一次"
+
+
+def test_slow_jobs_use_schedule_by_month():
+    """慢链必须挂在 DaysOfMonth 上，不能是 ScheduleByDay。
+
+    这条钉的是 2026-10-07 用户拍板的那件事：六边形城市「每半个月一次」、
+    房贷贴息分线「每个月统计一次」——因为它们吃的是月度/季度口径的数据，
+    每天跑等于每天抄上一期那批数（"每天执行完数据都一样，没有什么意义"）。
+
+    写成 ScheduleByDay+DaysInterval=14 看着像半个月，其实不是：
+    31 天的月份会跑成 1 号、16 号、31 号**三次**，
+    而 ScheduleByMonth + DaysOfMonth 才是精确的"每月 1 号和 15 号"。
+    """
+    for job, want_days in CALENDAR_JOBS.items():
+        root = _tree(job)
+        trig = root.find(".//t:Triggers", NS)
+        assert trig is not None, f"{job} 没有 Triggers"
+        by_day = trig.find(".//t:ScheduleByDay", NS)
+        assert by_day is None, (
+            f"{job} 还在用 ScheduleByDay——DaysInterval=14 在 31 天的月份"
+            f"会跑三次，不是半个月")
+        by_month = trig.find(".//t:ScheduleByMonth", NS)
+        assert by_month is not None, f"{job} 没有 ScheduleByMonth"
+        got = {d.text for d in by_month.findall(".//t:Day", NS)}
+        assert got == want_days, (
+            f"{job} 的 DaysOfMonth={sorted(got)}，与 schedule.yaml 声明的"
+            f" cron 不一致（应含 {sorted(want_days)}）")
+
+
+def test_slow_jobs_are_not_in_daily_cron():
+    """慢链在 schedule.yaml 里也不能写成 "* * *"。
+
+    XML 对了但 cron 写错的情况同样致命——谁哪天启了 APScheduler 守护进程，
+    就会按 cron 把月线当日线跑一遍（这正是 housing 曾长期写着 08:00 的坑）。
+    """
+    import yaml
+    sched = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "config" / "schedule.yaml")
+        .read_text(encoding="utf-8")) or {}
+    by_id = {j["id"]: j for j in (sched.get("jobs") or [])}
+    for job, want_days in CALENDAR_JOBS.items():
+        assert job in by_id, f"{job} 不在 schedule.yaml 里"
+        dom = str(by_id[job].get("cron") or "").split()
+        assert len(dom) == 5, f"{job} 的 cron 形状不对：{by_id[job]['cron']!r}"
+        assert dom[2] != "*", (
+            f"{job} 的 cron={by_id[job]['cron']!r} 是每天跑——"
+            f"与「{job} 走慢节奏」的约定冲突")
+        assert set(dom[2].split(",")) == want_days, (
+            f"{job} 的 cron 日字段={dom[2]!r} 与 XML 的 DaysOfMonth 不一致")

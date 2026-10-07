@@ -27,7 +27,13 @@ DATE = "2026-10-05"
 
 
 def _root(tmp_path: Path) -> Path:
-    """带 config/templates/schemas 的隔离 root（两个 job 都在 schedule 里）。"""
+    """带 config/templates/schemas 的隔离 root（所有 job 都在 schedule 里）。
+
+    2026-10-07 加了 housing_monthly / housing_fortnight 两条慢链，
+    这里必须一并写进种子 schedule——否则下面那条"多条链同日期共存"
+    测的是种子没跟上，而不是被测系统（同一个坑在 schemas 的全量拷贝
+    注释里已经写过一次）。
+    """
     (tmp_path / "config").mkdir(parents=True, exist_ok=True)
     (tmp_path / "config" / "schedule.yaml").write_text(
         yaml.safe_dump({
@@ -35,9 +41,15 @@ def _root(tmp_path: Path) -> Path:
                 {"id": "daily_report", "cron": "0 8 * * *",
                  "timezone": "Asia/Shanghai",
                  "template": "templates/daily_plan.yaml", "catchup": True},
-                {"id": "housing_daily", "cron": "0 8 * * *",
+                {"id": "housing_daily", "cron": "0 10 * * *",
                  "timezone": "Asia/Shanghai",
                  "template": "templates/housing_daily.yaml", "catchup": True},
+                {"id": "housing_monthly", "cron": "40 6 8 * *",
+                 "timezone": "Asia/Shanghai",
+                 "template": "templates/housing_monthly.yaml", "catchup": True},
+                {"id": "housing_fortnight", "cron": "0 6 1,15 * *",
+                 "timezone": "Asia/Shanghai",
+                 "template": "templates/housing_fortnight.yaml", "catchup": True},
             ],
             "workers": {"reserved_low_slot": 1},
         }, allow_unicode=True), encoding="utf-8")
@@ -93,29 +105,51 @@ def test_daily_job_builds_its_own_plan(tmp_path, capsys):
 
 
 def test_both_jobs_coexist_for_the_same_date(tmp_path, capsys):
-    """同一天两个 job 都跑：各建各的 plan，互不 skip。"""
+    """同一天多个 job 都跑：各建各的 plan，互不 skip。
+
+    2026-10-07 拆链后从 2 条变成 4 条，顺带把"每条链各有哪些任务"
+    一并钉死——housing 曾经长期在 daily 里悄悄带着 t1_tier/t3_hexagon
+    混跑（都是月度口径的数据，每天抄上一期同一批数），
+    那种偏差不会报错，只会体现为"链里多了几个任务"，所以必须断言集合相等。
+    """
     _root(tmp_path)
-    for job in ("daily_report", "housing_daily"):
+    for job in ("daily_report", "housing_daily", "housing_monthly", "housing_fortnight"):
         rc = run_daily_main(["--root", str(tmp_path), "--date", DATE,
                              "--job", job, "--dry-run"])
         assert rc == 0, capsys.readouterr().out
         capsys.readouterr()
 
     ids = _plan_ids(tmp_path)
-    assert {"daily_report_2026-10-05", "housing_daily_2026-10-05"} <= ids
+    assert {"daily_report_2026-10-05", "housing_daily_2026-10-05",
+            "housing_monthly_2026-10-05", "housing_fortnight_2026-10-05"} <= ids
     assert len(_task_ids(tmp_path, "daily_report_2026-10-05")) >= 4
-    assert len(_task_ids(tmp_path, "housing_daily_2026-10-05")) >= 5
+    assert _task_ids(tmp_path, "housing_daily_2026-10-05") == {
+        "t2_xz_nj", "t5_charts", "t4_rollup"}
+    assert _task_ids(tmp_path, "housing_monthly_2026-10-05") == {
+        "t1_tier", "m_rollup"}
+    assert _task_ids(tmp_path, "housing_fortnight_2026-10-05") == {"t3_hexagon"}
 
 
 def test_second_run_is_idempotent(tmp_path, capsys):
     """重复触发（计划任务重跑/StartWhenAvailable 补跑）不能重复建任务。"""
     _root(tmp_path)
-    for _ in range(2):
-        rc = run_daily_main(["--root", str(tmp_path), "--date", DATE,
-                             "--job", "housing_daily", "--dry-run"])
-        assert rc == 0, capsys.readouterr().out
-        capsys.readouterr()
-    assert len(_task_ids(tmp_path, "housing_daily_2026-10-05")) >= 5
+    for job in ("housing_daily", "housing_monthly", "housing_fortnight"):
+        pid = f"{job}_2026-10-05"
+        first = None
+        for _ in range(2):
+            rc = run_daily_main(["--root", str(tmp_path), "--date", DATE,
+                                 "--job", job, "--dry-run"])
+            assert rc == 0, capsys.readouterr().out
+            capsys.readouterr()
+            got = _task_ids(tmp_path, pid)
+            assert got, f"{job} 没建出任务"
+            if first is None:
+                first = got
+            else:
+                # 幂等判的是**任务集合不变**：第二次跑若多出同名副本
+                # （idempotency_key 漏了 plan_id 前缀就是这个症状），
+                # 派发器会重复跑一遍，验收也会重复扣预算。
+                assert got == first, f"{job} 第二次跑把任务集改了：{first} → {got}"
 
 
 def test_unknown_job_fails_loudly(tmp_path, capsys):
@@ -127,7 +161,8 @@ def test_unknown_job_fails_loudly(tmp_path, capsys):
     assert rc == 3
     assert out["error"] == "unknown_job"
     assert out["job"] == "housing_dayly"
-    assert set(out["known_jobs"]) == {"daily_report", "housing_daily"}
+    assert set(out["known_jobs"]) == {"daily_report", "housing_daily",
+                                      "housing_monthly", "housing_fortnight"}
     assert _plan_ids(tmp_path) == set()
 
 
@@ -170,7 +205,10 @@ def test_report_links_picks_own_existing_reports(tmp_path):
     ]
     got = report_links(tmp_path, date, rows)
     paths = [p for _lab, p in got]
-    assert [lab for lab, _p in got] == ["日报", "投资观察", "产物目录"]
+    # 2026-10-07：t4_rollup 改名「短期走势观察」——它不再覆盖分线能级与六边形的
+    # 长期对比（那两块搬去了 housing_monthly / housing_fortnight），
+    # 标签跟着任务名一起改，免得通知里写着"投资观察"而内容只是日频走势。
+    assert [lab for lab, _p in got] == ["日报", "走势观察", "产物目录"]
     assert str(d / "report.md") in paths
     assert str(d / "t4_investment_watch.md") in paths
     assert str(d / "missing.md") not in paths, "没落盘的文件不能做成按钮"

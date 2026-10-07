@@ -68,28 +68,41 @@ def test_expand_template_substitutes_date_and_rules(tmp_path):
 
 
 def test_housing_acceptance_points_at_own_output(tmp_path):
-    """t1/t2/t3 共用一份 acceptance，path 必须是**各自**的产物。
+    """三条 housing 链的验收 path 必须落在**该任务自己声明的** outputs 里。
 
     实测 2026-10-03：acceptance_market.yaml 的 path 写死
     artifacts/{date}/report.md，而三条任务的产物是 t1_tier.md /
     t2_xuzhou_nanjing.md / t3_hexagon_cities.md——report.md 是其中一条
     顺手写的，于是谁交了它，另外两条的 file_exists/bytes 也一起"通过"，
     产物存在性互相顶替。{output} 展开后各查各的。
+
+    2026-10-07 拆链后这条断言的**覆盖面变大了**：t1/t2/t3 分处三条链，
+    且 t1_tier / t2_xz_nj 各自有第二个产物（spotlight.json / data.json），
+    验收里会引用 outputs[1]。所以判据从"等于 outputs[0]"放宽成
+    "属于本任务的 outputs 集合"——放宽的是**集合，不是归属**：
+    查别人家的产物照样红（tests/test_acceptance_refs.py 里那条
+    test_acceptance_paths_point_at_declared_outputs 从模板侧查同一件事）。
     """
     root = Path(__file__).resolve().parent.parent
-    plan = scheduler.expand_template(root, "templates/housing_daily.yaml",
-                                     "2026-10-04", job_id="housing_daily")
-    assert {t["outputs"][0] for t in plan["tasks"][:3]} == {
-        "artifacts/2026-10-04/t1_tier.md",
-        "artifacts/2026-10-04/t2_xuzhou_nanjing.md",
-        "artifacts/2026-10-04/t3_hexagon_cities.md",
-    }
-    for t in plan["tasks"]:
-        own = t["outputs"][0]
-        for r in t["acceptance"]:
-            if r.get("type") in ("file_exists", "business_rule"):
-                assert r["path"] == own, (t["task_id"], r)
-                assert "{output}" not in r["path"] and "{date}" not in r["path"]
+    chains = (("templates/housing_daily.yaml", "housing_daily"),
+              ("templates/housing_monthly.yaml", "housing_monthly"),
+              ("templates/housing_fortnight.yaml", "housing_fortnight"))
+    seen = 0
+    for tpl_rel, job in chains:
+        plan = scheduler.expand_template(root, tpl_rel, "2026-10-04", job_id=job)
+        assert plan["tasks"], f"{tpl_rel} 展开出 0 个任务"
+        for t in plan["tasks"]:
+            own = set(t["outputs"])
+            assert own, f"{job}::{t['task_id']} 没声明 outputs"
+            for r in t["acceptance"]:
+                p = r.get("path")
+                if not p:
+                    continue
+                assert p in own, (job, t["task_id"], p, sorted(own))
+                assert "{output}" not in p and "{date}" not in p, (job, t["task_id"], p)
+            seen += 1
+    # 三条链一共 6 个任务，少一个说明有任务没被这段断言覆盖到
+    assert seen == 6, f"只覆盖到 {seen} 个任务"
 
 
 def test_ensure_plan_idempotent(tmp_path):
