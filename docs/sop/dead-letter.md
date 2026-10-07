@@ -46,8 +46,17 @@ python -X utf8 -c "import sys; sys.path.insert(0,'orchestrator'); \
 **只有一条**合法的出死信路径：`Store.reopen_dead_letter()`，CLI 入口是
 
 ```powershell
-python -m core.scheduler --root orchestrator --date=2026-09-29 --rerun=t1_collect --reason="已补产物"
+cd E:\code\AutoTaskByMuseSpark1.3\orchestrator
+python -X utf8 -m core.scheduler --date=2026-09-29 --job=daily_report --rerun=t1_collect --reason="已补产物"
 ```
+
+> ⚠️ **必须在 `orchestrator\` 目录下执行**（2026-10-06 实测修正）。
+> 原来这里写的是在仓库根跑 `python -m core.scheduler --root orchestrator`，
+> 但 `--root` 只决定去哪里找 `state/state.db`，**不影响 `python -m` 的模块解析**——
+> `core` 包在 `orchestrator/` 下，从仓库根跑会直接
+> `ModuleNotFoundError: No module named 'core'`。
+> 进目录后 `--root` 可省略（默认就是包的上级）。
+> 另：`--job` 非默认链必须带，否则 plan_id 前缀对不上，报 `task_not_found`。
 
 它做三件事（缺一不可，见下"为什么"）：
 1. 状态 `DEAD_LETTER → RETRY`（此后按正常退避重排）
