@@ -1,75 +1,36 @@
 plan_template: housing_daily
-# 每日房地产跟踪。三条线互相独立，可单独 --rerun。
+# 每日地产跟踪（10:00）。2026-10-07 拆分：原 5 个任务里 t1_tier（房贷贴息分线）
+# 与 t3_hexagon（六边形城市）挪去月度/半月，本链只留**日频真正会动的**那一条。
+#
+# 用户原话："南京徐州对比的重点关注每天的交易量和平均价，交易比较活跃的小区，
+# 按照同区级别对比。"——所以 t2 是本链主角，t5/t4 都只为它服务。
+# 另两条的新去处：templates/housing_monthly.yaml、templates/housing_fortnight.yaml。
+#
 # 全部 needs_web: true —— 这些是"当下正在发生"的事，用模型参数内知识
 # 回答等于编数据（enqueue 也硬门要求 needs_web 必须带 freshness）。
 tasks:
-  - id: t1_tier
-    name: 分线城市跟踪
-    complexity: complex
-    key_questions:
-      - "一线城市新房与二手房价格、成交量相比上月与去年同期如何变化？"
-      - "二线城市与三四线城市的房价和成交量走势有何差异？"
-      - "贴息政策实施后，各能级城市的成交量与库存去化周期具体变化是多少？"
-      - "哪些城市出现了政策效果，哪些城市没有？依据是什么？"
-    objective: >-
-      跟踪中国房地产市场在房贷贴息政策实施后的变化，按城市能级分类对比：
-      一线城市（北京/上海/广州/深圳）、二线城市、三四线城市、其他城市。
-      每类至少给出：新房与二手房成交量环比/同比、价格环比变化、
-      库存去化周期、挂牌量、以及贴息政策的具体影响证据。
-      写入 artifacts/{date}/t1_tier.md，并在文末以表格汇总四类城市的
-      涨跌幅与成交量对比。所有数字标注来源与口径（新房/二手、
-      全年/当月、名义/实际），无法核实的项明确写"数据缺失"而不是估。
-    depends_on: []
-    outputs: ["artifacts/{date}/t1_tier.md"]
-    acceptance_ref: schemas/acceptance_market.yaml
-    needs_web: true
-    freshness: recent
-    max_attempts: 3
-    budget: {max_steps: 10, timeout_s: 600}
-
   - id: t2_xz_nj
-    name: 徐州南京对比
+    name: 徐州南京日度对比
     complexity: complex
     key_questions:
-      - "徐州新房与二手房的最新价格和成交量是多少？同比环比变化如何？"
-      - "南京新房与二手房的最新价格和成交量是多少？同比环比变化如何？"
-      - "徐州和南京在全国房价格局中分别处于什么位置？与同能级城市相比如何？"
-      - "这两座城市的产业与人口基本面如何支撑或拖累房价？"
+      - "今日（最近可得交易日）徐州与南京二手房各成交多少套，成交均价多少？环比昨日/上周变动多少？"
+      - "两城各有哪些成交活跃的小区？各自的成交量与均价是多少？"
+      - "南京与徐州的**同级别行政区**（均为地级市下的区）之间，成交量与均价差多少？"
     objective: >-
-      单独跟踪徐州与南京的房价走势，并放在全国整体坐标系里对比。
-      对两座城市分别给出：新房/二手房价格与成交量、库存去化周期、
-      人口与产业基本面、以及与同能级城市（徐州对标三四线、南京对标二线）
-      的横向对比。明确指出这两座城市在全国格局中属于哪种类型、
-      当前处于什么相对位置。写入 artifacts/{date}/t2_xuzhou_nanjing.md。
-      所有数字标注来源与口径，无法核实的项写"数据缺失"。
+      每日跟踪徐州与南京的二手房市场，口径固定为**当日或最近可得交易日**。
+      两城分别给出：日成交量套数、二手房成交均价（元/㎡）、较上一交易日的变动。
+      列出**成交活跃的小区**：小区名、所属区、近30天成交套数、成交均价，两城各若干。
+      做**同级别行政区对比**：南京、徐州市的下辖区属同一行政级别，
+      须逐区列出两城各不少于 3 个区的成交量与均价做同级对照，
+      不允许只比全市均值，也不许只挑最好或最差的区。
+      正文写入 artifacts/{date}/t2_xuzhou_nanjing.md，
+      同一批数字另存为结构化 artifacts/{date}/t2_xz_nj.data.json（字段见任务卡）。
+      每个数字标注来源与口径；当日查不到的写"数据缺失"，**不得用前值顶替**。
     depends_on: []
-    outputs: ["artifacts/{date}/t2_xuzhou_nanjing.md"]
-    acceptance_ref: schemas/acceptance_market.yaml
-    needs_web: true
-    freshness: recent
-    max_attempts: 3
-    budget: {max_steps: 10, timeout_s: 600}
-
-  - id: t3_hexagon
-    name: 六边形战士城市
-    complexity: complex
-    key_questions:
-      - "哪些城市在工作机会与薪资水平上表现最好？具体指标是什么？"
-      - "哪些城市在生活成本、医疗、教育、交通方面最均衡？"
-      - "哪些城市的房价收入比与租售比最合理？"
-      - "把工作、生活、房价三维都均衡的城市有哪些？哪些城市明显偏科？"
-    objective: >-
-      找出在工作、生活、房价三个维度都均衡的"六边形战士"型城市。
-      三个维度分别明确：工作（岗位密度、薪资水平、产业多元性）、
-      生活（医疗、教育、交通、气候、环境）、
-      房价（房价收入比、租售比、相对省会或同能级的价格分位）。
-      给出候选城市清单与每个城市在三维上的具体数据，
-      指出哪些城市是三项均衡的、哪些是明显偏科的。
-      写入 artifacts/{date}/t3_hexagon_cities.md。
-      结论必须可证伪——写明用什么指标在什么时间点能验证该城市是否仍均衡。
-    depends_on: []
-    outputs: ["artifacts/{date}/t3_hexagon_cities.md"]
-    acceptance_ref: schemas/acceptance_market.yaml
+    outputs:
+      - artifacts/{date}/t2_xuzhou_nanjing.md
+      - artifacts/{date}/t2_xz_nj.data.json
+    acceptance_ref: schemas/acceptance_market_xznj.yaml
     needs_web: true
     freshness: recent
     max_attempts: 3
@@ -79,43 +40,44 @@ tasks:
     name: 图表汇总
     complexity: simple
     key_questions:
-      - "分能级的价格环比、成交量有哪些可对比的数列？单位与期间是什么？"
-      - "徐州与南京在价格、去化周期上差多少？"
-      - "六边形三维打分里，候选城市之间的差距有多大？"
+      - "徐州与南京的日成交量、成交均价有哪些可对比的数列？单位与期间是什么？"
+      - "两城活跃小区的成交套数差距有多大？"
     objective: >-
-      读取 artifacts/{date}/ 下 t1_tier.md、t2_xuzhou_nanjing.md、
-      t3_hexagon_cities.md 三份产物里的表格，把**可对比的量**画成
-      mermaid 曲线/柱状图，输出 artifacts/{date}/charts_housing.md：
-      **至少 2 张图**，每张图前一行"图N：标题（口径 / 期间 / 来源）"。
-      优先画：①分能级价格环比走势 ②徐州 vs 南京的价格与去化对比
-      ③六边形候选城市三维打分对比。
-      图内数据点必须**逐字来自**上游表格——上游没写的数不要自己补；
+      读取 artifacts/{date}/t2_xuzhou_nanjing.md 与 t2_xz_nj.data.json，
+      把**可对比的量**画成 mermaid 曲线/柱状图，输出
+      artifacts/{date}/charts_housing.md：**至少 2 张图**，
+      每张图前一行"图N：标题（口径 / 期间 / 来源）"。
+      优先画：①两城日成交量对比 ②两城成交均价对比
+      ③同级别行政区成交量对照 ④活跃小区成交套数排名。
+      图内数据点必须**逐字来自**上游——上游没写的数不要自己补；
       某个维度上游确实没给，就换一个有数据的维度画，并在图注里写明
       "该口径上游未给"。
-    depends_on: [t1_tier, t2_xz_nj, t3_hexagon]
+    # 2026-10-07：依赖从 [t1_tier, t2_xz_nj, t3_hexagon] 收成 [t2_xz_nj]。
+    # t1/t3 挪去月度/半月后，它们不再与本链同日期落盘，
+    # 继续依赖会让每天的 charts 恒定等一个"今天不会出现"的产物 → 永远 PENDING。
+    depends_on: [t2_xz_nj]
     inputs:
-      - artifacts/{date}/t1_tier.md
       - artifacts/{date}/t2_xuzhou_nanjing.md
-      - artifacts/{date}/t3_hexagon_cities.md
+      - artifacts/{date}/t2_xz_nj.data.json
     # 2026-10-05 分家：原来与 daily 的 t4_charts 共用 charts.md，10:00 的
     # 这条把 08:00 那条的产物覆盖了——当天实测 report.md 里的 13 张图与
     # housing 的 charts.md 逐字相同，日报贴成了另一条链的图。
     # tests/test_job_matrix.py 现在钉住"两条链不许共用任何产物路径"。
     outputs: ["artifacts/{date}/charts_housing.md"]
     acceptance_ref: schemas/acceptance_charts_housing.yaml
-    # 不联网：数据全部来自上游三份产物，再检索一遍只会引入两套口径。
+    # 不联网：数据全部来自上游产物，再检索一遍只会引入两套口径。
     needs_web: false
     max_attempts: 3
     budget: {max_steps: 8, timeout_s: 420}
 
   - id: t4_rollup
-    name: 长期对比与投资观察
+    name: 短期走势观察
     complexity: complex
     objective: >-
-      基于本日 t1_tier、t2_xuzhou_nanjing、t3_hexagon_cities 三份产物、
-      t5_charts 的 charts_housing.md，以及 artifacts/ 下历史日期的同类产物，
-      做纵向对比：
-      哪些指标相对上次是改善/恶化、哪些已连续多期同向。
+      基于本日 t2_xuzhou_nanjing.md、t2_xz_nj.data.json、t5_charts 的
+      charts_housing.md，以及 artifacts/ 下历史日期的 t2 同类产物，
+      做**日频纵向对比**：两城成交量与均价的日间/周间变化、
+      活跃小区排名是否换人、同级别区之间差距是在扩大还是收窄。
       汇总成 artifacts/{date}/t4_investment_watch.md，
       给出当前观察清单与需要继续跟踪的指标。
       **图表必须来自 charts_housing.md**：把其中对应的 mermaid 图块贴进正文小节
@@ -124,12 +86,13 @@ tasks:
       **只做记录与对比，不给具体买卖建议**，也不给价格预测；
       对每个方向说明支持证据与反证、以及能被证伪的观测点。
       若历史产物不足（首期运行），明确写"需要更多期数据"而不是编趋势。
+      分线能级与六边形的长期对比已移至 housing_monthly / housing_fortnight，
+      本任务不再覆盖那两块。
     # t5_charts 前置：t4 要贴图，就得先有图可贴（2026-10-04 加）。
-    depends_on: [t1_tier, t2_xz_nj, t3_hexagon, t5_charts]
+    depends_on: [t2_xz_nj, t5_charts]
     inputs:
-      - artifacts/{date}/t1_tier.md
       - artifacts/{date}/t2_xuzhou_nanjing.md
-      - artifacts/{date}/t3_hexagon_cities.md
+      - artifacts/{date}/t2_xz_nj.data.json
       - artifacts/{date}/charts_housing.md
     outputs: ["artifacts/{date}/t4_investment_watch.md"]
     # 汇总类专用验收：不含 freshness/source_quality/source_traceable，

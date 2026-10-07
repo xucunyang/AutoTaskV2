@@ -1,0 +1,71 @@
+# 徐州南京日度对比（t2_xz_nj）的验收。
+#
+# 2026-10-07 新建。原 t2_xz_nj 与 t1_tier/t3_hexagon 共用 acceptance_market.yaml，
+# 用户指出"南京徐州对比的重点关注每天的交易量和平均价，交易比较活跃的小区，
+# 按照同区级别对比"之后，共用门禁抓不住这三样里的任何一样——
+# bytes>=800 + 有图 + 来源三件套，一份只写全市均价的长文照样通过。
+#
+# 做法：正文照旧查长度与图，**新增一份结构化 JSON**（t2_xz_nj.data.json），
+# 把成交量/均价/活跃小区/同级别区对照变成可机械判定的字段。
+# 这也顺带解决了"每天跑完数据都一样"——日成交套数与均价逐日会动，
+# 挂在这两个字段上，抄上一期就会被下面的门禁抓住。
+
+- type: file_exists
+  path: artifacts/{date}/t2_xuzhou_nanjing.md
+
+- type: business_rule
+  expr: "bytes >= 800"
+  path: artifacts/{date}/t2_xuzhou_nanjing.md
+
+- type: file_exists
+  path: artifacts/{date}/t2_xz_nj.data.json
+
+- type: json_schema
+  path: artifacts/{date}/t2_xz_nj.data.json
+  schema_ref: schemas/housing_xznj.schema.json
+
+# ① 两座城都在：这条**不在**这里写 business_rule，而是做进了 schema 的
+#    allOf/contains（cities 数组必须同时含「南京」与「徐州」）。
+#    原来写成一条 business_rule：
+#      (j_get(j,['cities',0,'city'],'')=='南京' and j_get(j,['cities',1,'city'],'')=='徐州') or (…换序…)
+#    它有两个毛病：一是长表达式会整条进任务卡（~200 token，白烧）；
+#    二是它把"两城都在"降级成"恰好是这两城且顺序二选一"，
+#    换成 schema 的 contains 才是"两城都在、下标顺序随便"。
+#
+# 下面两条把用户点名的另两样钉成机械断言。
+# 注意 eval_expr 的能力边界（core/verifier.py::ALLOWED_EXPR_NODES）：
+# 白名单里**没有** ListComp、没有 len、也没有 BinOp，所以
+# 「活跃小区够 N 条」这类遍历判断写不出来。
+# 于是分工变成：数量与类型交给 jsonschema 的 minItems/maxItems，
+# business_rule 只做它擅长的**定点取值比较**。
+# 2026-10-07 实测踩到：先写了 len(j_get(j,['hot_communities'],[])) >= 4，
+# 规则直接判 forbidden_node:Name 恒红——一条永远红的验收等于没有验收。
+
+# ② 同级别行政区对照真的做了：两城各取**第 3 个区**（下标 2），
+#    schema 的 minItems:3 只保证"有 3 个区"，这里保证第 3 个区的均价是真数字，
+#    不是 0、不是占位串——否则 minItems 会被三个空壳条目骗过去。
+- type: business_rule
+  expr: "j_get(j, ['cities', 0, 'districts', 2, 'avg_price_per_sqm'], 0) > 0 and j_get(j, ['cities', 1, 'districts', 2, 'avg_price_per_sqm'], 0) > 0"
+  path: artifacts/{date}/t2_xz_nj.data.json
+
+# ③ 活跃小区：schema minItems:4 管条数，这里要求**第 4 条真有成交套数**，
+#    堵住"列了 4 个小区名、成交数据全空"。
+- type: business_rule
+  expr: "j_get(j, ['hot_communities', 3, 'transactions_30d'], 0) > 0"
+  path: artifacts/{date}/t2_xz_nj.data.json
+
+- type: source_traceable
+
+# 时效窗口从 365 收到 **30 天**。这是本任务与 t1_tier 最本质的差别：
+# 这是一条**日频**链，来源里混进半年前的券商地产报告说明它抄的是旧数，
+# 正是用户抱怨的"每天执行完数据都一样"。规则本身留了 30% 的超期容忍，
+# 不会因为一两篇年终盘点就把整条判死。
+- type: freshness
+  freshness_days: 30
+
+- type: source_quality
+  source_tier_min_ratio: {A: 0.2}
+
+- type: mermaid
+  path: artifacts/{date}/t2_xuzhou_nanjing.md
+  min: 1

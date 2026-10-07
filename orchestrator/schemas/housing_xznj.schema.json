@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["as_of", "data_period", "cities", "hot_communities"],
+  "properties": {
+    "as_of": {
+      "type": "string",
+      "minLength": 4,
+      "description": "报告生成日 YYYY-MM-DD"
+    },
+    "data_period": {
+      "type": "string",
+      "minLength": 4,
+      "description": "这批数字实际对应的交易日/统计期（写清楚是「2026-10-06 当日」还是「近7日」）。日频链最忌讳拿上一期的数当今天交——所以这个字段必须写实"
+    },
+    "cities": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "固定两座：南京、徐州（下标顺序不限）。每座城都必须带 districts，因为本任务的核心是同级别行政区对照",
+      "items": {
+        "type": "object",
+        "required": ["city", "districts"],
+        "properties": {
+          "city": {"type": "string", "minLength": 2, "description": "城市名，逐字写「南京」「徐州」"},
+          "city_total": {"type": "object", "description": "全市合计（可选）：transactions=全市日成交套数、avg_price_per_sqm=全市成交均价"},
+          "districts": {
+            "type": "array",
+            "minItems": 3,
+            "items": {
+              "type": "object",
+              "required": ["district", "transactions", "avg_price_per_sqm"],
+              "properties": {
+                "district": {"type": "string", "minLength": 2, "description": "行政区名，如「鼓楼区」。南京与徐州市下辖区属同一行政级别，因此可逐区对照"},
+                "transactions": {"type": "integer", "minimum": 0, "description": "该区该期成交套数（整数，不是数组、不写「约120套」）"},
+                "avg_price_per_sqm": {"type": "number", "minimum": 0, "description": "该区该期二手房成交均价（元/㎡，数字不带单位）"},
+                "period": {"type": "string", "description": "该区数字的期间，通常与顶层 data_period 一致"}
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {"contains": {"type": "object", "required": ["city"], "properties": {"city": {"const": "南京"}}}},
+        {"contains": {"type": "object", "required": ["city"], "properties": {"city": {"const": "徐州"}}}}
+      ]
+    },
+    "hot_communities": {
+      "type": "array",
+      "minItems": 4,
+      "description": "两城合计的成交活跃小区。≥4 是下限：宁可少列也不要靠编造凑数，但一条不列等于没回答用户点名的「交易比较活跃的小区」",
+      "items": {
+        "type": "object",
+        "required": ["city", "district", "name"],
+        "properties": {
+          "city": {"type": "string", "minLength": 2, "description": "所属城市，逐字「南京」或「徐州」"},
+          "district": {"type": "string", "minLength": 2, "description": "所属行政区"},
+          "name": {"type": "string", "minLength": 2, "description": "小区名称"},
+          "transactions_30d": {"type": "integer", "minimum": 0, "description": "近30天成交套数（整数）。查不到确切口径时按所选口径填并在正文注明是哪个口径"},
+          "avg_price_per_sqm": {"type": "number", "minimum": 0, "description": "该小区成交均价（元/㎡）"}
+        }
+      }
+    }
+  },
+  "notes": {
+    "type": "string",
+    "description": "口径说明：哪些区/字段当日没查到（写「数据缺失」而不是拿上一期顶替），以及为什么"
+  }
+}

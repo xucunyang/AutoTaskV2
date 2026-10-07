@@ -134,20 +134,30 @@ def known_jobs(root: Path) -> list[str]:
 
 
 # 通知里要给"能一键打开"的产物。按钮顺序 = 人最想先点什么：
-# 各链的汇总正文 → housing 的投资观察 → 图表。
+# 各链的汇总正文 → housing 的走势观察 → 图表。
 # 2026-10-05 分家后 housing 的图叫 charts_housing.md；再新增 finance /
 # hardware 两条链，各自的日报正文排在图表之前（报告比图先看）。
+# 2026-10-07 拆链后 housing 变成三条：日更的走势观察、月度的总体趋势、
+# 半月的六边形城市——三份汇总正文各排在自己的图表之前。
 LINK_PRIORITY = ("report.md", "finance_report.md", "hardware_report.md",
-                 "policy_report.md", "t4_investment_watch.md", "charts.md", "charts_housing.md")
+                 "policy_report.md", "t4_investment_watch.md", "m_monthly_trend.md",
+                 "charts.md", "charts_housing.md")
 LINK_LABELS = {
     "report.md": "日报",
     "finance_report.md": "股票日报",
     "hardware_report.md": "硬件日报",
     "policy_report.md": "政策日报",
-    "t4_investment_watch.md": "投资观察",
+    "t4_investment_watch.md": "走势观察",
+    "m_monthly_trend.md": "月度趋势",
     "charts.md": "图表",
     "charts_housing.md": "图表",
     "t1_tier.md": "分线跟踪",
+    # 2026-10-07 新增：这两份是结构化数据，按 .json 走不到上面的
+    # BODY_SUFFIXES 分支，但 label 仍要有——report_links 是按 outputs
+    # 声明挑文件的，多一条 label 不会多出一个按钮，只是不至于
+    # 退化成一串生僻的文件名。
+    "t1_spotlight.json": "亮眼榜",
+    "t2_xz_nj.data.json": "徐州南京数据",
     "t2_xuzhou_nanjing.md": "徐州南京",
     "t3_hexagon_cities.md": "六边形城市",
     "t2_investment.md": "理财动态",

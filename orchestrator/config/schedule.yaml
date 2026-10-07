@@ -26,6 +26,40 @@ jobs:
     catchup: true
     max_workers: 4
     poll_interval_s: 30
+  # 六边形战士城市（每月 1 日与 15 日 06:00）。
+  # 2026-10-07 从 housing_daily 拆出，理由见 templates/housing_fortnight.yaml：
+  # 房价收入比/租售比/薪资水平是月度甚至季度更新的数据，每天跑没有新信息。
+  # 用户在"一个月 / 每半个月"之间选了**每半个月**。
+  # cron 的 1,15 对应 XML 里的 ScheduleByMonth + DaysOfMonth 1 和 15
+  # （Windows 的 ScheduleByDay/DaysInterval 表达不出"每月 1 号和 15 号"，
+  #  用 DaysInterval=14 会在 31 天的月份跑出 1/16/31 三次，不是半个月）。
+  - id: housing_fortnight
+    cron: "0 6 1,15 * *"
+    timezone: Asia/Shanghai
+    template: templates/housing_fortnight.yaml
+    coalesce: true
+    max_instances: 1
+    misfire_grace_time: 21600
+    catchup: true
+    max_workers: 4
+    poll_interval_s: 30
+  # 房贷贴息分线城市月度跟踪（每月 8 日 06:40）。
+  # 同样从 housing_daily 拆出：这条统计的是月度/季度口径，用户的判断是
+  # "每天执行完数据都一样，没有什么意义"。
+  # 定 8 日而不是 1 日：月初各城市住建局/统计局的上月数据还没出，
+  # 1 号跑必然只能抄上上个月的数。
+  # 06:40 与 housing_fortnight 的 06:00 错开 40 分钟——
+  # 两条 run_daily 并行写 state.db 是没验证过的姿势（test_jobs_are_spread_out_in_time 卡 30 分钟下限）。
+  - id: housing_monthly
+    cron: "40 6 8 * *"
+    timezone: Asia/Shanghai
+    template: templates/housing_monthly.yaml
+    coalesce: true
+    max_instances: 1
+    misfire_grace_time: 21600
+    catchup: true
+    max_workers: 4
+    poll_interval_s: 30
   # 每日股票与投资理财跟踪（2026-10-05 新增，用户点名）。
   # 08:30 = A 股开盘（9:30）之前，采到的必然是**上一交易日**收盘
   # + 昨夜美股——这是口径，模板 objective 里写死了，免得模型编"今天的涨跌"。

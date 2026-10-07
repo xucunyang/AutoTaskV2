@@ -1,0 +1,71 @@
+plan_template: housing_monthly
+# 房贷贴息分线城市跟踪（每月 8 日 06:40）。
+#
+# 2026-10-07 从 housing_daily 拆出。理由是用户判断：这条统计的是
+# **月度/季度口径**的数据（成交量环比同比、库存去化周期），
+# 每天跑等于每天抄上个月同一批数，"跑完数据都一样，没有什么意义"。
+# 与 housing_daily（每日）分属不同 plan_id，产物名也不撞。
+#
+# 用户对这条的追加要求：不要只给四类城市的平均数，
+# 要**重点关注表现突出的城市或小区，把亮眼的部分罗列出来**——
+# 所以下面加了 t1_spotlight.json 与两条 j_get 门禁把"亮眼榜"变成机械断言。
+tasks:
+  - id: t1_tier
+    name: 房贷贴息分线能级月度跟踪
+    complexity: complex
+    key_questions:
+      - "上月一线/二线/三四线城市的新房与二手房成交量、价格环比同比分别是多少？"
+      - "贴息政策实施后，各能级城市的成交量与库存去化周期具体变化是多少？"
+      - "**哪些城市或小区表现突出**？突出的具体指标是什么、排名如何？"
+      - "哪些城市出现了政策效果，哪些没有？依据是什么？"
+    objective: >-
+      跟踪中国房地产市场在房贷贴息政策实施后的变化，按城市能级分类对比：
+      一线（北京/上海/广州/深圳）、二线、三四线、其他城市。
+      **统计口径固定为上一个自然月**，正文首行写明是哪个月。
+      每类至少给出：新房与二手房成交量环比/同比、价格环比变化、
+      库存去化周期、挂牌量、以及贴息政策的具体影响证据。
+      在四类城市汇总表之外，另设一节**「亮眼榜」**：
+      把表现突出的**城市或小区**逐个列出——名称、所属能级/区、
+      突出的具体指标与数值、相对同能级同区级别的排名或分位、
+      以及它为什么突出（成交放量？价格倒挂？去化最快？）。
+      亮眼榜另存为结构化 artifacts/{date}/t1_spotlight.json（字段见任务卡）。
+      正文写入 artifacts/{date}/t1_tier.md，文末以表格汇总四类城市的
+      涨跌幅与成交量对比。所有数字标注来源与口径（新房/二手、
+      全年/当月、名义/实际），无法核实的项明确写"数据缺失"而不是估。
+    depends_on: []
+    outputs:
+      - artifacts/{date}/t1_tier.md
+      - artifacts/{date}/t1_spotlight.json
+    acceptance_ref: schemas/acceptance_market_tier.yaml
+    needs_web: true
+    freshness: recent
+    max_attempts: 3
+    budget: {max_steps: 10, timeout_s: 600}
+
+  - id: m_rollup
+    name: 月度总体趋势
+    complexity: complex
+    objective: >-
+      基于本日 t1_tier.md、t1_spotlight.json，以及 artifacts/ 下历史日期的
+      t1 同类产物，做**月度纵向趋势**对比：
+      哪些指标相对上月改善/恶化、哪些已连续多期同向，
+      亮眼榜里的城市/小区**是否换了人**（上月亮的这期还亮吗）。
+      汇总成 artifacts/{date}/m_monthly_trend.md，
+      给出当前观察清单与需要继续跟踪的指标。
+      **图表必须来自 t1_tier.md**：把其中对应的 mermaid 图块贴进正文小节
+      （验收按 mermaid 计数，正文一张图都没有 = FAIL），不要重画、
+      也不要只贴数据表代替图。
+      **只做记录与对比，不给具体买卖建议**，也不给价格预测；
+      对每个方向说明支持证据与反证、以及能被证伪的观测点。
+      若历史产物不足（首期运行），明确写"需要更多期数据"而不是编趋势。
+    depends_on: [t1_tier]
+    inputs:
+      - artifacts/{date}/t1_tier.md
+      - artifacts/{date}/t1_spotlight.json
+    outputs: ["artifacts/{date}/m_monthly_trend.md"]
+    # 汇总类专用验收：不含 freshness/source_quality/source_traceable，
+    # 因为 m_rollup 不检索、不产生 sources.json，那三条对它永远 FAIL。
+    acceptance_ref: schemas/acceptance_market_rollup.yaml
+    needs_web: false
+    max_attempts: 3
+    budget: {max_steps: 8, timeout_s: 420}

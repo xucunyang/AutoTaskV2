@@ -1,0 +1,55 @@
+# 房贷贴息分线能级月度跟踪（t1_tier）的验收。
+#
+# 2026-10-07 新建，从 acceptance_market.yaml 复制并加了一条亮眼榜门禁。
+# 用户对这条的要求："关于总体趋势，每个月来统计的，可以重点关注一些表现比较突出的
+# 城市或者小区，把亮眼的部分罗列出来。"
+#
+# 原来的四条门禁（长度/来源三件套/图）对"有没有亮眼榜"完全无感——
+# 一份只写四类城市平均涨跌的长文照样全绿。所以新增结构化
+# t1_spotlight.json + 两条 j_get 断言，把"亮眼"变成字段级要求。
+
+- type: file_exists
+  path: artifacts/{date}/t1_tier.md
+
+- type: business_rule
+  expr: "bytes >= 800"
+  path: artifacts/{date}/t1_tier.md
+
+- type: file_exists
+  path: artifacts/{date}/t1_spotlight.json
+
+- type: json_schema
+  path: artifacts/{date}/t1_spotlight.json
+  schema_ref: schemas/housing_spotlight.schema.json
+
+# ① 统计期必须写成 YYYY-MM。只判非空太弱（schema 的 minLength:4 已经查过），
+#    这里用 '-' in period 堵掉「本月」「9月」「2026年9月」这类写法——
+#    月度链最大的风险是拿当月未完数据冒充结论，期次写清楚是防这个的第一道闸。
+- type: business_rule
+  expr: "'-' in j_get(j, ['period'], '')"
+  path: artifacts/{date}/t1_spotlight.json
+
+# ② 亮眼榜条目达标：城市 ≥3 且小区 ≥2（合计 ≥5）。
+#    schema 同样给了这两个 minItems，这里再点验第 3 个城市与第 2 个小区
+#    的名称非空，堵住"数组里塞空对象骗过 minItems"。
+#    用户原话是"城市**或者**小区"，所以两侧都不设成硬性高门槛，
+#    门槛落在合计量上——某一侧查不到时另一侧仍可铺开，不至于整条判死。
+- type: business_rule
+  expr: "j_get(j, ['spotlight_cities', 2, 'city'], '') != '' and j_get(j, ['spotlight_communities', 1, 'name'], '') != ''"
+  path: artifacts/{date}/t1_spotlight.json
+
+- type: source_traceable
+
+# 月度链比日频链宽松：一个月才跑一次，上个月的统计公报、
+# 季度报告都算新鲜。180 天足以卡住"拿三年前的分析当现状"，
+# 又不会把克而瑞/中指的月度报告毙掉（t1_tier 历史阈值一路从 180 放宽到 365，
+# 那是对**日频跑月频数据**的将就；改月度后窗口该收回来）。
+- type: freshness
+  freshness_days: 180
+
+- type: source_quality
+  source_tier_min_ratio: {A: 0.2}
+
+- type: mermaid
+  path: artifacts/{date}/t1_tier.md
+  min: 1
