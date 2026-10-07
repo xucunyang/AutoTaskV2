@@ -365,5 +365,7 @@ def test_run_daily_wires_desktop_marker():
     """
     src = (ROOT_TPL / "scripts" / "run_daily.py").read_text(encoding="utf-8")
     assert "_write_desktop_marker" in src, "桌面 marker 函数被摘掉了"
-    assert "_write_desktop_marker(root, args.job, date, rc, summary," \
-        in src, "main 末尾没调用桌面 marker"
+    # main 末尾调用：传 elapsed_s=...(time.monotonic() - t0)，这是
+    # 接线断言——改动签名/调用方式都会红。match 多行也行。
+    assert "_write_desktop_marker(" in src and "args.job, date, rc, summary" in src, \
+        "main 末尾没调用桌面 marker"

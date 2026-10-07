@@ -209,7 +209,8 @@ def report_links(root: Path, date: str, rows: list[dict]) -> list[tuple[str, str
 def _write_desktop_marker(root: Path, job: str, date: str, rc: int,
                           summary: dict,
                           links: list[tuple[str, str]],
-                          *, desktop_dir: Path | None = None) -> None:
+                          *, elapsed_s: float = 0.0,
+                          desktop_dir: Path | None = None) -> None:
     """在用户桌面写一份 ASCII 跑批结果，**不依赖通知中心就能看到**。
 
     触发场景：用户不在电脑前、toast 横幅过期（duration=long 仍只 25 秒，
@@ -232,7 +233,7 @@ def _write_desktop_marker(root: Path, job: str, date: str, rc: int,
 
     icon = {0: "[OK]", 1: "[..]", 2: "[DEAD]", 3: "[CFG]"}.get(rc, "[??]")
     lines = [
-        f"{icon} {job} {date}  rc={rc}",
+        f"{icon} {job} {date}  rc={rc}  用时 {winnotify._fmt_elapsed(elapsed_s)}",
         f"任务：{sum(1 for t in summary['tasks'])} 条 "
         f"(完成 {sum(1 for t in summary['tasks'] if t['status'] in ('DONE','SKIPPED','SKIPPED_CACHED'))}，"
         f"死信 {len(summary['dead_letter'])}，在途 {len(summary['not_terminal'])})",
@@ -454,7 +455,7 @@ def main(argv: list[str] | None = None) -> int:
         dead=len(summary["dead_letter"]),
         not_terminal=[t["task_id"] for t in summary["tasks"]
                       if t["status"] not in TERMINAL],
-        elapsed_min=(time.monotonic() - t0) / 60.0,
+        elapsed_s=(time.monotonic() - t0),
         enabled=not args.no_notify,
         links=report_links(root, date, rows))
     # 桌面 marker：toast 在锁屏会被系统丢掉（横幅 duration 到期 + 用户
@@ -462,7 +463,9 @@ def main(argv: list[str] | None = None) -> int:
     # 不依赖通知中心、不依赖锁屏行为；ASCII 摘要含退出码/任务/链接，
     # 失败也能定位是哪条任务挂的（toast 正文只有 4 行装不下）。
     if not args.no_notify:
-        _write_desktop_marker(root, args.job, date, rc, summary, report_links(root, date, rows))
+        _write_desktop_marker(
+            root, args.job, date, rc, summary, report_links(root, date, rows),
+            elapsed_s=(time.monotonic() - t0))
     return rc
 
 

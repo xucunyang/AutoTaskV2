@@ -75,7 +75,7 @@ def test_notify_summary_does_not_log_failure_when_suppressed(tmp_path, monkeypat
     测试以为通知链路坏了，而它其实是主动不弹——两种故障要分得开。"""
     monkeypatch.setenv(wn.SUPPRESS_ENV, "1")
     assert wn.notify_summary(tmp_path, "housing_daily", "2026-10-06",
-                             rc=0, done=3, dead=0, not_terminal=[], elapsed_min=1.2
+                             rc=0, done=3, dead=0, not_terminal=[], elapsed_s=72.0
                              ) is False
     log = (tmp_path / "logs" / "structured.jsonl")
     txt = log.read_text(encoding="utf-8") if log.exists() else ""

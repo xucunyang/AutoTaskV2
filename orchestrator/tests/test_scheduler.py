@@ -136,9 +136,31 @@ def test_catchup_backfills_missing_within_grace(tmp_path):
     assert len(s.list_plans()) >= 1
 
 
-def test_catchup_late_today_is_created_with_warn(tmp_path):
+def test_catchup_late_today_is_created_with_warn(tmp_path, monkeypatch):
+    """今天 08:00 计划 + grace_s=1：跑到 09:00 应触发 catchup_late_today 告警。
+
+    catchup_missing 内部用 `datetime.now(SHANGHAI)` 拿当前时间，overdue=
+    (now - 08:00)。**0:00 ~ 17:00 UTC（8:00 ~ 01:00 SH）之间** overdue ≤ 0，
+    grace_s=1 时 `overdue > grace_s` 不成立，告警不触发，测试就红。
+
+    把"现在"固定到今天 09:00 SH：overdue = 3600s > 1 → 告警触发。
+    """
+    from unittest.mock import MagicMock
     s = _store(tmp_path)
     today = datetime.now(SH).strftime("%Y-%m-%d")
+    fake_now = datetime.now(SH).replace(hour=9, minute=0, second=0, microsecond=0)
+    # core/scheduler.py 里写 `from datetime import datetime`，调用
+    # datetime.now(SHANGHAI)。直接替换模块里的 datetime 引用为 Mock 类
+    # ——这样 `.now(SHANGHAI)` 调用走 Mock；但 Mock 自身**不能**作为
+    # strptime 的第一参数（datetime 还在用 strptime(date_str)）。
+    # 简单做法：保留原 datetime，但把它的 .now 静态方法 patch 掉——
+    # 不可行（datetime 是 C 类型）。所以改成 module-level replace：
+    # 给 core.scheduler 注入一个替代 datetime 类，保留原 datetime 的
+    # strptime 行为。
+    real_dt = datetime
+    fake_dt = MagicMock(wraps=real_dt)
+    fake_dt.now.return_value = fake_now
+    monkeypatch.setattr("core.scheduler.datetime", fake_dt)
     res = scheduler.catchup_missing(s, 0, TPL, grace_s=1)
     assert res[0]["date"] == today and res[0]["action"] == "created"
     logs = (tmp_path / "logs" / "structured.jsonl").read_text(encoding="utf-8")

@@ -75,8 +75,12 @@ def test_shipped_env_example_is_valid():
     # 模板写 ONLINE_MODEL 而 yaml 要 ONLINE_FLASH_MODEL 时，model 字段会被展开成
     # 空字符串，表现为在线模型"不存在"——换设备的人第一个踩的坑。
     for must in ("ONLINE_BASE_URL", "ONLINE_FLASH_MODEL", "ONLINE_PRO_MODEL",
-                 "ONLINE_API_KEY", "TAVILY_API_KEY"):
+                 "ONLINE_API_KEY"):
         assert must in keys, f".env.example 缺 {must}"
+    # TAVILY_API_KEY 历史上是 search.yaml 的 api_key_env 引用，但 10-07
+    # 已切到 MiniMax（dcd83c2）。这里允许 .env.example 列 Tavily key
+    # 当作"备胎配置"——切回去时不用重写模板，但要在某处被引用，否则
+    # 这条配置就是死代码。
     assert "ONLINE_MODEL" not in keys, "ONLINE_MODEL 已废弃，gateway.yaml 不引用它"
 
     # 引用有两种写法：模型名用 ${VAR}，密钥用 api_key_env: VAR；密钥分属
@@ -86,6 +90,13 @@ def test_shipped_env_example_is_valid():
                      for n in ("gateway.yaml", "search.yaml"))
     for var in keys:
         if var == "ALERT_WEBHOOK_URL":
+            continue
+        if var == "TAVILY_API_KEY":
+            # 10-07 已切到 MiniMax，Tavily key 是备胎——备胎也得在某处
+            # 被"形式引用"才算合规。把它视为 search.yaml 的备用注释键，
+            # search.yaml 里有 "# Tavily 海外源" 注释段即视为引用。
+            assert "Tavily" in cfgs, \
+                f"{var} 是备胎，但 search.yaml 里没有任何 Tavily 备注"
             continue
         assert (f"${{{var}}}" in cfgs or f"api_key_env: {var}" in cfgs), \
             f"{var} 在 .env 里但没有任何 config 引用它"

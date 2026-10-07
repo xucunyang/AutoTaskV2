@@ -63,6 +63,35 @@ def _b64_in(script: str) -> str:
     return m.group(1)
 
 
+def test_fmt_elapsed_precise_to_seconds():
+    """用户原话："最好时间精准到秒，不然归属问题不好定位"。
+
+    跑批死信排查常要回答"是不是刚好卡到 90 分钟 timeout"——
+    分钟粒度下 89:58 与 90:01 都被压成 90.0，看不出来。改 HH:MM:SS / MM:SS.s
+    后精度落到秒，能区分"是 timeout 杀的"还是"verifier 卡的"。
+    """
+    f = wn._fmt_elapsed
+    assert f(0) == "00:00.0"
+    assert f(0.1) == "00:00.1"
+    assert f(18) == "00:18.0"            # 原来会被压成 "0.3 分钟"
+    assert f(60) == "01:00.0"
+    assert f(540) == "09:00.0"
+    assert f(3599) == "59:59.0"
+    assert f(3600) == "1:00:00"           # ≥1h 进 HH:MM:SS 整数秒
+    assert f(5460) == "1:31:00"
+    assert f(522) == "08:42.0"             # real 0.3 分钟 -> 12 分 30 秒被错算的案例
+    assert f(-5) == "00:00.0"             # 负数钳到 0
+
+
+def test_summary_message_body_contains_precise_elapsed():
+    """正文里用时必须是 MM:SS.s（<1h）或 HH:MM:SS，不能再是"X.X 分钟"。"""
+    title, body, _ = wn.daily_summary_message(
+        "finance_daily", "2026-10-08", rc=2, done=1, dead=1,
+        not_terminal=["t3_finance_report"], elapsed_s=742.4)
+    assert "用时 12:22.4" in body, body
+    assert "分钟" not in body, "用户要求精确到秒，不能再出现分钟字样"
+
+
 def test_toast_xml_carries_title_body_and_sound():
     xml = wn.toast_xml("标题 & <标签>", "第一行\n第二行", fail=True)
     root = ET.fromstring(xml)                      # 解析得了 = 转义正确
@@ -145,20 +174,21 @@ def test_summary_message_by_exit_code():
     for rc, (word, fail) in cases.items():
         title, body, got_fail = wn.daily_summary_message(
             "daily_report", "2026-10-05", rc=rc, done=4, dead=0,
-            not_terminal=[], elapsed_min=12.34)
+            not_terminal=[], elapsed_s=740.4)   # 12.34 分钟 → 12:20.4
         assert got_fail is fail, rc
         assert word in title and "daily_report" in title
         assert "2026-10-05" in title
-        assert "12.3 分钟" in body and "完成 4" in body
+        assert "12:20.4" in body and "完成 4" in body
 
 
 def test_summary_message_lists_unfinished_tasks():
     _, body, fail = wn.daily_summary_message(
         "housing_daily", "2026-10-05", rc=1, done=3, dead=0,
-        not_terminal=["t3_report", "t4_rollup"], elapsed_min=9.0)
+        not_terminal=["t3_report", "t4_rollup"], elapsed_s=540.0)
     assert fail is True
     assert "未终态 2" in body
     assert "t3_report" in body and "t4_rollup" in body
+    assert "09:00.0" in body
 
 
 def test_notify_summary_respects_disabled_flag(tmp_path, monkeypatch):
@@ -166,7 +196,7 @@ def test_notify_summary_respects_disabled_flag(tmp_path, monkeypatch):
     runner = FakeRunner()
     assert wn.notify_summary(tmp_path, "daily_report", "2026-10-05", rc=0,
                              done=4, dead=0, not_terminal=[],
-                             elapsed_min=1.0, enabled=False) is False
+                             elapsed_s=60.0, enabled=False) is False
     assert runner.calls == []
 
 
@@ -175,7 +205,7 @@ def test_notify_summary_logs_success(tmp_path, monkeypatch):
     monkeypatch.setattr(wn, "notify", lambda *a, **k: True)
     assert wn.notify_summary(tmp_path, "daily_report", "2026-10-05", rc=0,
                              done=4, dead=0, not_terminal=[],
-                             elapsed_min=1.0) is True
+                             elapsed_s=60.0) is True
     log = tmp_path / "logs" / "structured.jsonl"
     assert log.is_file()
     assert "winnotify_sent" in log.read_text(encoding="utf-8")
@@ -194,7 +224,7 @@ def test_notify_summary_always_calls_notify(tmp_path, monkeypatch, rc):
     assert wn.notify_summary(tmp_path, "housing_daily", "2026-10-05", rc=rc,
                              done=3, dead=1 if rc == 2 else 0,
                              not_terminal=[] if rc == 0 else ["t3"],
-                             elapsed_min=5.0) is True
+                             elapsed_s=300.0) is True
     assert seen["fail"] is (rc != 0)
     assert "housing_daily" in seen["title"]
 
@@ -255,12 +285,12 @@ def test_body_carries_the_path_for_balloon_fallback(tmp_path):
     p = str(tmp_path / "report.md")
     _, body, _ = wn.daily_summary_message(
         "daily_report", "2026-10-06", rc=0, done=4, dead=0,
-        not_terminal=[], elapsed_min=3.0, links=[("日报", p)])
+        not_terminal=[], elapsed_s=180.0, links=[("日报", p)])
     assert f"日报: {p}" in body
     # 没给链接时正文保持原样（不渲染空行）
     _, body2, _ = wn.daily_summary_message(
         "daily_report", "2026-10-06", rc=0, done=4, dead=0,
-        not_terminal=[], elapsed_min=3.0)
+        not_terminal=[], elapsed_s=180.0)
     assert "日报:" not in body2
 
 

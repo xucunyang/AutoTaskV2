@@ -1,14 +1,17 @@
 # V7: Web搜索插件配置（core/search/，可插拔；飞书IngressProvider见core/ingress/预留）
-# 换provider只改 provider: 这一个字段。已实现：tavily / bocha
+# 换provider只改 provider: 这一个字段。已实现：tavily / bocha / minimax
 #   tavily  海外源，需要出境网络
 #   bocha   博查（api.bochaai.com），国内可用，提供长文本摘要，做A类分级更好用
+#   minimax MiniMax M Plan（web_search 嵌入 Anthropic Messages API），
+#          国内可用，套餐自带额度——10-07 接进来当 Tavily 额度耗尽的备胎
 # 换端点/换key变量名改 base_url/path/api_key_env——这些字段现在真的会传下去
-provider: tavily
-timeout_s: 30
+provider: minimax
+timeout_s: 60
 top_k: 8
 per_day_limit: 500
-api_key_env: TAVILY_API_KEY
-base_url: "https://api.tavily.com"
+api_key_env: MINIMAX_API_KEY
+base_url: "https://api.minimax.cn/anthropic/v1/messages"
+model: MiniMax-M3
 # --- 博查（把上面四行换成下面四行即可切过去）---
 # provider: bocha
 # api_key_env: BOCHA_API_KEY

@@ -236,9 +236,30 @@ def notify(title: str, body: str, *, fail: bool = False,
     return ok
 
 
+def _fmt_elapsed(seconds: float) -> str:
+    """把秒数格式化成 HH:MM:SS（>1h）或 MM:SS.s（<1h）。
+
+    用户原话："最好时间精准到秒，不然归属问题不好定位"——
+    跑批死信排查经常要回答"是哪次重试用光了 timeout"，
+    0.3 分钟 = 18 秒 与 8.7 分钟 = 522 秒 在"分钟粒度"下都被压成"X.X 分钟"，
+    看不出"是不是刚好卡到 90 分钟 timeout"。
+
+    所以这里按规模分两种格式：
+      - <1h：MM:SS.s（带小数秒，5min 内的偏差看得清）
+      - ≥1h：HH:MM:SS（整数秒，省字节）
+    """
+    s = max(0.0, float(seconds))
+    h = int(s // 3600)
+    m = int((s % 3600) // 60)
+    sec = s - h * 3600 - m * 60
+    if h > 0:
+        return f"{h:d}:{m:02d}:{int(sec):02d}"
+    return f"{m:02d}:{sec:04.1f}"
+
+
 def daily_summary_message(job: str, date: str, *, rc: int, done: int,
                           dead: int, not_terminal: list[str],
-                          elapsed_min: float,
+                          elapsed_s: float,
                           links=None) -> tuple[str, str, bool]:
     """按退出码造 (标题, 正文, 是否失败)。退出码语义见 scripts/run_daily.py。
 
@@ -248,7 +269,7 @@ def daily_summary_message(job: str, date: str, *, rc: int, done: int,
     head = {0: "✅ 跑完了", 1: "⚠️ 没跑完", 2: "💀 有死信",
             3: "❌ 起不来"}.get(rc, "❌ 出错了")
     title = f"{head} {job} · {date}"
-    body = (f"用时 {elapsed_min:.1f} 分钟 · 退出码 {rc}\n"
+    body = (f"用时 {_fmt_elapsed(elapsed_s)} · 退出码 {rc}\n"
             f"完成 {done} · 死信 {dead} · 未终态 {len(not_terminal)}")
     if not_terminal:
         body += "\n" + "、".join(str(x) for x in not_terminal[:6])
@@ -259,7 +280,7 @@ def daily_summary_message(job: str, date: str, *, rc: int, done: int,
 
 def notify_summary(root, job: str, date: str, *, rc: int, done: int,
                    dead: int, not_terminal: list[str],
-                   elapsed_min: float, enabled: bool = True,
+                   elapsed_s: float, enabled: bool = True,
                    links=None) -> bool:
     """跑批收尾通知的统一入口（带结构化日志，方便事后查为什么没弹）。"""
     if not enabled:
@@ -272,7 +293,7 @@ def notify_summary(root, job: str, date: str, *, rc: int, done: int,
         return False
     title, body, fail = daily_summary_message(
         job, date, rc=rc, done=done, dead=dead,
-        not_terminal=not_terminal, elapsed_min=elapsed_min, links=links)
+        not_terminal=not_terminal, elapsed_s=elapsed_s, links=links)
     sent = notify(title, body, fail=fail, links=links)
     jlog(root, "INFO" if sent else "WARN",
          "winnotify_sent" if sent else "winnotify_failed",
