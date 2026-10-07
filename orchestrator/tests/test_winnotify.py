@@ -16,6 +16,26 @@ import pytest
 from core import winnotify as wn
 
 
+@pytest.fixture(autouse=True)
+def _allowed_to_really_notify(monkeypatch):
+    """把 tests/conftest.py 那道全局静默闸**显式关掉**。
+
+    这个模块测的就是通知本身，而闸就住在 `wn.notify()` 里面——
+    不关掉的话，下面每条用例都会在起 PowerShell 之前就被短路，
+    测的全是"被静默"，不是"会弹"。
+
+    两边合起来才盖得住完整行为：
+    - 本模块证明**闸关掉之后 notify 真的会去起 PowerShell**；
+    - test_notify_suppressed_in_tests.py 证明**闸关上时它确实不去**。
+    少任何一边，这个开关都可能被人改坏而测试还全绿。
+
+    用 FORCE_ENV 而不是 delenv PYTEST_CURRENT_TEST：pytest 会在
+    **call 阶段再设一次**那个变量，在 setup 里删是删不掉的（踩过）。
+    """
+    monkeypatch.setenv(wn.FORCE_ENV, "1")
+    assert wn.suppressed() is False, "静默闸没关掉，下面的用例会测不到东西"
+
+
 class FakeRunner:
     """按调用次序返回预设结果，记录每次收到的脚本。"""
 

@@ -29,6 +29,40 @@ from xml.sax.saxutils import escape
 
 from core.utils import jlog
 
+# 测试时**绝不**弹真通知。2026-10-06 实测的教训：
+# `tests/test_run_daily.py::test_unknown_job_fails_loudly` 故意用
+# `--job housing_dayly`（拼错）跑 run_daily 来验证退出码 3，而那条路径会
+# 调 notify()——于是**每跑一次全量 pytest，就往用户桌面弹一次
+# "❌ 起不来 housing_dayly"**。当天弹了 15 次，用户以为生产在报错，
+# 排查了半天：通知库里 ArrivalTime 一路排到当天 15:56，
+# 而生产五条链全部 LastResult=0。
+#
+# 通知是"找人"的东西，测试弹它等于**用假警报训练用户忽略真警报**——
+# 这比不弹更糟。所以这里做成硬闸：环境变量或 pytest 命中就短路返回。
+SUPPRESS_ENV = "AUTOTASK_NO_NOTIFY"
+FORCE_ENV = "AUTOTASK_FORCE_NOTIFY"
+
+
+def suppressed() -> bool:
+    """要不要静默（测试/演练）。
+
+    判定顺序是有意的，**force 必须在最前**：
+    - `AUTOTASK_FORCE_NOTIFY`：显式强制真弹。给 `tests/test_winnotify.py`
+      用——那个模块测的就是通知本身，得证明"闸关掉之后真的会弹"。
+      不给这个开关的话，它只能在 setup 里 delenv `PYTEST_CURRENT_TEST`，
+      而 pytest 在 **call 阶段会再设一次**，删了也没用（踩过）。
+    - `AUTOTASK_NO_NOTIFY`：`tests/conftest.py` 给每条测试设的全局静默。
+      它走 os.environ，**子进程自动继承**，所以从测试里 spawn 出来的
+      run_daily 一样被拦住。
+    - `PYTEST_CURRENT_TEST`：兜底。防的是"没加载我们的 conftest"的情况
+      （别的 runner、别人的 checkout）——那种时候环境变量没人设。
+    """
+    if os.environ.get(FORCE_ENV):
+        return False
+    if os.environ.get(SUPPRESS_ENV):
+        return True
+    return bool(os.environ.get("PYTEST_CURRENT_TEST"))
+
 # WindowsPowerShell 的 AUMID：没注册自己的 AppUserModelId 时用它，
 # CreateToastNotifier 接受的是 AUMID 而不是任意字符串。
 POWERSHELL_AUMID = (
@@ -185,6 +219,8 @@ def notify(title: str, body: str, *, fail: bool = False,
     """
     if not _is_windows():
         return False
+    if suppressed():
+        return False
     try:
         xml = toast_xml(title, body, fail=fail, links=links)
     except Exception:
@@ -227,6 +263,12 @@ def notify_summary(root, job: str, date: str, *, rc: int, done: int,
                    links=None) -> bool:
     """跑批收尾通知的统一入口（带结构化日志，方便事后查为什么没弹）。"""
     if not enabled:
+        return False
+    if suppressed():
+        # 不走 notify() 的失败分支：测试里把"弹不出去"记成 winnotify_failed
+        # 会让断言结构化日志的测试以为通知链路坏了，而它其实是主动静默。
+        jlog(root, "INFO", "winnotify_suppressed", job=job, date=date,
+             reason=SUPPRESS_ENV)
         return False
     title, body, fail = daily_summary_message(
         job, date, rc=rc, done=done, dead=dead,
