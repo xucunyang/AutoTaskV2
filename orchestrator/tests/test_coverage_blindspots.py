@@ -357,9 +357,9 @@ def test_build_rejects_unknown_provider():
 def test_removed_providers_are_truly_gone():
     """Exa/Bing 曾以 NotImplementedError 桩的形式留着——配置里写
     provider: bing 不会在启动时报错，而是运行时才炸。
-    用户确认只要 Tavily+博查两家，桩已删。这里钉住"删干净了"，
+    用户确认 Tavily+博查+MiniMax 三家，桩已删。这里钉住"删干净了"，
     免得有人又把桩加回来。"""
-    assert sorted(sb.PROVIDERS) == ["bocha", "tavily"]
+    assert sorted(sb.PROVIDERS) == ["bocha", "minimax", "tavily"]
     for ghost in ("exa", "bing"):
         with pytest.raises(ValueError, match="unknown_search_provider"):
             sb.build({"provider": ghost})
@@ -483,3 +483,94 @@ def test_daily_quota_resets_next_day():
 def test_search_package_exposes_pipeline():
     """包级导出：调用方按 core.search.X 引用，缺了会 AttributeError。"""
     assert hasattr(search_pkg, "build")
+
+
+# ---- MiniMax web_search（2026-10-07 新增；Tavily 额度耗尽的备胎） ----
+
+def test_minimax_parses_web_search_results(monkeypatch):
+    """Anthropic Messages API 响应里 web_search_tool_result 含搜索结果。
+
+    与 Tavily/Bocha 不同：MiniMax 没有独立搜索 API，web_search 是服务端
+    工具，我们从 chat completion 响应的 web_search_tool_result 内容块里
+    解析原始搜索结果。
+    """
+    payload = {"content": [
+        {"type": "text", "text": "我来搜索..."},
+        {"type": "server_tool_use", "name": "web_search",
+         "input": {"query": "test"}},
+        {"type": "web_search_tool_result", "content": [
+            {"type": "web_search_result", "title": "结果A",
+             "url": "https://a.com", "page_age": "2026-10-01",
+             "content": "摘要A"},
+            {"type": "web_search_result", "title": "结果B",
+             "url": "https://b.com", "page_age": "2026-10-02",
+             "content": "摘要B"},
+        ]},
+        {"type": "text", "text": "基于搜索结果..."},
+    ]}
+    monkeypatch.setattr("core.search.base.urllib.request.urlopen",
+                        lambda req, timeout=None: FakeResp(payload))
+    got = sb.MiniMaxProvider(api_key="sk-test").search("test", top_k=3)
+    assert len(got) == 2
+    assert got[0].url == "https://a.com"
+    assert got[0].title == "结果A"
+    assert got[0].snippet == "摘要A"
+    assert got[0].published_at == "2026-10-01"
+    assert got[1].url == "https://b.com"
+
+
+def test_minimax_uses_anthropic_auth_and_endpoint(monkeypatch):
+    """MiniMax 走 Anthropic Messages API：x-api-key 头 + 自定义 base_url。
+
+    HTTP header 名大小写不敏感（urllib 规范化为 X-api-key），
+    用 lowercase 全比对字典键——大小写都查一遍。
+    """
+    seen = {}
+    monkeypatch.setattr("core.search.base.urllib.request.urlopen",
+                        lambda req, timeout=None: (
+                            seen.setdefault("headers", dict(req.header_items())),
+                            seen.setdefault("body", json.loads(req.data.decode())),
+                            FakeResp({"content": []}))[2])
+    sb.MiniMaxProvider(api_key="sk-test",
+                       base_url="https://custom.example/v1/messages").search("q")
+    headers_lc = {k.lower(): v for k, v in seen["headers"].items()}
+    assert headers_lc.get("x-api-key") == "sk-test"
+    assert headers_lc.get("anthropic-version") == "2023-06-01"
+    assert seen["body"]["model"] == "MiniMax-M3"
+    assert seen["body"]["tools"][0]["type"] == "web_search_20250305"
+
+
+def test_minimax_clamps_to_top_k(monkeypatch):
+    """top_k 限制返回条数——模型可能搜出 20 条但只要 8 条。"""
+    items = [{"type": "web_search_result", "title": f"R{i}",
+              "url": f"https://x.com/{i}", "content": f"C{i}"}
+             for i in range(20)]
+    payload = {"content": [
+        {"type": "web_search_tool_result", "content": items}]}
+    monkeypatch.setattr("core.search.base.urllib.request.urlopen",
+                        lambda req, timeout=None: FakeResp(payload))
+    got = sb.MiniMaxProvider(api_key="k").search("q", top_k=3)
+    assert len(got) == 3
+
+
+def test_minimax_empty_response_is_not_an_error(monkeypatch):
+    """模型可能不调用工具 → 没 web_search_tool_result 块 → 返回空列表。"""
+    monkeypatch.setattr("core.search.base.urllib.request.urlopen",
+                        lambda req, timeout=None: FakeResp({"content": [
+                            {"type": "text", "text": "我直接回答"}]}))
+    assert sb.MiniMaxProvider(api_key="k").search("q") == []
+
+
+def test_minimax_missing_key_raises():
+    """与 Tavily/Bocha 一致：传空串必须真无密钥，不能被 .env 覆盖。"""
+    assert sb.MiniMaxProvider(api_key="").api_key == ""
+    with pytest.raises(RuntimeError, match="missing_api_key"):
+        sb.MiniMaxProvider(api_key="").search("q")
+
+
+def test_build_passes_model_to_minimax():
+    """build() 应该把 cfg.model 透传给 MiniMaxProvider。"""
+    p = sb.build({"provider": "minimax", "api_key_env": "MY_KEY",
+                  "model": "MiniMax-M3"}, env={"MY_KEY": "k"})
+    assert p.name == "minimax"
+    assert p.model == "MiniMax-M3"

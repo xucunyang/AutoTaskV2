@@ -127,11 +127,104 @@ def _parse_bocha(data: dict, top_k: int) -> list[SearchResult]:
     return out
 
 
+class MiniMaxProvider(SearchProvider):
+    """MiniMax M Plan 的 web_search（Server Tool）。
+
+    与 Tavily/Bocha 的本质区别：MiniMax 没有独立搜索 API，web_search 是
+    嵌入在 Anthropic Messages API 里的服务端工具。我们发一个带 web_search
+    tool 的 chat completion，模型在服务端自动搜索，我们从响应的
+    `web_search_tool_result` 内容块里解析原始搜索结果。
+
+    代价：每次搜索都是一次完整 LLM 调用（比 Tavily 贵），且搜索词由模型
+    决定（不完全可控）。但 M Plan 套餐自带搜索额度，不额外花钱。
+
+    响应格式（Anthropic Messages API）：
+    - content[].type == "server_tool_use" → 模型发起了搜索
+    - content[].type == "web_search_tool_result" → 搜索结果列表
+      每项含 title/url/page_age/content 字段
+    """
+
+    name = "minimax"
+
+    def __init__(self, api_key: str | None = None, base_url: str | None = None,
+                 timeout_s: int = 60, model: str = "MiniMax-M3"):
+        from core.utils import load_dotenv
+        load_dotenv(Path(__file__).resolve().parents[2])
+        if api_key is None:
+            api_key = os.environ.get("MINIMAX_API_KEY", "")
+        self.api_key = api_key
+        self.base_url = (base_url or "https://api.minimax.cn/anthropic/v1/messages").rstrip("/")
+        self.timeout_s = timeout_s
+        self.model = model
+
+    def search(self, query: str, top_k: int = 8) -> list[SearchResult]:
+        if not self.api_key:
+            raise RuntimeError("minimax_missing_api_key")
+        # 构造 prompt：让模型搜索并返回结果，不要自己编
+        prompt = (
+            f"请搜索以下关键词，返回搜索结果（标题、URL、摘要、发布时间）：\n"
+            f"{query}\n\n"
+            f"要求：\n"
+            f"1. 使用 web_search 工具搜索\n"
+            f"2. 返回至少 {top_k} 条结果\n"
+            f"3. 每条结果包含标题、URL、摘要\n"
+            f"4. 不要自己编造搜索结果"
+        )
+        body = json.dumps({
+            "model": self.model,
+            "max_tokens": 4096,
+            "messages": [{"role": "user", "content": prompt}],
+            "tools": [{"type": "web_search_20250305", "name": "web_search"}],
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            self.base_url, data=body,
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01",
+            })
+        with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return _parse_minimax_response(data, top_k)
+
+
+def _parse_minimax_response(data: dict, top_k: int) -> list[SearchResult]:
+    """从 MiniMax Anthropic Messages API 响应里解析搜索结果。
+
+    响应的 content 数组里，web_search_tool_result 类型的块包含搜索结果。
+    每项含 title/url/page_age/content 字段。
+    """
+    out: list[SearchResult] = []
+    for block in (data.get("content") or []):
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") != "web_search_tool_result":
+            continue
+        items = block.get("content") or []
+        if isinstance(items, dict):
+            items = [items]
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") != "web_search_result":
+                continue
+            out.append(SearchResult(
+                url=item.get("url", ""),
+                title=item.get("title", ""),
+                snippet=item.get("content", "") or "",
+                published_at=item.get("page_age"),
+                source_id="",
+            ))
+            if len(out) >= top_k:
+                return out
+    return out
+
+
 # 就两家，不留"以后再接"的桩。Exa/Bing 曾以 NotImplementedError 桩的形式
 # 留在 PROVIDERS 里——于是配置里写 provider: bing 不会报错，
 # 而是**运行时**才炸。配置里能选一个必崩的选项，本身就是个坑。
 # 将来真要第三家时再加类+注册，一共两处。
-PROVIDERS = {p.name: p for p in (TavilyProvider, BochaProvider)}
+PROVIDERS = {p.name: p for p in (TavilyProvider, BochaProvider, MiniMaxProvider)}
 
 
 def build(cfg: dict, env=None) -> SearchProvider:
@@ -161,6 +254,9 @@ def build(cfg: dict, env=None) -> SearchProvider:
     if cls is BochaProvider:
         kw.setdefault("summary", bool(cfg.get("summary", True)))
         kw.setdefault("freshness", cfg.get("freshness", "noLimit"))
+    if cls is MiniMaxProvider:
+        if cfg.get("model"):
+            kw["model"] = cfg["model"]
     try:
         return cls(**kw)
     except TypeError:
