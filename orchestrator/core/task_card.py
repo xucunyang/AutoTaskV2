@@ -136,6 +136,16 @@ def _schema_hint(root: Path, acceptance) -> str:
         if scalars:
             hint += ("\n  " + "、".join(scalars) +
                      " 写成对应标量（整数/小数/布尔），不是数组或对象。")
+        # 字符串值里最常见也最致命的写法错误：裸的英文双引号。
+        # 2026-10-06 实测三次——hardware_summary.json 的
+        # `列示为"未查到具体"，只能按缺数据处理`、policy 的
+        # `《城市更新"十五五"规划》`：引号一没转义，整份文件 json.loads
+        # 直接炸（bad_json），schema_violation 根本轮不到跑，而报错
+        # 长得像"字段写错了"。中文引号「」是正解（跑通的那版
+        # key_findings 用的就是全角引号）。
+        # 刻意写得很短：任务卡离 2k token 门禁只剩 250 余量。
+        hint += ('\n  字符串值内部不要有裸的英文双引号 "，引用改用中文「」，'
+                 '否则 bad_json。')
         if len(hint) > 800:
             return ""
         return hint
@@ -166,23 +176,25 @@ def _out_dir(outputs) -> str:
 # （verifier 的 normalize_path 也拒绝其它位置），所以路径必须逐字给全。
 FOUR_SET_SCHEMA = """\
 四件套**必须**写到与 outputs 相同的日期目录（`{out_dir}/`），
-不要写到 `artifacts/` 顶层——验收只在日期目录下找文件，写错目录等于没写。
+不要写到 `artifacts/` 顶层（验收只在日期目录下找）。
 
 `{out_dir}/{task_id}.sources.json` 必须是**顶层数组**（不要包在 {"sources":...} 里），
 每个元素：
 {"source_id": "s1", "url": "https://...", "title": "...",
- "snippet": "摘要（search 返回的原文，不要自己编）",
+ "snippet": "摘要（search 原文，不要编）",
  "published_at": "2026-09-15T00:00:00+00:00（完整日期；只写年份会被判无日期）",
  "source_tier": "A", "tier": "A",
  "tier_reason": "为什么是A（一句话，不写会被排除出A类统计）"}
-字段名必须用 source_id（不是 id），tier_reason 不能为空。
+字段名必须用 source_id（不是 id）。
 A = 官方机构/政府公告/持牌金融机构；B = 主流媒体；C = 个人号/论坛。
 
 `{out_dir}/{task_id}.claims.json` 必须是**顶层数组**，每个元素：
 {"claim_id": "c1", "text": "一句话结论", "source_ids": ["s1", "s2"]}
-每条 claim 的 source_ids 必须非空且指向 sources.json 里存在的 source_id。
-没有来源支撑的结论不要写进 claims（写了会被判幻觉）。
-这两个文件**缺一个就整条任务判失败**（no_sources_json / no_claims_json）。
+每条 claim 的 source_ids 必须非空且指向 sources.json 里存在的 id。
+没有来源支撑的结论不要写进 claims（判幻觉）。
+这两个文件**缺一个就判失败**（no_sources_json / no_claims_json）。
+
+写 .json 时字符串值内部不要有裸的英文双引号 "，要引用改用中文「」（否则 bad_json）。
 """
 
 # 只给产物是 .md 的任务看（coverage 规则查的就是它）。csv/json 任务贴这句
