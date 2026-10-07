@@ -52,6 +52,20 @@ jobs:
     catchup: true
     max_workers: 4
     poll_interval_s: 30
+  # 每日政策跟踪（新政/废止/影响分析，2026-10-06 新增，用户点名要三农与工薪阶层）。
+  # 16:00 = **排在最后是有意的**：部委/国务院的当日文件多在下午上网，
+  # 早上跑只能捡前一天的口径；排最后才吃得到当天的。
+  # 与前四条错开 ≥2h，避免两条链同时写 state.db。
+  - id: policy_daily
+    cron: "0 16 * * *"
+    timezone: Asia/Shanghai
+    template: templates/policy_daily.yaml
+    coalesce: true
+    max_instances: 1
+    misfire_grace_time: 3600
+    catchup: true
+    max_workers: 4
+    poll_interval_s: 30
 # V6§7 V5值：两档配额 + governor阈值（ACTIVE约1/8共享1槽，IDLE约85%）
 # 注意：下面这些都是**顶层键**，不要缩进到 workers: 里去——
 # workers 是 flow mapping（{...}），挂不了子键，缩进会让整个文件解析失败。

@@ -1,0 +1,30 @@
+# policy t2_policy_repeal 的验收：被取消 / 废止 / 修订 / 到期退出的政策。
+#
+# 与 t1 同一判断——政策域保留 source_quality（发文机关官网即 A 类）。
+# 差别只在产物是 .md（正文），所以走 bytes 而不是 cols。
+#
+# path 用 {output}：t2 的产物名是 t2_policy_repeal.md，不能写死。
+- type: file_exists
+  path: "{output}"
+
+# 800 字节约 400+ 汉字。"本期无废止政策"这种交白卷式回答会被这里挡住——
+# 不是不许写没新闻，是不许连查都没查就交卷（真没有要在正文里给出来源）。
+- type: business_rule
+  expr: "bytes >= 800"
+  path: "{output}"
+
+- type: source_traceable
+
+# 时效同 t1（180 天）：废止/修订公告与原政策发布可能相隔较久。
+- type: freshness
+  freshness_days: 180
+
+- type: source_quality
+  source_tier_min_ratio: {A: 0.2}
+
+# 报告要有图：取消/废止条数按月分布、或"新规取代旧规"的对照关系，
+# 原样贴一张 xychart/pie 即可。计数认 xychart/pie/gantt，
+# 且语法错的图不算数（verifier.lint_chart_block）。
+- type: mermaid
+  path: "{output}"
+  min: 1

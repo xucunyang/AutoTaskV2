@@ -170,7 +170,7 @@ python -m core.governor --mode auto      # 交回自动
 
 ## 每日自动触发
 
-四条链都由 **Windows 计划任务** 拉起，不依赖谁开着终端：
+五条链都由 **Windows 计划任务** 拉起，不依赖谁开着终端：
 
 | 任务 | 触发（Asia/Shanghai） | 干什么 |
 |---|---|---|
@@ -178,8 +178,11 @@ python -m core.governor --mode auto      # 交回自动
 | `\AutoTaskV2\finance_daily` | 每天 08:30 | `--job finance_daily`（行情 + 理财 → `finance_report.md` / `finance_summary.json`） |
 | `\AutoTaskV2\housing_daily` | 每天 10:00 | `--job housing_daily`（楼市三条线 → `t4_investment_watch.md` / `charts_housing.md`） |
 | `\AutoTaskV2\hardware_daily` | 每天 14:00 | `--job hardware_daily`（显卡内存价格 + 硬件新闻 → `hardware_report.md` / `hardware_summary.json`）。t2_hw_news 走专用 `acceptance_hardware_t2.yaml`（**没有** source_quality：硬件消费品的来源就是市场定价的科技媒体，A 类天然不存在——金融街口径用错地方就会死信，见 `schemas/acceptance_hardware_t2.yaml`） |
+| `\AutoTaskV2\policy_daily` | 每天 16:00 | `--job policy_daily`（新政清单 + 废止动态 + 影响分析 → `policy_report.md` / `policy_summary.json`）。**排最后是有意的**：部委/国务院的当日文件多在下午上网，早上跑只能捡前一天 |
 
-四条链**共用** `artifacts/{date}/` 目录，但**产物名一个都不许撞车**——2026-10-05 实测过撞车的后果：housing 的 `t5_charts` 把 daily 的 `charts.md` 覆盖了，日报正文里贴的 13 张图全是另一条链画的。现在由 `tests/test_job_matrix.py` 把「产物路径两两不相交」「cron 与 XML 的 StartBoundary 一致」钉成门禁，谁改漏一边当场红。
+五条链**共用** `artifacts/{date}/` 目录，但**产物名一个都不许撞车**——2026-10-05 实测过撞车的后果：housing 的 `t5_charts` 把 daily 的 `charts.md` 覆盖了，日报正文里贴的 13 张图全是另一条链画的。现在由 `tests/test_job_matrix.py` 把「产物路径两两不相交」「cron 与 XML 的 StartBoundary 一致」钉成门禁，谁改漏一边当场红。
+
+政策链与硬件链是**两条相反的来源口径**，别顺手统一掉：硬件拿掉 `source_quality`（A 类官方源在硬件消费品领域天然不存在），政策**保留**它（政策原文就在 gov.cn / 各部委官网，A 类本该占大头，`acceptance_policy_t1/t2` 阈值 A≥20%）。用户点名的"三农""普通工薪阶层"不是写进 objective 的叮嘱，而是 `acceptance_policy_t3.yaml` 里三条 `j_get` 业务规则的**逐字断言**（`schema` 只管类型，管不住 `domain_coverage=["宏观","金融"]` 这种类型完全合法却答非所问的摘要）——`tests/test_policy_daily.py` 会拿真实 expr 真的求值一遍，防止表达式写坏变成"永久 FAIL 但报错像模型的错"。
 
 股票链特意排在 **08:30**（A 股 09:30 才开盘）：`t1_stocks` 采到的必然是**各市场各自的最近行情交易日**——A 股用 9-30 节前最后，**美股必须用 10-05 美东**（北京时间 10-06 凌晨 04:00 已出齐；不能套 A 股 9-30 糊弄），港股同节假期取港股最近交易日。这是口径不是缺陷，模板 objective 里写死了，免得模型把"今天的涨跌"编出来或把全市场统一成一个日期。`finance_summary.data_period` 现在是 per-market 对象（`{A股, 港股, 美股}`），验收按 `j_get(j, ["data_period","美股"], "") >= "2026-10-05"` 卡死（见 `schemas/finance_summary.schema.json` + `acceptance_finance_t3.yaml`）。
 
@@ -223,6 +226,7 @@ schtasks /run /tn "AutoTaskV2\daily_report"
 schtasks /run /tn "AutoTaskV2\finance_daily"     # 等上一条跑完再跑
 schtasks /run /tn "AutoTaskV2\housing_daily"     # 同上
 schtasks /run /tn "AutoTaskV2\hardware_daily"    # 同上
+schtasks /run /tn "AutoTaskV2\policy_daily"      # 同上
 
 # 跑完看日志（计划任务的 stdout 没人收，run_daily 自己落了一份）
 Get-Content "reports\run_daily_daily_report_2026-10-05.log" -Tail 30
@@ -232,6 +236,7 @@ schtasks /create /tn "AutoTaskV2\daily_report"   /xml scripts\daily_report_task.
 schtasks /create /tn "AutoTaskV2\finance_daily"  /xml scripts\finance_daily_task.xml /f
 schtasks /create /tn "AutoTaskV2\housing_daily"  /xml scripts\housing_daily_task.xml /f
 schtasks /create /tn "AutoTaskV2\hardware_daily" /xml scripts\hardware_daily_task.xml /f
+schtasks /create /tn "AutoTaskV2\policy_daily"   /xml scripts\policy_daily_task.xml   /f
 ```
 
 `scripts/*.xml` 是 `Export-ScheduledTask` 从**注册成功的任务**导出来的，不是手写的——手写的版本被 `schtasks` 拒了三种错（UTF-8 编码、`WakeToRun` 放进 `<CalendarTrigger>`、`UserId` 写成机器名），教训都在 `tests/test_scheduled_task_xml.py` 里成了门禁。finance / hardware 两份是**从 daily 的 XML 克隆**的（`Temp\opencode\make_task_xml.py`）：只换任务名、起始时刻、命令行参数与描述，`WakeToRun` / `StartWhenAvailable` / `ExecutionTimeLimit` 这些节点保证逐字节一致，不靠手抄。

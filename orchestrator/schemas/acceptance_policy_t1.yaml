@@ -1,0 +1,37 @@
+# policy t1_policy_new 的验收：采集"近期要执行的新政策"清单（CSV）。
+#
+# 这份是三条政策采集线里**唯一该保留 source_quality** 的一份：政策原文就在
+# gov.cn / 国务院公报 / 各部委官网，A 类官方源天然存在且本该占大头。
+# hardware_daily 把 source_quality 拿掉（见 acceptance_hardware_t2.yaml），
+# 这里的保留不是"忘了删"，是判断不同——别顺手统一掉。
+- type: file_exists
+  path: "{output}"
+
+# 10 行是**地板**，模板 objective 要求 ≥12 行（留余量，达标更稳）。
+# 刻意不把门槛也抬到 12/15：政策发布量随月份与会议周期波动
+# （两会/全会/长假前后断崖），15 行会在淡季变成硬门槛 → 死信 → 当日整链停摆。
+# 覆盖面由 t3 的 domain_coverage（≥5 个不同领域）机械兜底，不靠行数堆——
+- type: row_count
+  path: "{output}"
+  min: 10
+
+# 8 列 = 政策名称/领域/发文机关/文号/发布日期/生效日期/核心条款/影响人群。
+# 少一列就查不了"哪份文件、生效哪天、对谁"，这份表退化成新闻标题列表。
+- type: business_rule
+  expr: "cols >= 8"
+  path: "{output}"
+
+# 幻觉拒收：每条论断必须挂到真实存在的来源上
+- type: source_traceable
+
+# 时效 180 天（不是默认 730「recent」也不是 30/60）：
+# 政策常"提前几个月公布、次年生效"，只卡 60 天会把大量**即将执行**的政策
+# 误判成陈旧；180 天既覆盖公告→生效的跑道，又挡得住一年前的旧文件被当成新闻。
+- type: freshness
+  freshness_days: 180
+
+# A 类（gov.cn / 部委官网 / 国务院公报）来源 ≥20%。
+# 与 acceptance_market.yaml 同阈值同理由：实测 30% 太紧（模型找到的官方源
+# 散落在十几条来源里只占 3-5 条），20% = 至少每 5 条有 1 条真官方原文。
+- type: source_quality
+  source_tier_min_ratio: {A: 0.2}

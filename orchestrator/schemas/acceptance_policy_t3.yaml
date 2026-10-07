@@ -1,0 +1,47 @@
+# policy 汇总（t3_policy_impact）验收：把两条采集线汇总成"谁受影响、怎么影响"。
+#
+# 刻意**不含** source_* 三条：这条 needs_web:false、不产生 sources.json，
+# 加上去只会变成永远 FAIL（acceptance_rollup 的教训）。来源可信度在
+# t1_policy_new / t2_policy_repeal 上已各自查过。
+- type: file_exists
+  path: artifacts/{date}/policy_report.md
+
+# 800 字节约 400+ 汉字。按人群分节（工薪/三农/其它）写完三节只会更长，
+# 这条是下限不是上限。
+- type: business_rule
+  expr: "bytes >= 800"
+  path: artifacts/{date}/policy_report.md
+
+- type: file_exists
+  path: artifacts/{date}/policy_summary.json
+
+- type: json_schema
+  path: artifacts/{date}/policy_summary.json
+  schema_ref: schemas/policy_summary.schema.json
+
+# 下面三条把**用户点名的需求**变成机械断言，而不是靠 objective 里的一句提醒。
+# 只查 schema 的"类型对不对"不够：一份 domain_coverage=["宏观","金融"]的摘要
+# 类型完全合法，却正好没回答"三农和普通工薪阶层怎么样"这个被问的问题。
+# ast.In 在 eval_expr 白名单里（core/verifier.py::ALLOWED_EXPR_NODES），
+# j_get 是只读 helper，所以 in + j_get 是合法且不扩沙箱注入面的写法。
+
+# 新政至少 1 条：整条链的主产物是"新政清单"，一条都没有等于这天白跑。
+- type: business_rule
+  expr: "j_get(j, ['policies_new'], 0) >= 1"
+  path: artifacts/{date}/policy_summary.json
+
+# 三农必须被覆盖（用户点名领域之一）。逐字匹配：写「农业农村」不算数。
+- type: business_rule
+  expr: "'三农' in j_get(j, ['domain_coverage'], [])"
+  path: artifacts/{date}/policy_summary.json
+
+# 普通工薪阶层同理。
+- type: business_rule
+  expr: "'工薪社保' in j_get(j, ['domain_coverage'], [])"
+  path: artifacts/{date}/policy_summary.json
+
+# 报告要有图：输入里的 t2_policy_repeal.md 本来就带 ≥1 张 mermaid，原样贴进来即可。
+# 计数认 xychart/pie/gantt，且语法错的图不算数（verifier.lint_chart_block）。
+- type: mermaid
+  path: artifacts/{date}/policy_report.md
+  min: 1

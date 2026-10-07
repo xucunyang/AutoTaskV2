@@ -138,11 +138,12 @@ def known_jobs(root: Path) -> list[str]:
 # 2026-10-05 分家后 housing 的图叫 charts_housing.md；再新增 finance /
 # hardware 两条链，各自的日报正文排在图表之前（报告比图先看）。
 LINK_PRIORITY = ("report.md", "finance_report.md", "hardware_report.md",
-                 "t4_investment_watch.md", "charts.md", "charts_housing.md")
+                 "policy_report.md", "t4_investment_watch.md", "charts.md", "charts_housing.md")
 LINK_LABELS = {
     "report.md": "日报",
     "finance_report.md": "股票日报",
     "hardware_report.md": "硬件日报",
+    "policy_report.md": "政策日报",
     "t4_investment_watch.md": "投资观察",
     "charts.md": "图表",
     "charts_housing.md": "图表",
@@ -151,6 +152,8 @@ LINK_LABELS = {
     "t3_hexagon_cities.md": "六边形城市",
     "t2_investment.md": "理财动态",
     "t2_hw_news.md": "硬件新闻",
+    "t1_policy_new.csv": "新政清单",
+    "t2_policy_repeal.md": "政策废止",
 }
 BODY_SUFFIXES = (".md", ".html", ".pdf", ".txt")
 

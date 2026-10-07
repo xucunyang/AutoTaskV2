@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
-JOBS = ("daily_report", "housing_daily")
+JOBS = ("daily_report", "housing_daily", "policy_daily")
 # 只能出现在 <Settings> 里，放进 trigger 就是 schema 错误
 SETTINGS_ONLY = ("WakeToRun", "StartWhenAvailable", "RunOnlyIfNetworkAvailable")
 

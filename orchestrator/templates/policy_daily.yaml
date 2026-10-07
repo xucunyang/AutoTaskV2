@@ -1,0 +1,127 @@
+plan_template: policy_daily
+# 每日政策跟踪：近期要执行的新政 + 取消/废止的政策 + 影响分析（2026-10-06 新增，用户点名）。
+#
+# 三条采集线里唯一"官方源就是主角"的一条——所以 source_quality(A≥20%) 在这里是
+# **该留的**，不像 hardware_daily 那样要拿掉（见 schemas/acceptance_hardware_t2.yaml
+# 的反面论证：政策原文就在 gov.cn / 部委官网，A 类天然存在且本该占大头）。
+#
+# 时刻：16:00。与 08:00 daily / 08:30 finance / 10:00 housing / 14:00 hardware
+# 都错开 ≥2h。**排在最后是有意的**：政策发布多在下午与傍晚（部委/国务院的
+# 当日文件下午才上网），16:00 跑能吃到当天最新的口径；排早上只能捡昨天的。
+#
+# 与其它链共用 artifacts/{date}/ 目录，产物名全部独立
+# （撞车已有门禁：tests/test_job_matrix.py::test_no_two_tasks_share_an_output_path）。
+tasks:
+  - id: t1_policy_new
+    name: 新政出台与即将执行
+    complexity: complex
+    key_questions:
+      - "近期（本月内）有哪些中央/部委/省市新出台、且已明确生效日期的政策？"
+      - "涉农方向（粮食、耕地、补贴、宅基地、集体经营、乡村振兴）有什么新规定？"
+      - "普通工薪阶层直接相关的（社保、公积金、个税、就业、医保、最低工资）有什么变化？"
+      - "住房、教育、医疗、税收、环保、产业、科技、交通、对外经贸、区域发展各自有什么新动作？"
+      - "每条政策的发文机关、文号、发布日期与生效日期分别是什么？"
+    objective: >-
+      检索并汇总**近期要执行的新政策**，输出 artifacts/{date}/t1_policy_new.csv：
+      **至少 12 行、至少 8 列**，列须含：政策名称、领域、发文机关、文号、
+      发布日期(YYYY-MM-DD)、生效日期(YYYY-MM-DD)、核心条款、影响人群。
+      **领域要尽量铺开**，按下面这份清单逐个扫，不要只盯着其中两三个——
+      清单是给你当**检索地图**用的，不是让你原样抄进"领域"列：
+        · 三农（粮食/耕地/补贴/宅基地/集体经营/乡村振兴）
+        · 工薪社保（社保/公积金/个税/就业/医保/最低工资/退休）
+        · 住房（保障房/房贷/限购限售/租购/城市更新）
+        · 教育（义务教育/高考/职业教育/托育）
+        · 医疗健康（医保目录/药品集采/分级诊疗/公共卫生）
+        · 税收（增值税/个税/消费税/关税/税收优惠）
+        · 环保与能耗（碳达峰/能耗双控/污染防治/生态）
+        · 产业与科技（制造业/集成电路/人工智能/专精特新/研发补贴）
+        · 交通物流（公路/铁路/民航/新能源车/物流降本）
+        · 能源与资源（电力/油气/煤炭/新能源配额）
+        · 对外贸易与外资（外贸/跨境电商/外资准入）
+        · 区域与城市发展（都市圈/县域/自贸区/重大战略）
+        · 法治与合规（法律修订/行政执法/反垄断/数据合规）
+        · 公共安全与应急（应急管理/防汛/消防/食品药品安全）
+      本期**至少覆盖其中 5 个不同领域**；只写宏观与金融口径、碰不到普通人
+      切身利益的政策，这份表就没有意义。
+      每条必须能在政策原文里逐字核到：文号、生效日期都要照抄，查不到写
+      "未查到"而**不许估算**——"预计年底实施"这种话不许进生效日期列。
+      同时交齐 sources.json / claims.json，优先引中国政府网、发文机关官网与
+      新华社（这类 A 类官方源本就 plentiful，验收要求 ≥20%）。
+    depends_on: []
+    outputs: ["artifacts/{date}/t1_policy_new.csv"]
+    acceptance_ref: schemas/acceptance_policy_t1.yaml
+    needs_web: true
+    freshness: recent
+    max_attempts: 3
+    budget: {max_steps: 14, timeout_s: 900}
+
+  - id: t2_policy_repeal
+    name: 取消废止与政策变动
+    complexity: complex
+    key_questions:
+      - "近期有哪些政策被明令废止、停止执行或被新规取代？"
+      - "哪些补贴、收费、限购限行、试点政策到期退出？"
+      - "「以新代旧」的对照关系是什么——旧政策的哪一条被哪一条接替？"
+      - "取消的是哪些人的哪部分权益？"
+    objective: >-
+      检索并汇总**被取消 / 废止 / 修订 / 到期退出**的政策，写入
+      artifacts/{date}/t2_policy_repeal.md：正文至少 800 字节、
+      **至少 1 张 mermaid 图**（取消/废止条数的时间分布，或"新规取代旧规"的
+      对照关系，数据逐字取自来源原文），每条标注被取消政策的名称、发文机关、
+      取代它的新文件与生效日期。
+      **"本期没有废止政策"也要如实写出来并给出来源**——把没有的东西编出来
+      比交白卷更坏：读者会拿这条去改自己的行为。
+      同时交齐 sources.json / claims.json。
+    depends_on: []
+    outputs: ["artifacts/{date}/t2_policy_repeal.md"]
+    # 政策域**保留** source_quality：发文机关官网就是 A 类，来源分级在这里
+    # 有实际意义（不同于硬件消费品，见 acceptance_hardware_t2.yaml 的论证）。
+    acceptance_ref: schemas/acceptance_policy_t2.yaml
+    needs_web: true
+    freshness: recent
+    max_attempts: 3
+    budget: {max_steps: 12, timeout_s: 720}
+
+  - id: t3_policy_impact
+    name: 影响分析与日报
+    complexity: complex
+    key_questions:
+      - "这些政策分别影响谁、方向是利好还是利空、量级多大？"
+      - "对普通工薪阶层的到手收入与日常成本有什么可感知的变化？"
+      - "对三农（农户收入、种粮成本、补贴到账）有什么影响？"
+      - "哪些政策之间会互相抵消或叠加？"
+    objective: >-
+      基于 artifacts/{date}/t1_policy_new.csv 与 artifacts/{date}/t2_policy_repeal.md
+      生成：
+      ① artifacts/{date}/policy_summary.json——顶层**必须**有这 7 个字段，
+         缺一个或类型不对 = schema_violation：
+         {"date": "YYYY-MM-DD", "data_period": "YYYY-MM-DD",
+          "policies_new": <整数条数, ≥1>,
+          "policies_repealed": <整数条数, 确无废止写 0 不许编>,
+          "domain_coverage": ["三农", "工薪社保", "住房", "税收", "..."],
+          "impact_assessment": ["哪条政策 → 谁受影响 → 方向 → 量级", "..."],
+          "key_findings": ["结论1", "结论2"]}
+         `domain_coverage` 是本期**实际扫到的领域**，**至少 5 个**，
+         要铺得开（见 t1 那份领域清单）；涉农与涉职工权益的方向必须在内
+         （验收逐字查「三农」「工薪社保」，写"农业农村"不算）。
+         `impact_assessment` 每条都要落到**具体人群 + 方向 + 量级**，
+         "利好实体经济"这种没有落点的判断不许写。
+         写 .json 时字符串值内部不要出现裸的英文双引号，需要引用改用中文引号
+         「」或『』，否则整个文件解析失败（bad_json）。字段含义见卡上的「JSON 形状」小节；
+      ② artifacts/{date}/policy_report.md——开头先给「今天最该知道的 3 件事」，
+         再按**人群**分节说清影响：普通工薪阶层 / 涉农群体 / 企业与创业者 /
+         其他（按本期实际覆盖的领域调整），每节都要落到"谁、多少钱、什么时候生效"；
+         然后把 t2_policy_repeal.md 里的 mermaid 图块**原样贴进**对应小节
+         （正文至少 1 张图，验收按 mermaid 计数），
+         最后注明数据期次与来源清单。只贴表格不贴图 = FAIL。
+      影响判断要标明**是推断还是原文有说**：原文没写的，写"（推断）"，
+      不许把推断写成政策原文的意思。
+    # 上游两条互相独立（并行），汇总要等它们都完
+    depends_on: [t1_policy_new, t2_policy_repeal]
+    inputs: ["artifacts/{date}/t1_policy_new.csv", "artifacts/{date}/t2_policy_repeal.md"]
+    outputs: ["artifacts/{date}/policy_summary.json", "artifacts/{date}/policy_report.md"]
+    # 汇总类验收：不含 source_* 三条（本任务不检索、不产 sources.json）
+    acceptance_ref: schemas/acceptance_policy_t3.yaml
+    needs_web: false
+    max_attempts: 3
+    budget: {max_steps: 8, timeout_s: 480}
