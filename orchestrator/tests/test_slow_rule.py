@@ -29,7 +29,9 @@ def _ctx(root: Path) -> dict:
     """在 root/tests/ 下放真脚本，并返回以 root 为 repo 的 ctx。"""
     d = root / "tests"
     d.mkdir(parents=True, exist_ok=True)
-    (d / "zz_slow.py").write_text("import time\ntime.sleep(30)\n",
+    # 睡多久只需**明显超过**各用例的预算（2.0s / 0.01s）即可制造"慢"；
+    # 原 30s 让全量 pytest 白扔约 90s（2026-10-08 durations 实测）。
+    (d / "zz_slow.py").write_text("import time\ntime.sleep(3)\n",
                                  encoding="utf-8")
     (d / "zz_fast.py").write_text("print('ok')\n", encoding="utf-8")
     return {"repo": root}
@@ -163,8 +165,9 @@ def _submitted(tmp_path, n_rules):
     for f in (ROOT / "templates").glob("*"):
         shutil.copy2(f, root / "templates" / f.name)
     (repo / "tests").mkdir(exist_ok=True)
+    # 预算 0.01s，睡 2s 已足够模拟"慢"；原 20s 每条用例白扔 ~18s（实测）。
     (repo / "tests" / "zz_slow.py").write_text(
-        "import time\ntime.sleep(20)\n", encoding="utf-8")
+        "import time\ntime.sleep(2)\n", encoding="utf-8")
     s = Store(root)
     s.ensure_plan("p1", template="daily")
     acc = [{"type": "python_test", "cmd": "python tests/zz_slow.py",
@@ -228,8 +231,8 @@ def test_retry_carries_reason_and_deferred_rules(tmp_path, monkeypatch):
 def test_deferred_rules_not_recorded_as_verified(tmp_path, monkeypatch):
     """没跑到的rule不能进 verified_rules，否则下一轮会被跳过。
 
-    注意第一条rule是**真跑过并通过**的（它耗时20s，预算在它之后才耗尽），
-    所以它理应进账本。要断言的是"被推迟的那几条不在账本里"。
+    注意第一条rule是**真跑过并通过**的（它慢过预算值，
+    预算在它之后才耗尽），所以它理应进账本。要断言的是"被推迟的那几条不在账本里"。
     """
     s, root = _submitted(tmp_path, 4)
     orig = vf.run_rules
