@@ -97,6 +97,9 @@ SPECS = {
     "housing_fortnight": (
         "AutoTaskV2 六边形战士城市（半月，run_daily --job housing_fortnight）",
         "2026-10-15T06:00:00+08:00", (1, 15)),
+    "housing_rr_fiveday": (
+        "AutoTaskV2 三城租售比高小区 Top20（每5天，run_daily --job housing_rr_fiveday）",
+        "2026-10-11T11:00:00+08:00", (1, 6, 11, 16, 21, 26)),
     "housing_monthly": (
         "AutoTaskV2 房贷贴息分线城市月度跟踪（run_daily --job housing_monthly）",
         "2026-10-08T06:40:00+08:00", (8,)),

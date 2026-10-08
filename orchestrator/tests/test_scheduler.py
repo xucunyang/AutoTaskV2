@@ -86,7 +86,8 @@ def test_housing_acceptance_points_at_own_output(tmp_path):
     root = Path(__file__).resolve().parent.parent
     chains = (("templates/housing_daily.yaml", "housing_daily"),
               ("templates/housing_monthly.yaml", "housing_monthly"),
-              ("templates/housing_fortnight.yaml", "housing_fortnight"))
+              ("templates/housing_fortnight.yaml", "housing_fortnight"),
+              ("templates/housing_rr_fiveday.yaml", "housing_rr_fiveday"))
     seen = 0
     for tpl_rel, job in chains:
         plan = scheduler.expand_template(root, tpl_rel, "2026-10-04", job_id=job)
@@ -101,8 +102,8 @@ def test_housing_acceptance_points_at_own_output(tmp_path):
                 assert p in own, (job, t["task_id"], p, sorted(own))
                 assert "{output}" not in p and "{date}" not in p, (job, t["task_id"], p)
             seen += 1
-    # 三条链一共 6 个任务，少一个说明有任务没被这段断言覆盖到
-    assert seen == 6, f"只覆盖到 {seen} 个任务"
+    # 四条链一共 7 个任务，少一个说明有任务没被这段断言覆盖到
+    assert seen == 7, f"只覆盖到 {seen} 个任务"
 
 
 def test_ensure_plan_idempotent(tmp_path):

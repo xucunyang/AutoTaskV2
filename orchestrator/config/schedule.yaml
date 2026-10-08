@@ -43,6 +43,23 @@ jobs:
     catchup: true
     max_workers: 4
     poll_interval_s: 30
+  # 南京/徐州/西宁租售比高小区 Top20（每 5 天一次，2026-10-08 用户点名新增：
+  # "调查南京徐州西宁（暂定这三个）租售比高的小区排名 top20，每个城市 20 个"）。
+  # cron 的日字段 1,6,11,16,21,26 = 每月 6 个触发日 ≈ 每 5 天一次。不用 */5：
+  # */5 在 31 天的月份会跑出 1/6/11/16/21/26/31 七次，月末那次落在 31 号；
+  # 显式六天列表才与 XML 的 DaysOfMonth 精确一致（同 fortnight 1,15 的理由）。
+  # 11:00：与 10:00（housing_daily）/ 14:00（hardware）都错开充足，
+  # 不挤在早上 6 点的慢链堆里。
+  - id: housing_rr_fiveday
+    cron: "0 11 1,6,11,16,21,26 * *"
+    timezone: Asia/Shanghai
+    template: templates/housing_rr_fiveday.yaml
+    coalesce: true
+    max_instances: 1
+    misfire_grace_time: 21600
+    catchup: true
+    max_workers: 4
+    poll_interval_s: 30
   # 房贷贴息分线城市月度跟踪（每月 8 日 06:40）。
   # 同样从 housing_daily 拆出：这条统计的是月度/季度口径，用户的判断是
   # "每天执行完数据都一样，没有什么意义"。

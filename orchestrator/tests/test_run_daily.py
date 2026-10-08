@@ -50,6 +50,9 @@ def _root(tmp_path: Path) -> Path:
                 {"id": "housing_fortnight", "cron": "0 6 1,15 * *",
                  "timezone": "Asia/Shanghai",
                  "template": "templates/housing_fortnight.yaml", "catchup": True},
+                {"id": "housing_rr_fiveday", "cron": "0 11 1,6,11,16,21,26 * *",
+                 "timezone": "Asia/Shanghai",
+                 "template": "templates/housing_rr_fiveday.yaml", "catchup": True},
             ],
             "workers": {"reserved_low_slot": 1},
         }, allow_unicode=True), encoding="utf-8")
@@ -113,7 +116,8 @@ def test_both_jobs_coexist_for_the_same_date(tmp_path, capsys):
     那种偏差不会报错，只会体现为"链里多了几个任务"，所以必须断言集合相等。
     """
     _root(tmp_path)
-    for job in ("daily_report", "housing_daily", "housing_monthly", "housing_fortnight"):
+    for job in ("daily_report", "housing_daily", "housing_monthly",
+                "housing_fortnight", "housing_rr_fiveday"):
         rc = run_daily_main(["--root", str(tmp_path), "--date", DATE,
                              "--job", job, "--dry-run"])
         assert rc == 0, capsys.readouterr().out
@@ -121,19 +125,22 @@ def test_both_jobs_coexist_for_the_same_date(tmp_path, capsys):
 
     ids = _plan_ids(tmp_path)
     assert {"daily_report_2026-10-05", "housing_daily_2026-10-05",
-            "housing_monthly_2026-10-05", "housing_fortnight_2026-10-05"} <= ids
+            "housing_monthly_2026-10-05", "housing_fortnight_2026-10-05",
+            "housing_rr_fiveday_2026-10-05"} <= ids
     assert len(_task_ids(tmp_path, "daily_report_2026-10-05")) >= 4
     assert _task_ids(tmp_path, "housing_daily_2026-10-05") == {
         "t2_xz_nj", "t5_charts", "t4_rollup"}
     assert _task_ids(tmp_path, "housing_monthly_2026-10-05") == {
         "t1_tier", "m_rollup"}
     assert _task_ids(tmp_path, "housing_fortnight_2026-10-05") == {"t3_hexagon"}
+    assert _task_ids(tmp_path, "housing_rr_fiveday_2026-10-05") == {"t_rr_top20"}
 
 
 def test_second_run_is_idempotent(tmp_path, capsys):
     """重复触发（计划任务重跑/StartWhenAvailable 补跑）不能重复建任务。"""
     _root(tmp_path)
-    for job in ("housing_daily", "housing_monthly", "housing_fortnight"):
+    for job in ("housing_daily", "housing_monthly", "housing_fortnight",
+                "housing_rr_fiveday"):
         pid = f"{job}_2026-10-05"
         first = None
         for _ in range(2):
@@ -162,7 +169,8 @@ def test_unknown_job_fails_loudly(tmp_path, capsys):
     assert out["error"] == "unknown_job"
     assert out["job"] == "housing_dayly"
     assert set(out["known_jobs"]) == {"daily_report", "housing_daily",
-                                      "housing_monthly", "housing_fortnight"}
+                                      "housing_monthly", "housing_fortnight",
+                                      "housing_rr_fiveday"}
     assert _plan_ids(tmp_path) == set()
 
 

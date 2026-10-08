@@ -1,0 +1,59 @@
+# 南京/徐州/西宁租售比高小区 Top20（t_rr_top20）的验收。
+#
+# 2026-10-08 用户点名新增：每 5 天跑一次，三城各取租售比最高的前 20 个小区。
+# 结构照 housing_xznj 的模式：正文 .md + 结构化 data.json，把"三城都在、
+# 每城 20 条、租售比是真的正数"变成机械判定的字段。
+#
+# 与 acceptance_hardware_t2.yaml 相同的取舍：**不查 source_quality**。
+# 小区级租售比的数据来源是贝壳/链家/安居客等平台（B/C 级），A 级官方源
+# （住建局/统计局）天然不发布"小区租售比排行"这种口径，套 A:0.2 会把
+# 这条链恒定卡死——同 hardware 的场景，不是金融街/政策那种官方数据语境。
+# 留 source_traceable + freshness 保证可追溯与时新即可。
+
+- type: file_exists
+  path: artifacts/{date}/t_rr_top20.md
+
+- type: business_rule
+  expr: "bytes >= 800"
+  path: artifacts/{date}/t_rr_top20.md
+
+- type: file_exists
+  path: artifacts/{date}/t_rr_top20.data.json
+
+- type: json_schema
+  path: artifacts/{date}/t_rr_top20.data.json
+  schema_ref: schemas/housing_rr_top20.schema.json
+
+# ① 三城都在：交给 schema 的 allOf/contains（cities 数组必须同时含
+#    「南京」「徐州」「西宁」，下标顺序随意）——同 xznj 的取舍，不在
+#    business_rule 里再写长表达式烧卡 token。
+
+# ② 每城 Top20 是真的带数字的榜单，不是 20 条空壳：
+#    - 第一城的第 3 名（下标 2）小区要有真实名单（非空、非占位）；
+#    - 第一城的冠军（下标 0）租售比是正数——排名第一至少得有个 >0 的回报率。
+#    检查第 3 名而不是第 20 名：schema 的 minItems:20 已保证至少有 20 条，
+#    这里堵的是"名字空着/租售比全是 0 的凑数榜"。
+- type: business_rule
+  expr: "j_get(j, ['cities', 0, 'top20', 0, 'rr_pct'], 0) > 0 and j_get(j, ['cities', 0, 'top20', 2, 'community'], '') not in ('', '数据缺失')"
+  path: artifacts/{date}/t_rr_top20.data.json
+
+# ③ 三城每城第 20 名（下标 19）都有小区名：minItems 只保证数量，
+#    这里保证**最后一名的身份明确**——排名排满了 20 位且没有用占位串。
+- type: business_rule
+  expr: "j_get(j, ['cities', 0, 'top20', 19, 'community'], '') not in ('', '数据缺失') and j_get(j, ['cities', 1, 'top20', 19, 'community'], '') not in ('', '数据缺失') and j_get(j, ['cities', 2, 'top20', 19, 'community'], '') not in ('', '数据缺失')"
+  path: artifacts/{date}/t_rr_top20.data.json
+
+# 幻觉拒收：每条论断必须挂到真实存在的来源上。
+- type: source_traceable
+
+# 时效：租售比（租金 ÷ 房价）本身是月度甚至季度更新的数据——"每 5 天跑"
+# 是用户对**频率**的要求，不是数据本身会天天变。窗口给 180 天（同月度链
+# 的 tier），卡住"半年前还拿旧榜交差"，但不过度收紧到日频才合理。
+- type: freshness
+  freshness_days: 180
+
+# 报告要有图：三城租售比 Top20 是天然的可比数列（城市 × 名次 × 比例），
+# 贴一张 xychart 对比即可。
+- type: mermaid
+  path: artifacts/{date}/t_rr_top20.md
+  min: 1

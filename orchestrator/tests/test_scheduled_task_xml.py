@@ -29,6 +29,8 @@ CALENDAR_JOBS = {
     # job -> 每月第几天
     "housing_fortnight": {"1", "15"},
     "housing_monthly": {"8"},
+    # 每 5 天 = 每月 1/6/11/16/21/26 六天（2026-10-08 用户点名的新链）
+    "housing_rr_fiveday": {"1", "6", "11", "16", "21", "26"},
 }
 JOBS = DAILY_JOBS + tuple(CALENDAR_JOBS)
 # 只能出现在 <Settings> 里，放进 trigger 就是 schema 错误

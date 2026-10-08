@@ -1,4 +1,4 @@
-"""三条 housing 链的节奏与依赖——2026-10-07 用户拍板后钉下来的东西。
+"""四条 housing 链的节奏与依赖——2026-10-07 用户拍板后钉下来的东西。
 
 用户的原话，逐条对应下面的门禁：
 
@@ -11,6 +11,9 @@
   按照同区级别对比」
   → t2_xz_nj 留在日更，但口径从"全国坐标系里的两座城市"改成
   成交量/均价/活跃小区/同级别行政区对照，并新增结构化 data.json 兜住。
+* 「增加一个新任务，每5天运行一次，调查南京徐州西宁（暂定这三个）
+  租售比高的小区排名top20（每个城市20个）」（2026-10-08）
+  → 新链 housing_rr_fiveday：每月 1/6/11/16/21/26 六天 ≈ 每 5 天一次。
 
 为什么这些值得做成机械门禁：三者都是**结构性**决定，破坏它们的动作
 看起来都很无害——把 t1_tier 的 id 改回去、把 cron 的 1,15 改成 *、
@@ -33,6 +36,7 @@ HOUSING = {
     "housing_daily": ("templates/housing_daily.yaml", {"t2_xz_nj", "t5_charts", "t4_rollup"}),
     "housing_monthly": ("templates/housing_monthly.yaml", {"t1_tier", "m_rollup"}),
     "housing_fortnight": ("templates/housing_fortnight.yaml", {"t3_hexagon"}),
+    "housing_rr_fiveday": ("templates/housing_rr_fiveday.yaml", {"t_rr_top20"}),
 }
 
 
@@ -110,7 +114,20 @@ def test_monthly_runs_once_a_month():
     assert "," not in dom and dom.isdigit(), f"月度链的日字段={dom!r}，不该是列表"
 
 
-@pytest.mark.parametrize("job", ["housing_monthly", "housing_fortnight"])
+def test_fiveday_runs_every_five_days():
+    """租售比 Top20 是「每 5 天跑一次」——不是每天、不是半个月。
+
+    2026-10-08 用户点名新增（南京徐州西宁租售比高小区 Top20，每城 20 个）。
+    cron 用显式六天列表 1,6,11,16,21,26 而不是日字段 `*/5`：`*/5` 在 31 天的
+    月份会跑出 1/6/11/16/21/26/31 七次，月末那次会落在 31 号，破坏"每 5 天"
+    语义。显式列表与 XML 的 DaysOfMonth 精确一致（同 fortnight 1,15 的理由）。
+    """
+    dom = str(_job("housing_rr_fiveday")["cron"]).split()[2]
+    assert set(dom.split(",")) == {"1", "6", "11", "16", "21", "26"}, \
+        f"每5天链的日字段={dom!r}，应该是 1,6,11,16,21,26"
+
+
+@pytest.mark.parametrize("job", ["housing_monthly", "housing_fortnight", "housing_rr_fiveday"])
 def test_slow_jobs_do_not_collide_with_daily(job):
     """慢链与日更链错开 ≥2 小时。
 
@@ -158,6 +175,27 @@ def _spot(**over):
             "spotlight_communities": [{"city": "南京", "district": "鼓楼区",
                                        "name": f"小区{i}", "metric": "去化",
                                        "why_bright": "最快"} for i in range(2)]}
+    base.update(over)
+    return base
+
+
+def _rr(**over):
+    """租售比 Top20 的合格样例：三城各 20 条，rank 升序、rr_pct 为正数递减。
+
+    复制自真实跑批会调用的 schema 字段名（community/district/price_per_sqm/
+    rent_per_month_psm/rr_pct/source），别按自己习惯自创字段——这正是
+    t2_xz_nj 三连死信最靠前的死法。
+    """
+    def city(nm: str):
+        return {"name": nm, "top20": [
+            {"rank": i, "community": f"{nm}小区{i}", "district": f"{nm}鼓楼区",
+             "price_per_sqm": 20000 + i * 10,
+             "rent_per_month_psm": 35 - i * 0.1,
+             "rr_pct": round(35 * 12 / 20000 * 100 - i * 0.05, 2),
+             "source": "贝壳找房南京站"}
+            for i in range(1, 21)]}
+    base = {"as_of": "2026-10-08", "data_period": "2026年9月挂牌",
+            "cities": [city(n) for n in ("南京", "徐州", "西宁")]}
     base.update(over)
     return base
 
@@ -211,6 +249,31 @@ def test_spotlight_schema_accepts_a_faithful_answer():
 ])
 def test_spotlight_schema_rejects_faithful_looking_non_answers(label, data):
     assert not _valid("housing_spotlight.schema.json", data), f"{label} 竟然通过了"
+
+
+def test_rr_schema_accepts_a_faithful_answer():
+    assert _valid("housing_rr_top20.schema.json", _rr())
+
+
+@pytest.mark.parametrize("label,data", [
+    ("只给两座城", _rr(cities=[_rr()["cities"][0], _rr()["cities"][1]])),
+    ("三座城里有重复（南京写了两次）", _rr(cities=[_rr()["cities"][0]] * 3)),
+    ("某城不足 20 个小区", _rr(cities=[
+        {"name": n, "top20": [
+            {"rank": i, "community": f"{n}小区{i}", "district": f"{n}区",
+             "price_per_sqm": 20000, "rent_per_month_psm": 35,
+             "rr_pct": 2.1, "source": "x"} for i in range(1, 19)]}   # 只给 18 条
+        for n in ("南京", "徐州", "西宁")])),
+    ("租售比写成字符串（不带类型）",
+     _rr(cities=[{"name": n, "top20": [
+         {"rank": i, "community": f"{n}小区{i}", "district": f"{n}鼓楼区",
+          "price_per_sqm": 20000, "rent_per_month_psm": 35,
+          "rr_pct": "4.5%", "source": "贝壳"} for i in range(1, 21)]}
+         for n in ("南京", "徐州", "西宁")])),
+])
+def test_rr_schema_rejects_faithful_looking_non_answers(label, data):
+    """这些"看起来交了 20 条"，但都不是用户要的三城 Top20——schema 层就毙。"""
+    assert not _valid("housing_rr_top20.schema.json", data), f"{label} 竟然通过了"
 
 
 # ---------- 老门禁不许被"顺手统一" ----------
@@ -271,6 +334,29 @@ def test_xznj_business_rules_are_not_type_broken():
         assert ok, f"合格样例过不了：{r['expr']} → {detail}"
 
 
+def test_rr_business_rules_are_not_type_broken():
+    """rr 的 j_get 规则必须能对**合格答案**求值通过。
+
+    同 test_xznj_business_rules_are_not_type_broken 的坑位：rr_pct 在 schema
+    里是 number，business_rule 里的 `> 0` 对 number 是安全的；但若哪天 schema
+    把它改成 string（像 transactions_30d 那样），这里的 `> 0` 就会 TypeError
+    恒红。这条测试在"schema 换了、表达式没跟上"的瞬间当场红。
+    """
+    from core.verifier import eval_expr
+
+    rules = yaml.safe_load(
+        (ROOT / "schemas" / "acceptance_rr_top20.yaml").read_text(encoding="utf-8"))
+    j = _rr()
+    for r in rules:
+        if not isinstance(r, dict) or r.get("type") != "business_rule":
+            continue
+        ok, detail = eval_expr(r["expr"], {"j": j, "bytes": 4096})
+        assert not detail.startswith(("eval_error", "forbidden_node", "unknown_var",
+                                      "bad_syntax")), \
+            f"表达式恒红：{r['expr']} → {detail}"
+        assert ok, f"合格样例过不了：{r['expr']} → {detail}"
+
+
 def test_task_card_inlines_nested_schema_shape():
     """任务卡必须把**嵌套**字段名也渲染出来，不能只给顶层 required。
 
@@ -294,4 +380,29 @@ def test_task_card_inlines_nested_schema_shape():
     assert "transactions_30d?=string" in hint
     assert "transactions_summary=string" in hint
     # 长度护栏：>800 会让卡顶过 2k token 门禁
+    assert len(hint) <= 800, len(hint)
+
+
+def test_rr_card_inlines_nested_schema_shape():
+    """租售比 Top20 卡的嵌套字段也必须渲染——不能只给顶层 cities。
+
+    同一个坑换个名字踩：schema 的 required 是顶层
+    as_of/data_period/cities，真正决定"字段名对不对"的是
+    cities[].top20[].community/price_per_sqm/rent_per_month_psm/rr_pct
+    这一层的字段名。模型看不到它们就会自创字段（community→小区名、
+    rr_pct→rent_ratio）——t2_xz_nj 三连死信的原样复刻。
+    """
+    from core.task_card import _schema_hint
+
+    acc = yaml.safe_load(
+        (ROOT / "schemas" / "acceptance_rr_top20.yaml").read_text(encoding="utf-8"))
+    hint = _schema_hint(ROOT, acc)
+    assert hint, "schema hint 整个没渲染出来"
+    for field in ("top20[].community", "top20[].price_per_sqm",
+                  "top20[].rent_per_month_psm", "top20[].rr_pct",
+                  "cities[].name"):
+        assert field in hint, f"嵌套字段 {field} 没进卡：\n{hint}"
+    # 类型要跟着字段一起进卡——rr_pct 是 number（模型写过字符串「4.5%」）
+    assert "rr_pct=number" in hint
+    # 长度护栏与 xznj 同一条：>800 顶过 2k token 门禁
     assert len(hint) <= 800, len(hint)

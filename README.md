@@ -182,8 +182,9 @@ python -m core.governor --mode auto      # 交回自动
 | `\AutoTaskV2\policy_daily` | 每天 16:00 | `--job policy_daily`（新政清单 + 废止动态 + 影响分析 → `policy_report.md` / `policy_summary.json`）。**排最后是有意的**：部委/国务院的当日文件多在下午上网，早上跑只能捡前一天 |
 | `\AutoTaskV2\housing_fortnight` | **每月 1 日与 15 日 06:00** | `--job housing_fortnight`（六边形城市 → `t3_hexagon_cities.md`） |
 | `\AutoTaskV2\housing_monthly` | **每月 8 日 06:40** | `--job housing_monthly`（房贷贴息分线能级 + 亮眼榜 → `t1_tier.md` / `t1_spotlight.json` / `m_monthly_trend.md`） |
+| `\AutoTaskV2\housing_rr_fiveday` | **每月 1/6/11/16/21/26 日 11:00（每 5 天）** | `--job housing_rr_fiveday`（南京/徐州/西宁租售比高小区 Top20，每城 20 个 → `t_rr_top20.md` / `t_rr_top20.data.json`） |
 
-### 地产为什么拆成三条链（2026-10-07）
+### 地产为什么拆成四条链（2026-10-07 / 2026-10-08）
 
 原先 `housing_daily` 一天跑 5 个任务。用户的判断是**其中两条根本不该每天跑**：
 
@@ -198,6 +199,7 @@ python -m core.governor --mode auto      # 交回自动
 | `housing_daily` | 每天 10:00 | `t2_xz_nj` → `t5_charts` → `t4_rollup` | 日成交量与日均价**逐日会动**，只有这条值得日更 |
 | `housing_fortnight` | 每月 1 日、15 日 06:00 | `t3_hexagon` | 六边形的三维评分底层数据半月一变 |
 | `housing_monthly` | 每月 8 日 06:40 | `t1_tier` → `m_rollup` | 定 8 号而非 1 号：月初各城市住建局/统计局的上月数据还没出，1 号跑必然只能抄上上月的数 |
+| `housing_rr_fiveday` | 每月 1/6/11/16/21/26 日 11:00（每 5 天） | `t_rr_top20` | 2026-10-08 用户点名新增：调查南京徐州西宁租售比高的小区排名 top20（每城 20 个） |
 
 拆链带出两个必须一并解决的坑：
 
@@ -206,7 +208,7 @@ python -m core.governor --mode auto      # 交回自动
 
 用户点名的徐州南京三件事——**成交量、均价、活跃小区、同级别行政区对照**——不是写进 objective 的叮嘱，而是新增结构化产物 `t2_xz_nj.data.json` + `schemas/housing_xznj.schema.json`（`cities[].districts` 逐区 `minItems:3` 且两城都必须在、`hot_communities` `minItems:4`）。同理 `t1_spotlight.json` 把「重点关注表现突出的城市或者小区，把亮眼的部分罗列出来」变成可判定字段。日频链的 `freshness` 也因此从 365 天收到 **30 天**——这条链吃日频数据，来源里混进半年前的券商报告就说明它在抄旧数。
 
-七条链**共用** `artifacts/{date}/` 目录，但**产物名一个都不许撞车**——2026-10-05 实测过撞车的后果：housing 的 `t5_charts` 把 daily 的 `charts.md` 覆盖了，日报正文里贴的 13 张图全是另一条链画的。现在由 `tests/test_job_matrix.py` 把「产物路径两两不相交」「cron 与 XML 的 StartBoundary 一致」钉成门禁，谁改漏一边当场红。
+八条链**共用** `artifacts/{date}/` 目录，但**产物名一个都不许撞车**——2026-10-05 实测过撞车的后果：housing 的 `t5_charts` 把 daily 的 `charts.md` 覆盖了，日报正文里贴的 13 张图全是另一条链画的。现在由 `tests/test_job_matrix.py` 把「产物路径两两不相交」「cron 与 XML 的 StartBoundary 一致」钉成门禁，谁改漏一边当场红。
 
 政策链与硬件链是**两条相反的来源口径**，别顺手统一掉：硬件拿掉 `source_quality`（A 类官方源在硬件消费品领域天然不存在），政策**保留**它（政策原文就在 gov.cn / 各部委官网，A 类本该占大头，`acceptance_policy_t1/t2` 阈值 A≥20%）。用户点名的"三农""普通工薪阶层"不是写进 objective 的叮嘱，而是 `acceptance_policy_t3.yaml` 里三条 `j_get` 业务规则的**逐字断言**（`schema` 只管类型，管不住 `domain_coverage=["宏观","金融"]` 这种类型完全合法却答非所问的摘要）——`tests/test_policy_daily.py` 会拿真实 expr 真的求值一遍，防止表达式写坏变成"永久 FAIL 但报错像模型的错"。
 
@@ -257,6 +259,7 @@ schtasks /run /tn "AutoTaskV2\policy_daily"      # 同上
 # 慢链的手动补跑：--date 决定 plan 的逻辑日期，改日就等于补跑那一天
 schtasks /run /tn "AutoTaskV2\housing_monthly"
 schtasks /run /tn "AutoTaskV2\housing_fortnight"
+schtasks /run /tn "AutoTaskV2\housing_rr_fiveday"
 
 # 跑完看日志（计划任务的 stdout 没人收，run_daily 自己落了一份）
 Get-Content "reports\run_daily_daily_report_2026-10-05.log" -Tail 30
@@ -269,6 +272,7 @@ schtasks /create /tn "AutoTaskV2\hardware_daily" /xml scripts\hardware_daily_tas
 schtasks /create /tn "AutoTaskV2\policy_daily"   /xml scripts\policy_daily_task.xml   /f
 schtasks /create /tn "AutoTaskV2\housing_monthly"  /xml scripts\housing_monthly_task.xml  /f
 schtasks /create /tn "AutoTaskV2\housing_fortnight" /xml scripts\housing_fortnight_task.xml /f
+schtasks /create /tn "AutoTaskV2\housing_rr_fiveday" /xml scripts\housing_rr_fiveday_task.xml /f
 ```
 
 `scripts/*.xml` 是 `Export-ScheduledTask` 从**注册成功的任务**导出来的，不是手写的——手写的版本被 `schtasks` 拒了三种错（UTF-8 编码、`WakeToRun` 放进 `<CalendarTrigger>`、`UserId` 写成机器名），教训都在 `tests/test_scheduled_task_xml.py` 里成了门禁。finance / hardware 两份是**从 daily 的 XML 克隆**的（`Temp\opencode\make_task_xml.py`）：只换任务名、起始时刻、命令行参数与描述，`WakeToRun` / `StartWhenAvailable` / `ExecutionTimeLimit` 这些节点保证逐字节一致，不靠手抄。housing_monthly / housing_fortnight 由 `orchestrator\_gen_task_xml.py` 同法生成，且换掉了触发器节点。
