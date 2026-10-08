@@ -174,8 +174,25 @@ def h_json_schema(ctx: dict, rule: dict) -> dict:
         return {"ok": False, "detail": "jsonschema_not_installed"}
     try:
         jsonschema.validate(data, schema)
-    except Exception as e:  # jsonschema.ValidationError
-        return {"ok": False, "detail": f"schema_violation:{str(e)[:200]}"}
+    except jsonschema.ValidationError as e:
+        # str(e) 的首行是 'None of [<data 字典 repr>]'——前 200 字符根本
+        # 看不到具体错（10-06 housing t2_xz_nj 三次死信全栽在这：每次只
+        # 看到数据字典的 repr，看不到"哪个字段错了、validator 是什么"）。
+        # 取 5 条具体错误（path/validator/message）拼成 detail，dead-letter
+        # 排查时直接定位是哪个字段错了。
+        try:
+            v = jsonschema.Draft7Validator(schema)
+            errs = list(v.iter_errors(data))[:5]
+            detail_lines = [
+                f"{'.'.join(str(p) for p in e.absolute_path) or '(root)'}: "
+                f"{e.validator} {e.message[:120]}"
+                for e in errs]
+            detail = "schema_violation:" + " || ".join(detail_lines)
+        except Exception:
+            detail = f"schema_violation:{str(e)[:200]}"
+        return {"ok": False, "detail": detail[:600]}
+    except Exception as e:
+        return {"ok": False, "detail": f"schema_error:{type(e).__name__}:{str(e)[:200]}"}
     return {"ok": True, "detail": ""}
 
 

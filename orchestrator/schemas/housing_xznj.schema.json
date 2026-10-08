@@ -20,19 +20,19 @@
       "description": "固定两座：南京、徐州（下标顺序不限）。每座城都必须带 districts，因为本任务的核心是同级别行政区对照",
       "items": {
         "type": "object",
-        "required": ["city", "districts"],
+        "required": ["name", "districts"],
         "properties": {
-          "city": {"type": "string", "minLength": 2, "description": "城市名，逐字写「南京」「徐州」"},
+          "name": {"type": "string", "minLength": 2, "description": "城市名，逐字写「南京」「徐州」"},
           "city_total": {"type": "object", "description": "全市合计（可选）：transactions=全市日成交套数、avg_price_per_sqm=全市成交均价"},
           "districts": {
             "type": "array",
             "minItems": 3,
             "items": {
               "type": "object",
-              "required": ["district", "transactions", "avg_price_per_sqm"],
+              "required": ["name", "transactions_summary", "avg_price_per_sqm"],
               "properties": {
-                "district": {"type": "string", "minLength": 2, "description": "行政区名，如「鼓楼区」。南京与徐州市下辖区属同一行政级别，因此可逐区对照"},
-                "transactions": {"type": "integer", "minimum": 0, "description": "该区该期成交套数（整数，不是数组、不写「约120套」）"},
+                "name": {"type": "string", "minLength": 2, "description": "行政区名，如「鼓楼区」。南京与徐州市下辖区属同一行政级别，因此可逐区对照"},
+                "transactions_summary": {"type": "string", "minLength": 2, "description": "该区该期成交套数（**字符串**，写「1022套」或「数据缺失」，而不是整数——区级公开口径常常是区间或字符串描述；之前用 integer 类型把这条卡死了）"},
                 "avg_price_per_sqm": {"type": "number", "minimum": 0, "description": "该区该期二手房成交均价（元/㎡，数字不带单位）"},
                 "period": {"type": "string", "description": "该区数字的期间，通常与顶层 data_period 一致"}
               }
@@ -41,8 +41,8 @@
         }
       },
       "allOf": [
-        {"contains": {"type": "object", "required": ["city"], "properties": {"city": {"const": "南京"}}}},
-        {"contains": {"type": "object", "required": ["city"], "properties": {"city": {"const": "徐州"}}}}
+        {"contains": {"type": "object", "required": ["name"], "properties": {"name": {"const": "南京"}}}},
+        {"contains": {"type": "object", "required": ["name"], "properties": {"name": {"const": "徐州"}}}}
       ]
     },
     "hot_communities": {
@@ -56,7 +56,7 @@
           "city": {"type": "string", "minLength": 2, "description": "所属城市，逐字「南京」或「徐州」"},
           "district": {"type": "string", "minLength": 2, "description": "所属行政区"},
           "name": {"type": "string", "minLength": 2, "description": "小区名称"},
-          "transactions_30d": {"type": "integer", "minimum": 0, "description": "近30天成交套数（整数）。查不到确切口径时按所选口径填并在正文注明是哪个口径"},
+          "transactions_30d": {"type": "string", "minLength": 2, "description": "近30天成交套数（**字符串**，写「15套」或「数据缺失」，因为单小区公开口径通常是数字+文字描述，不是裸整数；之前用 integer 把这条也卡死了）"},
           "avg_price_per_sqm": {"type": "number", "minimum": 0, "description": "该小区成交均价（元/㎡）"}
         }
       }

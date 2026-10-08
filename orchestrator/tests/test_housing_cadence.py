@@ -133,12 +133,19 @@ def _schema(name: str) -> dict:
 
 
 def _xz(**over):
-    cities = [{"city": nm, "districts": [
-        {"district": f"{nm}{i}区", "transactions": 10 + i, "avg_price_per_sqm": 20000 + i}
+    # schema 字段名（2026-10-08 改）：name 替 city/district，transactions_summary
+    # 替 transactions（string 替 integer）；原因见 schemas/housing_xznj.schema.json
+    # description 与 schemas/acceptance_market_xznj.yaml 的 j_get 表达式——
+    # acceptance 里仍用 districts[2].avg_price_per_sqm（不变），但必须
+    # 与 schema 的 fields 一致才会同时通过两层校验。
+    cities = [{"name": nm, "districts": [
+        {"name": f"{nm}{i}区", "transactions_summary": f"{10 + i}套",
+         "avg_price_per_sqm": 20000 + i}
         for i in range(3)]} for nm in ("南京", "徐州")]
     base = {"as_of": "2026-10-08", "data_period": "2026-10-07", "cities": cities,
             "hot_communities": [{"city": "南京", "district": "鼓楼区", "name": f"小区{i}",
-                                 "transactions_30d": 5, "avg_price_per_sqm": 60000}
+                                 "transactions_30d": "5套",
+                                 "avg_price_per_sqm": 60000}
                                 for i in range(4)]}
     base.update(over)
     return base
@@ -164,22 +171,27 @@ def test_xz_schema_accepts_a_faithful_answer():
 
 
 @pytest.mark.parametrize("label,data", [
-    ("只给一座城", _xz(cities=[{"city": "南京", "districts": [
-        {"district": f"鼓楼区{i}", "transactions": 5, "avg_price_per_sqm": 60000}
+    ("只给一座城", _xz(cities=[{"name": "南京", "districts": [
+        {"name": f"鼓楼区{i}", "transactions_summary": "5套",
+         "avg_price_per_sqm": 60000}
         for i in range(3)]}])),
     ("两座城都写南京", _xz(cities=[
-        {"city": "南京", "districts": [{"district": f"区{i}", "transactions": 5,
+        {"name": "南京", "districts": [{"name": f"区{i}",
+                                       "transactions_summary": "5套",
                                        "avg_price_per_sqm": 60000} for i in range(3)]}
         for _ in range(2)])),
     ("城区不足 3 个（同级别区对照没做）", _xz(cities=[
-        {"city": nm, "districts": [{"district": f"{nm}区{i}", "transactions": 5,
+        {"name": nm, "districts": [{"name": f"{nm}区{i}",
+                                    "transactions_summary": "5套",
                                     "avg_price_per_sqm": 20000} for i in range(2)]}
         for nm in ("南京", "徐州")])),
     ("活跃小区不足 4 条", _xz(hot_communities=_xz()["hot_communities"][:3])),
-    ("成交套数写成字符串", _xz(cities=[
-        {"city": nm, "districts": [{"district": f"{nm}区{i}", "transactions": "5",
-                                    "avg_price_per_sqm": 20000} for i in range(3)]}
-        for nm in ("南京", "徐州")])),
+    ("成交套数写成整数（不接受，必须字符串）",
+     _xz(cities=[
+         {"name": nm, "districts": [{"name": f"{nm}区{i}",
+                                     "transactions_summary": 5,
+                                     "avg_price_per_sqm": 20000} for i in range(3)]}
+         for nm in ("南京", "徐州")])),
 ])
 def test_xz_schema_rejects_faithful_looking_non_answers(label, data):
     """这些都"看起来交了一份"，但没回答用户问的那三样——必须 schema 层就毙掉。"""
