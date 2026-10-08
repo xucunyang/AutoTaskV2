@@ -92,6 +92,31 @@ def test_summary_message_body_contains_precise_elapsed():
     assert "分钟" not in body, "用户要求精确到秒，不能再出现分钟字样"
 
 
+def test_summary_message_contains_finished_at_when_provided():
+    """finished_at 必须进正文——配合"用时 X"反推跑批结束点。
+
+    用户原话："通知弹窗弹出时是什么时刻，执行了多久？还是用分钟展示，这样
+    能倒推出执行的时刻"。弹窗里有加法：
+      13:00 弹窗 + 用时 12:22.4 → 跑批于 00:37:36 结束
+      00:30 弹窗 + 用时 12:22.4 → 跑批于前一天 12:07:36 结束
+    没 finished_at 这个加法做不了。
+    """
+    title, body, _ = wn.daily_summary_message(
+        "housing_daily", "2026-10-08", rc=2, done=0, dead=1,
+        not_terminal=["t5_charts", "t4_rollup"], elapsed_s=1801.8,
+        finished_at="13:00:00")
+    assert "结束 13:00:00" in body, body
+    assert "用时 30:01.8" in body
+
+
+def test_summary_message_omits_finished_at_when_not_provided():
+    """不传 finished_at 时正文不应有"结束 HH:MM:SS"——保留向后兼容。"""
+    title, body, _ = wn.daily_summary_message(
+        "housing_daily", "2026-10-08", rc=2, done=0, dead=1,
+        not_terminal=["t5_charts"], elapsed_s=60.0)
+    assert "结束" not in body, body
+
+
 def test_toast_xml_carries_title_body_and_sound():
     xml = wn.toast_xml("标题 & <标签>", "第一行\n第二行", fail=True)
     root = ET.fromstring(xml)                      # 解析得了 = 转义正确

@@ -260,22 +260,51 @@ def _fmt_elapsed(seconds: float) -> str:
 def daily_summary_message(job: str, date: str, *, rc: int, done: int,
                           dead: int, not_terminal: list[str],
                           elapsed_s: float,
+                          finished_at: str = "",
                           links=None) -> tuple[str, str, bool]:
     """按退出码造 (标题, 正文, 是否失败)。退出码语义见 scripts/run_daily.py。
 
     links 同时进正文：气泡回退没有按钮，路径必须在正文里才点得开/复制得走。
+
+    `finished_at` 是**跑批结束时刻**（SH 时区，HH:MM:SS），让人能从通知弹
+    出时刻反推跑批结束点：与"用时 X"对起来就能定位到哪一段卡住，是 timeout 在
+    杀还是 verifier 重试烧光。"13:00 跑完"+"用时 90:00"="00:00 起的跑批"，
+    "00:30 跑完"+"用时 90:00"="前一天 23:00 起的"。
     """
     fail = rc != 0
     head = {0: "✅ 跑完了", 1: "⚠️ 没跑完", 2: "💀 有死信",
             3: "❌ 起不来"}.get(rc, "❌ 出错了")
     title = f"{head} {job} · {date}"
-    body = (f"用时 {_fmt_elapsed(elapsed_s)} · 退出码 {rc}\n"
+    header_line1 = f"用时 {_fmt_elapsed(elapsed_s)} · 退出码 {rc}"
+    if finished_at:
+        header_line1 += f" · 结束 {finished_at}"
+    body = (f"{header_line1}\n"
             f"完成 {done} · 死信 {dead} · 未终态 {len(not_terminal)}")
     if not_terminal:
         body += "\n" + "、".join(str(x) for x in not_terminal[:6])
     for label, path in list(links or [])[:3]:
         body += f"\n{label}: {path}"
     return title, body, fail
+
+
+def notify_summary(root, job: str, date: str, *, rc: int, done: int,
+                   dead: int, not_terminal: list[str],
+                   elapsed_s: float, enabled: bool = True,
+                   finished_at: str = "",
+                   links=None) -> bool:
+    """跑批收尾通知的统一入口（带结构化日志，方便事后查为什么没弹）。"""
+    if not enabled:
+        return False
+    if suppressed():
+        # 不走 notify() 的失败分支：测试里把"弹不出去"记成 winnotify_failed
+        # 会让断言结构化日志的测试以为通知链路坏了，而它其实是主动静默。
+        jlog(root, "INFO", "winnotify_suppressed", job=job, date=date,
+             reason=SUPPRESS_ENV)
+        return False
+    title, body, fail = daily_summary_message(
+        job, date, rc=rc, done=done, dead=dead,
+        not_terminal=not_terminal, elapsed_s=elapsed_s,
+        finished_at=finished_at, links=links)
 
 
 def notify_summary(root, job: str, date: str, *, rc: int, done: int,

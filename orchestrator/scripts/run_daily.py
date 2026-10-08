@@ -210,6 +210,7 @@ def _write_desktop_marker(root: Path, job: str, date: str, rc: int,
                           summary: dict,
                           links: list[tuple[str, str]],
                           *, elapsed_s: float = 0.0,
+                          finished_at: str = "",
                           desktop_dir: Path | None = None) -> None:
     """在用户桌面写一份 ASCII 跑批结果，**不依赖通知中心就能看到**。
 
@@ -233,7 +234,8 @@ def _write_desktop_marker(root: Path, job: str, date: str, rc: int,
 
     icon = {0: "[OK]", 1: "[..]", 2: "[DEAD]", 3: "[CFG]"}.get(rc, "[??]")
     lines = [
-        f"{icon} {job} {date}  rc={rc}  用时 {winnotify._fmt_elapsed(elapsed_s)}",
+        f"{icon} {job} {date}  rc={rc}  用时 {winnotify._fmt_elapsed(elapsed_s)}  "
+        f"结束 {finished_at}",
         f"任务：{sum(1 for t in summary['tasks'])} 条 "
         f"(完成 {sum(1 for t in summary['tasks'] if t['status'] in ('DONE','SKIPPED','SKIPPED_CACHED'))}，"
         f"死信 {len(summary['dead_letter'])}，在途 {len(summary['not_terminal'])})",
@@ -444,6 +446,10 @@ def main(argv: list[str] | None = None) -> int:
     # 死信优先（见 exit_code 的注释）：被死信挡住的任务会一直停在 PENDING，
     # 只看 not_terminal 的话，死信那一次会被报成"还在跑"。
     rc = exit_code(len(summary["not_terminal"]), len(summary["dead_letter"]))
+    # finished_at 让人能从通知弹出时刻反推跑批结束点：与 elapsed_s 对
+    # 起来就能定位"00:00 起的跑批 vs 前一天 23:00 起的"，timeout 在杀还是
+    # verifier 重试烧光都能看出来。SH 时区——计划任务的 cron 也按 SH 排。
+    finished_at = datetime.now(timezone(timedelta(hours=8))).strftime("%H:%M:%S")
     # 弹框 + 声音收尾。计划任务跑批时没人看终端，退出码与日志都等于
     # 没发生；这条通知是这套自动化里唯一会主动找人的东西。
     # links：通知里带上能一键打开的报告按钮（正文里也印一份路径，
@@ -456,6 +462,7 @@ def main(argv: list[str] | None = None) -> int:
         not_terminal=[t["task_id"] for t in summary["tasks"]
                       if t["status"] not in TERMINAL],
         elapsed_s=(time.monotonic() - t0),
+        finished_at=finished_at,
         enabled=not args.no_notify,
         links=report_links(root, date, rows))
     # 桌面 marker：toast 在锁屏会被系统丢掉（横幅 duration 到期 + 用户
@@ -465,7 +472,8 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_notify:
         _write_desktop_marker(
             root, args.job, date, rc, summary, report_links(root, date, rows),
-            elapsed_s=(time.monotonic() - t0))
+            elapsed_s=(time.monotonic() - t0),
+            finished_at=finished_at)
     return rc
 
 

@@ -60,11 +60,32 @@ jobs:
     catchup: true
     max_workers: 4
     poll_interval_s: 30
-  # 每日股票与投资理财跟踪（2026-10-05 新增，用户点名）。
-  # 08:30 = A 股开盘（9:30）之前，采到的必然是**上一交易日**收盘
-  # + 昨夜美股——这是口径，模板 objective 里写死了，免得模型编"今天的涨跌"。
+  # 每日股票与投资理财跟踪（2026-10-05 新增，用户点名；2026-10-08
+  # 拆双时间点：08:50 盘前视角 + 18:10 收市视角）。两个时间点共用
+  # templates/finance_daily.yaml，模板 objective 已通用化（"现在能取到
+  # 的最近一个已收盘交易日"），不需要拆 template。
+  # 08:50 = A 股开盘（9:30）之前，采到的必然是**最近一个已收盘 A 股日**
+  # + 昨夜美股；18:10 = A 股已收盘，采到**今日** A 股 + 昨夜美股。
+  # 18:10 那次会**覆盖** 08:50 那次的 finance_summary.json——这是 C 方案
+  # 代价最小的取舍；若要彻底两套产物，需要拆 template 与 acceptance。
   - id: finance_daily
-    cron: "30 8 * * *"
+    cron: "50 8 * * *"
+    timezone: Asia/Shanghai
+    template: templates/finance_daily.yaml
+    coalesce: true
+    max_instances: 1
+    misfire_grace_time: 3600
+    catchup: true
+    max_workers: 4
+    poll_interval_s: 30
+  # finance_postclose：每日收市后重写一次（与 finance_daily 共用模板，
+  # 见 finance_daily 的注释）。两条 schedule 共用一份模板时 artifacts 路径
+  # 会撞——test_job_matrix 已钉死"两两不相交"，但 finance_daily 与
+  # finance_postclose 都用 templates/finance_daily.yaml 是显式的同路径
+  # 例外：这条豁免由 schedule.yaml 这里手写注释 + test_job_matrix 的
+  # finance_daily/fnance_postclose 白名单承担（10-08 加）。
+  - id: finance_postclose
+    cron: "10 18 * * *"
     timezone: Asia/Shanghai
     template: templates/finance_daily.yaml
     coalesce: true
