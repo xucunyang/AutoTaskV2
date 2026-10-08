@@ -79,8 +79,9 @@ python -m core.orchestrator --root .
 | `MINIMAX_BASE_URL` | MiniMax 端点（已含 `/v1`） | `gateway.yaml` `minimax.base_url` |
 | `MINIMAX_MODEL` | MiniMax 模型 ID，**区分大小写** | `gateway.yaml` `minimax.model` |
 | `MINIMAX_API_KEY` | MiniMax 密钥 | `gateway.yaml` `api_key_env` |
-| `TAVILY_API_KEY` | 检索源 | `search.yaml` `api_key_env` |
-| `BOCHA_API_KEY` | 博查检索（可选） | 启用时改 `search.yaml` `provider: bocha` |
+| `MINIMAX_API_KEY` | MiniMax web_search（M Plan 套餐自带搜索额度） | `search.yaml` `provider: minimax` 时的 `api_key_env` |
+| `TAVILY_API_KEY` | Tavily 检索源（备胎） | `search.yaml` 切到 `provider: tavily` 时启用 |
+| `BOCHA_API_KEY` | 博查检索（备胎） | `search.yaml` 切到 `provider: bocha` 时启用 |
 | `ALERT_WEBHOOK_URL` | 告警推送（可选） | `core/notifier.py` 直读环境变量 |
 
 > 填在线模型名时两个都要填。留空不会报错，而是把空串当模型名发出去，表现为"模型不存在"。
@@ -236,7 +237,8 @@ job 之间要**错开**不是随手定的：`tick()` 看的是全库 `active_pla
 
 - 通道：WinRT Toast，失败回退 `NotifyIcon` 气泡；**不装任何模块**，全程 15s 超时保护，通知坏了绝不连累跑批
 - 音效：退出码 0 用 `Notification.Default`，非 0 用 `Notification.LoopingAlarm`——**失败必须比成功更响**
-- 内容：`✅ 跑完了 daily_report · 2026-10-05` / `用时 12.3 分钟 · 完成 4 · 死信 0 · 未终态 1`
+- 内容：`✅ 跑完了 daily_report · 2026-10-05` / `用时 12:22.3 · 完成 4 · 死信 0 · 未终态 1`
+  - **用时精确到秒**（`_fmt_elapsed`）：<1h 用 `MM:SS.s`、≥1h 用 `HH:MM:SS`。原 "X.X 分钟" 在跑批死信排查时**看不清是不是 timeout 在杀**——89:58 与 90:01 都被压成 90.0 分钟。改秒级后能直接看出"是 90min timeout 杀的"还是"verifier 重试把时间烧光的"还是"模型卡在搜索"
 - **链接**：toast 上带可点按钮（`file:///` + `activationType="protocol"`）——`打开日报`、`打开投资观察`、`打开产物目录`，点一下就用系统默认程序打开（四条链的按钮文案各不相同：股票链是 `股票日报`、硬件链是 `硬件日报`、housing 的图表是 `图表`）；正文里同时印一份绝对路径，气泡回退没有按钮时还能复制。只挑**本 plan 声明的、已落盘的**正文文件，按 `LINK_PRIORITY`（各链的汇总正文 → housing 的投资观察 → 图表）取前两个：`artifacts/{date}/` 是四条链共用目录，按目录乱链会点开别人家的报告（`scripts/run_daily.py::report_links`）
 - 关掉它：`run_daily --no-notify`
 - 弹框标题显示 **Windows PowerShell**（借用它的 AUMID，本模块没注册自己的）；开了专注助手或锁屏会被压掉
@@ -327,6 +329,7 @@ RETRY ◀─────────────────┴── 验收不�
 - **`RETRY` 必带 `reason`；`DEAD_LETTER` 必带 `reason` + `last_error` + `sop_ref`。**
 - **老化只许升不许降**，且一次只升一档（下限 3），用的是 `enqueued_at` 而不是 `updated_at`。
 - **死信有出边**：`DEAD_LETTER → RETRY` 只允许显式运维动作，`scheduler --rerun` 走这条路并重置 `attempts`。
+- **DONE 也是有显式出边的**：`DONE → RETRY` 不允许 `transition()`，必须走 `Store.reopen_done()`/`scheduler --rerun`——验收全绿但产物口径写错了（如 2026-10-06 finance 的 `data_period=2026-09-30` 全市场统一）不能改 body、也不能改 DB，只能 `reopen_done` 重跑。门槛与 `reopen_dead_letter` 对齐：必须带 `reason` + `sop_ref`、重置 `attempts`、写审计，alert 级别 P2——**不可漏不可半夜打电话**
 - 依赖未满足、并发未够、退避未到点这类**预期内的拒绝**记 `REJECTED` 但不发 P1 告警——否则告警会变成噪音。
 
 ## 模型路由
@@ -379,11 +382,19 @@ privacy_models:    # 涉密任务强制本地
 | `atomic_write` | `os.replace` 原子落盘 |
 | `run_cmd` | 白名单前缀命令，`shell=False` |
 
-入队侧另有六道硬门：单任务 < 100KB、`task_id` 正则、路径必须限在 `artifacts/` 下、日期必须 `YYYY-MM-DD`、命令禁 shell 元字符且校验白名单前缀、`business_rule.expr` 走 AST 白名单（禁 `eval`/`Call`/`Attribute`，每小时限 100 条）。
+入队侧另有六道硬门：单任务 < 100KB、`task_id` 正则、路径必须限在 `artifacts/` 下、日期必须 `YYYY-MM-DD`、命令禁 shell 元字符且校验白名单前缀、`business_rule.expr` 走 AST 白名单（禁 `eval`/`Attribute`——但放 `Call` 是为 `j_get(j, [...], default)` 这种深路径取值 helper，能取嵌套 key 而不被用来爬 `__class__`/`__bases__`，每 100 次/小时计 100 条）。
 
 ## 检索与调研
 
-provider 二选一：`tavily`（主用）或 `bocha`（博查，需 key）。Exa/Bing 桩已删除，写错名字在构建时就报错而不是运行时炸。
+provider 三选一：`minimax`（主用，M Plan 套餐自带搜索额度）/ `tavily`（海外源，需 key）/ `bocha`（博查，需 key）。**配置里写错名字在构建时就报错**而不是运行时炸——`sb.PROVIDERS` 现在锁死三家，新增桩会破坏这条门禁（`tests/test_coverage_blindspots.py::test_removed_providers_are_truly_gone`）。
+
+| provider | 何时用 | 改什么 |
+|---|---|---|
+| `minimax` | 国内 / M Plan 套餐 / 主用（默认） | `search.yaml` `provider: minimax` + `api_key_env: MINIMAX_API_KEY` |
+| `tavily` | 海外检索 / 已有 Tavily key | `provider: tavily` + `api_key_env: TAVILY_API_KEY` |
+| `bocha` | 国内 / 国内源 / 已有博查 key | `provider: bocha` + `api_key_env: BOCHA_API_KEY` |
+
+**MiniMax web_search 是 Server Tool**（不是独立搜索 API）：发一个带 `tools: [{type: "web_search_20250305"}]` 的 Anthropic Messages API 请求，模型在服务端搜索，从响应的 `web_search_tool_result` 内容块里**解析出原始搜索结果**。每次搜索是一次完整 LLM 调用，比 Tavily/Bocha 贵但 M Plan 套餐自带搜索额度。代价对比：MiniMax 按 token、Tavily 按次数，对"每天 5 条链 × 30 次搜索"的小量场景 token 成本可控。代码在 `core/search/base.py::MiniMaxProvider` + `_parse_minimax_response`，测试覆盖 5 条（mock urlopen，不打真 API）。
 
 四段式检索：先按 `published_at` 过滤 → 再判来源等级 → 装进分析包 → 产出四件套并做 claims→sources 悬空自检。
 
@@ -396,6 +407,8 @@ provider 二选一：`tavily`（主用）或 `bocha`（博查，需 key）。Exa
 | C | 论坛聚合 / 社区问答 / 视频 / 未标注或无引用 |
 
 官方域名先验直接判 A，不调 LLM；平台域名强制逐条判。`tier_reason` 必填——解析失败落 C 而不是猜。
+
+**A 类 20% 这条门槛对政策类有效、对硬件消费品无效**——见 `acceptance_hardware_t2.yaml` 的反面论证：硬件消费品的来源就是市场定价的科技媒体（B 级），A 类天然不存在，套"金融街官方源"会死信（2026-10-06 hardware 首跑 3 次尝试全挂在 rule_4 source_quality 上）。`test_hardware_daily_drops_source_quality_in_t2` 把这条钉死：hardware_t2 **没有** source_quality。
 
 调研任务声明 `needs_web` 时没有检索源就**让出**，不会静默用模型参数内知识糊弄过去。
 
@@ -413,7 +426,7 @@ python scripts\check_coverage.py --min 85            # 提高门槛
 
 | 项 | 值 |
 |---|---|
-| 测试 | `699 passed` |
+| 测试 | `899 passed` |
 | 覆盖率 | 25 模块平均 91.4%，门槛 80%，单模块也须过线 |
 | 真实端到端 | `3/3 SUBMITTED`（simple 7.4s / medium 75.4s / complex 41.2s，均由 MiniMax-M3 执行） |
 | 200MB 大文件 | 3.44M 行 / 3.80s / 峰值内存增量 0.5MB / 任务卡 702 tokens |
@@ -443,6 +456,17 @@ python -m core.scheduler --root . --date 2026-10-01 --rerun t3_report --reason "
 死信任务走 `reopen_dead_letter()`：进 `RETRY` + `attempts` 重置为 0 + 审计事件 + P1 告警。
 **不要手工改库**——会破坏 replay 一致性，而 SOP 本身禁止改库。
 
+### DONE 重开（产物口径写错时）
+
+`--rerun` 对 `DONE` 也生效——`Store.reopen_done()` 路径（`ac30820` 加的）。验收全绿但产物实际口径错的（如 finance 的 `data_period` 全市场统一、housing 用了错误的报告口径），覆盖在 2026-10-06 finance 重跑中实测可用。门槛与 `reopen_dead_letter` 对齐：`reason` + `sop_ref` + `attempts=0` + alert P2（**不可漏、但不会半夜响**——见 `alerts.notifier.level_for`）。
+
+```bash
+python -m core.scheduler --root . --date 2026-10-06 --rerun t1_stocks \
+    --reason "美股改 10-05 数据口径"
+python -m core.scheduler --root . --date 2026-10-06 --rerun t3_finance_report \
+    --reason "data_period 改 per-market 对象，需重写 summary"
+```
+
 ### 告警
 
 级别由 `notifier.level_for(kind)` 单点决定，调用方不能自选。P0 白名单只有三项：`dead_letter`、`inconsistent`、`dispatch_sla_breach`。未知 `kind` 默认 P2（宁可进日报也不半夜打电话）。去重窗口 300s，状态落 `state/alerts_state.json` 跨进程生效。
@@ -469,7 +493,7 @@ AutoTaskV2/
   orchestrator/
     config/        schedule / gateway / search / report
     core/          编排、执行、存储、租约、网关、provider、工具、验收、报告
-      search/      tavily / bocha、来源分级、四段式 pipeline
+      search/      tavily / bocha / minimax、来源分级、四段式 pipeline
     schemas/       transitions（状态机）、models、验收规则、summary schema
     templates/     计划模板、任务卡模板、报告模板
     state/         orchestrator.db、export/、alerts_state.json  （gitignore）
@@ -518,6 +542,8 @@ AutoTaskV2/
 
 - **Mac 真机验证未做**：`core/governor.py` 的 `_idle_mac()` 依赖 macOS 专有的 `ioreg`，Windows 上无法执行。已确认放一边。
 - **依赖任务的产物没有自动转成下游 `inputs`**：综合任务拿不到上游完整内容/manifest，只能靠 planner 在任务卡里写清楚。计划中待修。
-- **博查额度不足**：当前返回 `403 package quota`，实际调研走 Tavily。
+- **检索当前走 MiniMax**（`dcd83c2`）：Tavily 月度 1000 额度 10-07 烧光后切到 MiniMax M Plan，套餐自带搜索额度不烧钱。Bocha / Tavily 是备胎——`search.yaml` 改 `provider:` 即可切换。
+- **MiniMax web_search 是 M Plan 独占**：其他厂商的按量计费 API Key 不能走这条路径。生产环境若不在 M Plan 内，要么申请 M Plan、要么切回 Tavily。
 - **`ONLINE_*` 必填**：不填在线模型名会得到"模型不存在"这类难排查的报错。
 - Ollama 的 `/v1/chat/completions` 会忽略 `options.num_ctx`。代码层已绕过（探测与调用一律走原生端点），但换部署环境时仍要按 `docs/deploy-prereq.md` 做三方核对。
+- **桌面 marker 文件名长度**：`AutoTask_{job}_{date}.txt` 在 `job_id` 异常长时会超 Win 文件名 255 字符限制。当前 job_id 都 ≤18，留余量充足，但**新增 job 时留意**——参见 `tests/test_run_daily.py` 里"ASCII 安全"那条断言。
