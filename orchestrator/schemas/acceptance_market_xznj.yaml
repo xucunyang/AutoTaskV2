@@ -50,8 +50,13 @@
 
 # ③ 活跃小区：schema minItems:4 管条数，这里要求**第 4 条真有成交套数**，
 #    堵住"列了 4 个小区名、成交数据全空"。
+#    2026-10-08：schema 把 transactions_30d 从 integer 改成 **string**（单小区
+#    公开口径是「15套」这种数字+文字，裸整数反而过不了 json_schema）——
+#    于是这里**不能**再写 `> 0`：Python 3 里 `"5套" > 0` 抛 TypeError，
+#    eval_expr 返回 eval_error:TypeError，规则恒红 = 一条永远红的验收
+#    等于没有验收（同 10-07 len() 那次踩的坑）。改成判"非空且不是占位"。
 - type: business_rule
-  expr: "j_get(j, ['hot_communities', 3, 'transactions_30d'], 0) > 0"
+  expr: "j_get(j, ['hot_communities', 3, 'transactions_30d'], '') not in ('', '数据缺失')"
   path: artifacts/{date}/t2_xz_nj.data.json
 
 - type: source_traceable

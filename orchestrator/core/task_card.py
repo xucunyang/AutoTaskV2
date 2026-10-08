@@ -93,10 +93,13 @@ def _schema_hint(root: Path, acceptance) -> str:
     rows 理解成城市明细数组（schema 实际要 integer 行数），连挂两轮进死信。
     路径不是形状：模型不会为了核对一个类型专门去读文件，类型得摆在它眼前。
 
-    三条护栏：
+    四条护栏：
     - 读不到文件/不是合法 JSON → 返回空串，卡上仍保留原路径，绝不把卡渲染炸掉；
-    - hint 超过 800 字就放弃内联（大 schema 会把卡片顶过 2k token 门禁）；
-    - 只展开 required 字段（连同 schema 里的 description），optional 不进卡。
+    - hint 超过 800 字就**逐级降级**（先砍嵌套里的可选字段、再砍顶层
+      description、最后才整体放弃），宁可少说也不能把卡顶过 2k token 门禁；
+    - 顶层只列 required；**嵌套层 required 与 optional 都列**——optional
+      写错类型照样 schema_violation（见下）；
+    - 嵌套用 `key[]{...}` 分组而非逐字段重复全路径，省字符。
     """
     for i, rule in enumerate(acceptance or []):
         if not isinstance(rule, dict) or rule.get("type") != "json_schema":
@@ -126,30 +129,96 @@ def _schema_hint(root: Path, acceptance) -> str:
             for k, t, _d in fields) + "}"
         # description 是"这个字段到底放什么"的唯一说明，必须跟着进卡——
         # 只给类型的话，模型知道 rows 要整数，却不知道该填什么整数。
-        kinds = "；".join(f"{k}={t}" + (f" {d}" if d else "")
-                          for k, t, d in fields)
-        hint = (f"{ref}（{rule.get('rule_id') or f'rule_{i}'}）必需字段"
-                f"（缺一个或类型不对=整条 schema_violation）：\n"
-                f"  {sample}\n  {kinds}")
-        scalars = [k for k, t, _d in fields
-                   if t in ("integer", "number", "boolean")]
-        if scalars:
-            hint += ("\n  " + "、".join(scalars) +
-                     " 写成对应标量（整数/小数/布尔），不是数组或对象。")
-        # 字符串值里最常见也最致命的写法错误：裸的英文双引号。
-        # 2026-10-06 实测三次——hardware_summary.json 的
-        # `列示为"未查到具体"，只能按缺数据处理`、policy 的
-        # `《城市更新"十五五"规划》`：引号一没转义，整份文件 json.loads
-        # 直接炸（bad_json），schema_violation 根本轮不到跑，而报错
-        # 长得像"字段写错了"。中文引号「」是正解（跑通的那版
-        # key_findings 用的就是全角引号）。
-        # 刻意写得很短：任务卡离 2k token 门禁只剩 250 余量。
-        hint += ('\n  字符串值内部不要有裸的英文双引号 "，引用改用中文「」，'
-                 '否则 bad_json。')
-        if len(hint) > 800:
-            return ""
-        return hint
+        header = (f"{ref}（{rule.get('rule_id') or f'rule_{i}'}）必需字段"
+                  f"（缺一个或类型不对=整条 schema_violation）：\n  {sample}\n  ")
+        # 逐级降级：800 字是硬线（再长就顶过 2k token 门禁）。854→800 的差额
+        # 优先从**顶层 description** 里挤——可选字段（transactions_30d 那种
+        # 写错类型照样 schema_violation 的）比 description 更不能丢。
+        # 实测 housing：desc=48 全量 854、desc=28 全量 774（可选字段保住）。
+        for desc_w, nested_opt, nested_budget in (
+                (48, True, 400), (28, True, 400), (48, False, 400),
+                (20, False, 260)):
+            kinds = "；".join(
+                f"{k}={t}" + (f" {d[:desc_w]}" if d and desc_w else "")
+                for k, t, d in fields)
+            hint = header + kinds
+            nested = _nested_shape(data, include_optional=nested_opt,
+                                   budget=nested_budget)
+            if nested:
+                hint += ("\n  嵌套（[] = 数组元素，? = 可选）：" + nested
+                         + "。只用上面这些字段名，不要自创。")
+            scalars = [k for k, t, _d in fields
+                       if t in ("integer", "number", "boolean")]
+            if scalars:
+                hint += ("\n  " + "、".join(scalars) +
+                         " 写成对应标量（整数/小数/布尔），不是数组或对象。")
+            # 字符串值里最常见也最致命的写法错误：裸的英文双引号。
+            # 2026-10-06 实测三次——hardware_summary.json 的
+            # `列示为"未查到具体"，只能按缺数据处理`、policy 的
+            # `《城市更新"十五五"规划》`：引号一没转义，整份文件 json.loads
+            # 直接炸（bad_json），schema_violation 根本轮不到跑，而报错
+            # 长得像"字段写错了"。中文引号「」是正解（跑通的那版
+            # key_findings 用的就是全角引号）。
+            # 刻意写得很短：任务卡离 2k token 门禁只剩 250 余量。
+            hint += ('\n  字符串值内部不要有裸的英文双引号 "，引用改用中文「」，'
+                     '否则 bad_json。')
+            if len(hint) <= 800:
+                return hint
+        return ""
     return ""
+
+
+def _nested_shape(schema: dict, include_optional: bool = True,
+                  budget: int = 400) -> str:
+    """把 schema 里**嵌套**的字段形状压成 `key[]{field=type, ...}` 一行。
+
+    2026-10-08 housing t2_xz_nj 三连死信的根因：卡上只列了顶层
+    as_of/data_period/cities/hot_communities，模型看不到 cities[].districts[]
+    里 required 的 transactions_summary、hot_communities[] 里 required 的
+    name，于是按自己的习惯写成 transactions_units / community_name，
+    三次全是 schema_violation。顶层那句"必需字段"对模型等于没说——
+    它不知道**里面**要什么。
+
+    optional 也默认列（`?` 标注）：optional 写错类型照样 schema_violation，
+    实测 hot_communities[].transactions_30d 要 string、模型给了 int。
+    """
+    out: list[str] = []
+
+    def _walk(spec, path, depth):
+        if depth > 4 or len(out) >= 12:
+            return
+        if not isinstance(spec, dict):
+            return
+        if spec.get("type") == "array":            # 数组 → 元素的形状
+            _walk(spec.get("items"), path + "[]", depth + 1)
+            return
+        if spec.get("type") != "object":
+            return
+        props = spec.get("properties") or {}
+        required = set(spec.get("required") or [])
+        for k, sub in props.items():
+            if len(out) >= 12 or not isinstance(sub, dict):
+                continue
+            t = sub.get("type")
+            if not t:
+                continue
+            if t in ("object", "array"):
+                _walk(sub, f"{path}.{k}" if path else k, depth + 1)
+                continue
+            if not include_optional and k not in required:
+                continue
+            mark = "" if k in required else "?"
+            out.append(f"{path}.{k}{mark}={t}" if path else f"{k}{mark}={t}")
+
+    props = schema.get("properties") or {}
+    for k, sub in props.items():
+        if isinstance(sub, dict) and sub.get("type") in ("object", "array"):
+            _walk(sub, k, 0)
+    text = "、".join(out)
+    if len(text) > budget:                          # 超预算从尾部截断
+        return text[:budget].rsplit("、", 1)[0] + "…"
+    return text
+
 
 
 def _out_dir(outputs) -> str:

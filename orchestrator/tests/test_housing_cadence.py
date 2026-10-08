@@ -242,3 +242,56 @@ def test_market_acceptance_still_exists_for_the_fortnight_task():
     """
     assert _tasks("templates/housing_fortnight.yaml")["t3_hexagon"]["acceptance_ref"] \
         == "schemas/acceptance_market.yaml"
+
+
+def test_xznj_business_rules_are_not_type_broken():
+    """acceptance 里的 j_get 规则必须能对**合格答案**求值通过。
+
+    2026-10-08 踩过两次同类坑，都是"schema 改了、表达式没跟着改"：
+    ① schema 要求 transactions_summary 是 string，business_rule 还写
+       `> 0` → Python 3 抛 TypeError，eval_expr 返回 eval_error:TypeError，
+       规则恒红；恒红的验收等于没有验收，而且报错长得像"数据不对"。
+    ② len() 不在 AST 白名单 → forbidden_node，同上恒红。
+
+    所以这里拿真 schema 的合格样例（_xz()）把每条 business_rule 都跑一遍，
+    只要 eval_error/forbidden_node 出现就说明表达式与 schema 类型脱节。
+    """
+    from core.verifier import eval_expr
+
+    rules = yaml.safe_load(
+        (ROOT / "schemas" / "acceptance_market_xznj.yaml").read_text(encoding="utf-8"))
+    j = _xz()
+    for r in rules:
+        if not isinstance(r, dict) or r.get("type") != "business_rule":
+            continue
+        ok, detail = eval_expr(r["expr"], {"j": j, "bytes": 4096})
+        assert not detail.startswith(("eval_error", "forbidden_node", "unknown_var",
+                                      "bad_syntax")), \
+            f"表达式恒红：{r['expr']} → {detail}"
+        assert ok, f"合格样例过不了：{r['expr']} → {detail}"
+
+
+def test_task_card_inlines_nested_schema_shape():
+    """任务卡必须把**嵌套**字段名也渲染出来，不能只给顶层 required。
+
+    2026-10-08 housing t2_xz_nj 三连死信的根因：卡上只列了顶层
+    as_of/data_period/cities/hot_communities，模型看不到
+    cities[].districts[] 里 required 的 transactions_summary、
+    hot_communities[] 里 required 的 name，于是按自己的习惯写成
+    transactions_units / community_name——三次全是 schema_violation。
+    顶层那句"必需字段"对模型等于没说，它不知道**里面**要什么。
+    """
+    from core.task_card import _schema_hint
+
+    acc = yaml.safe_load(
+        (ROOT / "schemas" / "acceptance_market_xznj.yaml").read_text(encoding="utf-8"))
+    hint = _schema_hint(ROOT, acc)
+    assert hint, "schema hint 整个没渲染出来"
+    for field in ("transactions_summary", "hot_communities[].name",
+                  "transactions_30d"):
+        assert field in hint, f"嵌套字段 {field} 没进卡：\n{hint}"
+    # 类型得跟着字段一起出现——transactions_30d 要 string（模型写过 int）
+    assert "transactions_30d?=string" in hint
+    assert "transactions_summary=string" in hint
+    # 长度护栏：>800 会让卡顶过 2k token 门禁
+    assert len(hint) <= 800, len(hint)
