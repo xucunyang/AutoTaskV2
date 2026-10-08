@@ -257,6 +257,29 @@ def _fmt_elapsed(seconds: float) -> str:
     return f"{m:02d}:{sec:04.1f}"
 
 
+# job id → 通知用中文名。**只影响给人看的展示层**（通知标题 / 桌面
+# marker 首行），不动 plan_id、文件命名、CLI 参数——那三处必须保持英文
+# id 才能和 schedule.yaml / state.db / 计划任务对得上。
+# 2026-10-08 用户要求：通知标题别露英文 job id，housing_monthly 乍一看
+# 不知道是啥。未知 job 回退原值（配置错/拼写错时至少能看出是哪个 id）。
+JOB_ZH = {
+    "daily_report": "每日综合日报",
+    "housing_daily": "每日房产跟踪",
+    "housing_fortnight": "房产半月报",
+    "housing_rr_fiveday": "租售比Top20",
+    "housing_monthly": "房贷贴息月报",
+    "finance_daily": "金融日报",
+    "finance_postclose": "收市金融日报",
+    "hardware_daily": "每日硬件跟踪",
+    "policy_daily": "每日政策跟踪",
+}
+
+
+def zh_job_label(job: str) -> str:
+    """job id → 中文名；不在表内回退原值（不猜不编）。"""
+    return JOB_ZH.get(job, job)
+
+
 def daily_summary_message(job: str, date: str, *, rc: int, done: int,
                           dead: int, not_terminal: list[str],
                           elapsed_s: float,
@@ -274,7 +297,7 @@ def daily_summary_message(job: str, date: str, *, rc: int, done: int,
     fail = rc != 0
     head = {0: "✅ 跑完了", 1: "⚠️ 没跑完", 2: "💀 有死信",
             3: "❌ 起不来"}.get(rc, "❌ 出错了")
-    title = f"{head} {job} · {date}"
+    title = f"{head} {zh_job_label(job)} · {date}"
     header_line1 = f"用时 {_fmt_elapsed(elapsed_s)} · 退出码 {rc}"
     if finished_at:
         header_line1 += f" · 结束 {finished_at}"
@@ -292,7 +315,15 @@ def notify_summary(root, job: str, date: str, *, rc: int, done: int,
                    elapsed_s: float, enabled: bool = True,
                    finished_at: str = "",
                    links=None) -> bool:
-    """跑批收尾通知的统一入口（带结构化日志，方便事后查为什么没弹）。"""
+    """跑批收尾通知的统一入口（带结构化日志，方便事后查为什么没弹）。
+
+    finished_at 透传给 daily_summary_message（跑批结束时刻 SH HH:MM:SS）。
+    2026-10-08：这个函数曾因合并事故裂成两半——上半段带 finished_at 但
+    函数体在 daily_summary_message 调用处截断（没有 send / 没有 return），
+    下半段是完整旧版覆盖了它、却没有 finished_at 参数。结果 pytest 全绿
+    （测试只按签名直调 daily_summary_message），真跑 run_daily 时 notify 在
+    收尾一刻 TypeError。这条注释是钉子：签名与函数体必须是一个整体。
+    """
     if not enabled:
         return False
     if suppressed():
@@ -305,24 +336,6 @@ def notify_summary(root, job: str, date: str, *, rc: int, done: int,
         job, date, rc=rc, done=done, dead=dead,
         not_terminal=not_terminal, elapsed_s=elapsed_s,
         finished_at=finished_at, links=links)
-
-
-def notify_summary(root, job: str, date: str, *, rc: int, done: int,
-                   dead: int, not_terminal: list[str],
-                   elapsed_s: float, enabled: bool = True,
-                   links=None) -> bool:
-    """跑批收尾通知的统一入口（带结构化日志，方便事后查为什么没弹）。"""
-    if not enabled:
-        return False
-    if suppressed():
-        # 不走 notify() 的失败分支：测试里把"弹不出去"记成 winnotify_failed
-        # 会让断言结构化日志的测试以为通知链路坏了，而它其实是主动静默。
-        jlog(root, "INFO", "winnotify_suppressed", job=job, date=date,
-             reason=SUPPRESS_ENV)
-        return False
-    title, body, fail = daily_summary_message(
-        job, date, rc=rc, done=done, dead=dead,
-        not_terminal=not_terminal, elapsed_s=elapsed_s, links=links)
     sent = notify(title, body, fail=fail, links=links)
     jlog(root, "INFO" if sent else "WARN",
          "winnotify_sent" if sent else "winnotify_failed",

@@ -234,7 +234,7 @@ def _write_desktop_marker(root: Path, job: str, date: str, rc: int,
 
     icon = {0: "[OK]", 1: "[..]", 2: "[DEAD]", 3: "[CFG]"}.get(rc, "[??]")
     lines = [
-        f"{icon} {job} {date}  rc={rc}  用时 {winnotify._fmt_elapsed(elapsed_s)}  "
+        f"{icon} {winnotify.zh_job_label(job)} {date}  rc={rc}  用时 {winnotify._fmt_elapsed(elapsed_s)}  "
         f"结束 {finished_at}",
         f"任务：{sum(1 for t in summary['tasks'])} 条 "
         f"(完成 {sum(1 for t in summary['tasks'] if t['status'] in ('DONE','SKIPPED','SKIPPED_CACHED'))}，"

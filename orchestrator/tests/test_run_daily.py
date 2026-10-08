@@ -324,7 +324,7 @@ def test_desktop_marker_drops_file_in_desktop_with_summary(tmp_path):
     out = desk / "AutoTask_finance_daily_2026-10-06.txt"
     body = out.read_text(encoding="utf-8-sig")
     assert "[OK]" in body
-    assert "finance_daily 2026-10-06" in body
+    assert "金融日报 2026-10-06" in body
     assert "t1_stocks" in body and "DONE" in body
     assert "股票日报" in body
     assert "run_daily_finance_daily_2026-10-06.log" in body

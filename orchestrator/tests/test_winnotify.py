@@ -201,7 +201,7 @@ def test_summary_message_by_exit_code():
             "daily_report", "2026-10-05", rc=rc, done=4, dead=0,
             not_terminal=[], elapsed_s=740.4)   # 12.34 分钟 → 12:20.4
         assert got_fail is fail, rc
-        assert word in title and "daily_report" in title
+        assert word in title and "每日综合日报" in title
         assert "2026-10-05" in title
         assert "12:20.4" in body and "完成 4" in body
 
@@ -251,7 +251,23 @@ def test_notify_summary_always_calls_notify(tmp_path, monkeypatch, rc):
                              not_terminal=[] if rc == 0 else ["t3"],
                              elapsed_s=300.0) is True
     assert seen["fail"] is (rc != 0)
-    assert "housing_daily" in seen["title"]
+    assert "每日房产跟踪" in seen["title"]
+
+
+def test_zh_job_label_maps_known_and_falls_back():
+    """通知标题用中文名；未知 job 回退原值（配置错时至少能看出是哪个 id）。
+
+    2026-10-08 用户要求：通知标题别露英文 job id（'housing_monthly' 乍一
+    看不知道是啥）。映射只影响展示层，CLI/文件名仍是英文 id。
+    """
+    assert wn.zh_job_label("housing_monthly") == "房贷贴息月报"
+    assert wn.zh_job_label("finance_postclose") == "收市金融日报"
+    assert wn.zh_job_label("no_such_job") == "no_such_job"
+    # 标题里的 job id 已被中文名替换
+    title, _, _ = wn.daily_summary_message(
+        "housing_monthly", "2026-10-08", rc=0, done=1, dead=0,
+        not_terminal=[], elapsed_s=60.0)
+    assert "房贷贴息月报" in title and "housing_monthly" not in title
 
 
 def test_toast_xml_renders_clickable_report_buttons(tmp_path):
