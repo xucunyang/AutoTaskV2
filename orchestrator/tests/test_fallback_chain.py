@@ -313,7 +313,12 @@ def test_chain_collapses_to_original_when_minimax_absent():
     assert m["complex_chain"]._names() == ["pro"]
 
 
-def test_minimax_leads_all_chains_when_enabled():
+def test_minimax_leads_only_simple_and_medium_when_enabled():
+    """2026-10-09 分工调整：MiniMax 只领 simple/medium（中低档）。
+
+    complex 让位给 glm（用户点名"MiniMax 任务等级是中级或低级"）。
+    这里没配 ZHIPU key，glm 不注册，complex 塌缩成 [pro]。
+    """
     env = {"ONLINE_API_KEY": "k", "ONLINE_FLASH_MODEL": "f",
            "ONLINE_PRO_MODEL": "p", "ONLINE_BASE_URL": "u",
            "MINIMAX_API_KEY": "mk", "MINIMAX_BASE_URL": "https://api.minimax.io/v1",
@@ -323,7 +328,48 @@ def test_minimax_leads_all_chains_when_enabled():
     m = build_models(cfg, env=env)
     assert m["simple_chain"]._names() == ["minimax", "local"]
     assert m["medium_chain"]._names() == ["minimax", "flash"]
-    assert m["complex_chain"]._names() == ["minimax", "pro"]
+    assert m["complex_chain"]._names() == ["pro"]   # minimax 不再进 complex
+
+
+def test_glm_leads_complex_chain_when_enabled():
+    """complex 第一跳是 glm，额度耗尽回落 pro（用户 2026-10-09 点名）。"""
+    env = {"ONLINE_API_KEY": "k", "ONLINE_FLASH_MODEL": "f",
+           "ONLINE_PRO_MODEL": "p", "ONLINE_BASE_URL": "u",
+           "MINIMAX_API_KEY": "mk", "MINIMAX_BASE_URL": "https://api.minimax.io/v1",
+           "MINIMAX_MODEL": "MiniMax-M3",
+           "ZHIPU_GLM_API_KEY": "zk"}
+    cfg = yaml.safe_load(yaml.safe_dump(CFG))
+    cfg["models"]["minimax"]["enabled"] = True
+    m = build_models(cfg, env=env)
+    assert m["complex_chain"]._names() == ["glm", "pro"]
+    # glm 不染指中低档：simple/medium 仍是 minimax 领头
+    assert m["simple_chain"]._names() == ["minimax", "local"]
+    assert m["medium_chain"]._names() == ["minimax", "flash"]
+    p = m["glm"]
+    # Coding Plan 端点 + 套餐模型（打标准端点会 429 余额不足，实测踩过）
+    assert p.base_url == "https://open.bigmodel.cn/api/coding/paas/v4"
+    assert p.base_url + p.path == \
+        "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"
+    assert p.model == "glm-4.6"
+    assert p.api_key == "zk"
+
+
+def test_glm_quota_error_falls_back_to_pro():
+    """glm 套餐额度耗尽（429/余额不足文本）→ 链上回落 pro 接手。
+
+    「当某一个 token plan 的额度用完时回落到有额度的那个」——
+    429 是 LIMIT_STATUS，is_limit_error 必须认，FallbackProvider
+    换下一跳并留痕（fell_from=glm）。
+    """
+    quota = ProviderError(
+        "glm:failed:http_429:{\"error\":{\"code\":\"1113\","
+        "\"message\":\"余额不足或无可用资源包,请充值。\"}}", status=429)
+    glm = _spec("glm", script=quota)
+    pro = _spec("pro")
+    fb = FallbackProvider([glm, pro], name="complex_chain")
+    out = fb.chat("p", {})
+    assert out["served_by"] == "pro"
+    assert out["fell_from"] == ["glm"]
 
 
 def test_minimax_uses_configured_model_and_url():
