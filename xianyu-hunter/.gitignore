@@ -1,0 +1,4 @@
+# 原始采集痕迹只留磁盘，不入库（防仓库膨胀）；结论见 candidates.md / scan-log.md
+scans/
+device-lease/leases/
+*.tmp
