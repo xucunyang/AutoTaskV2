@@ -5,8 +5,7 @@ P0 阶段先定各代锚点基底（谁是 1.0）；性能倍数（5090=多少�
 需要外部性能天梯数据，P1.5 补——届时 perf_anchor 字段直接 UPDATE 倍数。
 
 拍板依据（2026-10-10）：
-- 50 系基底 = RTX 5060 Ti 16GB：京东列表观察 + 行业常识
-  （50 系里 5060 Ti 在游戏整机配置中出现频率最高，是同代走量款）
+- 50 系基底 = RTX 5060 Ti **8GB**：走量甜品（16GB 偏贵不是走量款，用户纠正）
 - 40 系过渡款基底 = RTX 4060：4 系入门款、销量稳居前列
 - 90 系基底 = RX 9070 XT：RX 9000 系走量款（暂定，P1.5 用京东验证）
 - CPU 基底：暂留空（P1.5）
@@ -26,8 +25,9 @@ from tools.sku_db import connect  # noqa: E402
 
 # display_name（决定锚定） → perf_anchor 值（=1.0 是基底，其他按倍数，P1.5 填）
 ANCHORS = {
-    # 50 系：RTX 5060 Ti 16GB = 1.0（基底）
-    "RTX 5060 Ti 16GB": 1.0,
+    # 50 系：RTX 5060 Ti **8GB** = 1.0（走量甜品款）
+    #   （2026-10-10 用户纠正：16GB 偏贵不是走量款，8GB 才是同代锚点）
+    "RTX 5060 Ti 8GB": 1.0,
     # 40 系：RTX 4060 = 1.0
     "RTX 4060 8GB": 1.0,
     # RX 9000：RX 9070 XT = 1.0（P1.5 京东验证）
@@ -37,23 +37,39 @@ ANCHORS = {
 
 
 def apply_anchors(con: sqlite3.Connection, dry_run: bool = False) -> dict:
-    """把 ANCHORS 表写入 entity.perf_anchor（按 display_name 精确匹配）。"""
-    results = {"set": [], "skipped_no_match": [], "already_set": []}
-    for display_name, anchor in ANCHORS.items():
-        row = con.execute(
-            "SELECT entity_id, perf_anchor FROM entity WHERE display_name=?",
-            (display_name,)).fetchone()
-        if row is None:
-            results["skipped_no_match"].append(display_name)
+    """把 ANCHORS 表写入 entity.perf_anchor（按 display_name 精确匹配）。
+
+    同时清空**字典外的**实体的 perf_anchor——锚点字典是权威来源，
+    字典外的旧值要么是误设要么是过时的示例值，要么等 P1.5 补倍数。
+    这避免了「基底」和「非基底」共用 perf_anchor 字段造成的混淆：
+    1.0 是基底，>0 且 !=1.0 是倍数，空值是「待 P1.5」。
+    """
+    anchor_set = set(ANCHORS)
+    results = {"set": [], "skipped_no_match": [], "already_set": [],
+               "cleared": []}
+    rows = con.execute(
+        "SELECT entity_id, display_name, perf_anchor FROM entity").fetchall()
+    for eid, display_name, current in rows:
+        target = ANCHORS.get(display_name)
+        if target is None:
+            # 字典外的实体：如果当前有值且不在字典中，清掉（清旧）
+            if current is not None:
+                if not dry_run:
+                    con.execute(
+                        "UPDATE entity SET perf_anchor=NULL, updated_at=? "
+                        "WHERE entity_id=?",
+                        ("now", eid))
+                results["cleared"].append(display_name)
+            else:
+                results["skipped_no_match"].append(display_name)
             continue
-        eid, current = row
-        if current == anchor:
+        if current == target:
             results["already_set"].append(display_name)
             continue
         if not dry_run:
             con.execute(
                 "UPDATE entity SET perf_anchor=?, updated_at=? WHERE entity_id=?",
-                (anchor, "now", eid))      # updated_at 用占位，触发器/Python 写入 UTC ISO
+                (target, "now", eid))
         results["set"].append(display_name)
     if not dry_run:
         con.commit()
