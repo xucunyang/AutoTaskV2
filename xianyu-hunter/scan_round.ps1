@@ -32,7 +32,7 @@ if (($t -lt $ActiveStart) -or ($t -gt $ActiveEnd)) {
 }
 
 # 2) acquire device lease (multi-session coordination)
-$leaseOut = python $LeaseTool acquire --device $Device --session $SessionId --ttl 900 --task "xianyu-scan-r$Round" 2>$null
+$leaseOut = python $LeaseTool acquire --device $Device --session $SessionId --ttl 1200 --task "xianyu-scan-r$Round" 2>$null
 if ($LASTEXITCODE -eq 2) {
   Log "LEASE_BUSY: $leaseOut (skip this round, no fighting)"
   exit 0

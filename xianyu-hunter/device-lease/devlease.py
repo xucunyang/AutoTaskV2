@@ -60,7 +60,7 @@ def main():
 
     p_acq = sub.add_parser("acquire")
     add_common(p_acq)
-    p_acq.add_argument("--ttl", type=int, default=900, help="lease seconds, auto-expire (default 900)")
+    p_acq.add_argument("--ttl", type=int, default=1200, help="lease seconds, auto-expire (default 1200)")
     p_acq.add_argument("--task", default="", help="what this session is doing (for humans)")
 
     p_rel = sub.add_parser("release")
@@ -68,7 +68,7 @@ def main():
 
     p_ren = sub.add_parser("renew")
     add_common(p_ren)
-    p_ren.add_argument("--ttl", type=int, default=900)
+    p_ren.add_argument("--ttl", type=int, default=1200)
 
     sub.add_parser("status")
 
