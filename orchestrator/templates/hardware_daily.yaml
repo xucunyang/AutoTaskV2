@@ -128,3 +128,46 @@ tasks:
     needs_web: false
     max_attempts: 3
     budget: {max_steps: 8, timeout_s: 420}
+
+  # t4（2026-10-10 P1 新增）：趋势与推荐——读 trend_snapshot.json 写
+  # 趋势榜 + 对比段 + 推荐，模型只解读不改数（设计铁律）。depends_on
+  # t1b（必须有观测才能算快照），与 t2 并行（新闻互不依赖）。t3 引用
+  # t4 的产物，所以 t4 必须在 t3 之前完成。
+  - id: t4_hw_trend
+    name: 趋势与推荐
+    complexity: complex
+    key_questions:
+      - "本期哪些 SKU 在快速降价/涨价/企稳可以入手？"
+      - "同型号不同品牌（vendor）或不同渠道（channel）的差价是多少？"
+      - "基于历史观测的出期（label 与稳定性），给出当期 act_now/wait/
+         probe_offer 等推荐动作。"
+    objective: >-
+      读 artifacts/{date}/trend_snapshot.json（由 tools.trend_calc 确定性
+      生成），按以下结构产出：
+      ① artifacts/{date}/hw_trend.md：分三段——
+        · 趋势榜：每个基底的 last_price + label + d1_pct + slope_7
+          （逐字引用快照数字，**不许修改**）
+        · 控制变量对比：snap.contrasts 里各组 last_price 对比，
+          给出一句话解读（取相同 / 不同品牌的差价意味着什么）
+        · 推荐：按 action 枚举（act_now / wait / switch_to / probe_offer
+          / lower_offer）给每个有显著变化的实体挂动作；稳定性 + 距
+          30 期低点 + label 是挂动作的依据
+      ② artifacts/{date}/hw_recommend.json——hw_recommend.json
+      结构见卡上「JSON 形状」小节；decisions 数组每条带 entity /
+      signal / evidence / action / note
+      **注释：** 快照里的数字必须**原样引用**，不许修改、不许重算、
+      不许「微调」——这是 v3.3 设计铁律：确定性指标不被模型改写。
+      没有显著变化的实体段落直接用 webhook 直接连接前日报告
+      （Q8 增量引用），或链接为 slug ../{前一日}/hw_trend.md#{entity_id}。
+      验收：python_test 从 DB 重算 3 个抽样实体的 d1_pct/slope_7
+      与快照一致（防模型改数）；有显著变化的实体必须配 mermaid 图
+      （label 变化或 |d1_pct|>契约阈值，默认 1%）；当日全库无显著
+      变化时报告至少保留 1 张全局汇总图（v3.3 M4）。
+    depends_on: [t1b_sku_ingest]
+    inputs: ["artifacts/{date}/trend_snapshot.json"]
+    outputs: ["artifacts/{date}/hw_trend.md",
+              "artifacts/{date}/hw_recommend.json"]
+    acceptance_ref: schemas/acceptance_hw_t4.yaml
+    needs_web: false
+    max_attempts: 3
+    budget: {max_steps: 8, timeout_s: 420}

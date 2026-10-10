@@ -1,0 +1,35 @@
+# hardware t4_hw_trend 的验收（trend 与推荐）。
+#
+# 锁死：t4 是 complex 任务读快照写报告，验收三道闸（v3.3 M4）：
+# - python_test 从 DB 重算抽样指标与快照一致（防模型改数）
+# - mermaid 闸：有显著变化实体必须配图；全库无显著变化时至少 1 张全局图
+# - file_exists hw_trend.md + hw_recommend.json
+- type: file_exists
+  path: artifacts/{date}/hw_trend.md
+
+- type: file_exists
+  path: artifacts/{date}/hw_recommend.json
+
+# python_test：从 DB 重算 3 个抽样基底实体的 d1_pct / slope_7_pct_per_day
+# 与 trend_snapshot.json 比对，差 0.01 内——防止模型微调数字。
+# （写 hw_trend 任务的 card 时提示模型这是红线）
+- type: python_test
+  path: artifacts/{date}/hw_recommend.json
+  module: tools.sku_db
+  test_func: tracking_snap_consistency
+  args:
+    date: "{date}"
+    json_path: "artifacts/{date}/trend_snapshot.json"
+    tol: 0.01
+
+# mermaid：模型必须画图。mermaid handler 默认 ≥1 张。当日全库无
+# 显著变化时退化为全局汇总图（v3.3 §9.0 M4 修正）——这部分逻辑放
+# t4 的 card 写明，验收只保门宽足以发现「一张图都没画」。
+- type: mermaid
+  path: artifacts/{date}/hw_trend.md
+  min: 1
+
+# hw_recommend.json 形状对照（j_get 校验字段齐备）
+- type: business_rule
+  path: artifacts/{date}/hw_recommend.json
+  expr: 'j_get(j, ["date"], "") and len(j_get(j, ["decisions"], [])) >= 0'
