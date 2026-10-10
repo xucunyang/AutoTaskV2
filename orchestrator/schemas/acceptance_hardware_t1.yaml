@@ -27,3 +27,11 @@
 # 厂商官网/自营商品页 = A；只引论坛或自媒体报价的话 A 占比到不了 20%
 - type: source_quality
   source_tier_min_ratio: {A: 0.2}
+
+# P0（2026-10-10）新增：SKU 观测副产物的形状门禁。
+# 这是时序库（sku.db）的进料口——形状不对，入库器只会整批进隔离区，
+# 当天等于白采。schema 见 schemas/sku_observations.schema.json
+# （形状经 _schema_hint 内联进任务卡，模型不需要读文件）。
+- type: json_schema
+  path: artifacts/{date}/t1_sku_observations.json
+  schema_ref: schemas/sku_observations.schema.json

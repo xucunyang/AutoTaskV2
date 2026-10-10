@@ -264,6 +264,14 @@ def main(argv: list[str] | None = None) -> int:
     con = connect(root / "data" / "sku.db")
     try:
         stats = ingest_file(con, obs, contract, args.date, args.dry_run)
+        # stats 落盘由确定性代码完成（t1b 验收读它）：模型转抄 stdout
+        # 不可靠——数字必须从产生者直达消费者
+        stats_path = root / "artifacts" / args.date / "t1b_ingest_stats.json"
+        stats_path.parent.mkdir(parents=True, exist_ok=True)
+        stats_path.write_text(
+            json.dumps({**stats, "date": args.date, "domain": args.domain,
+                        "dry_run": args.dry_run}, ensure_ascii=False, indent=2),
+            encoding="utf-8")
         print(json.dumps(stats, ensure_ascii=False))
         return 0
     finally:

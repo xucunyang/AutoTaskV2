@@ -148,3 +148,35 @@ def test_ingest_dry_run_leaves_no_trace(db, tmp_path):
     assert db.execute("SELECT count(*) FROM observation").fetchone()[0] == 0
     assert db.execute(
         "SELECT count(*) FROM observation_quarantine").fetchone()[0] == 0
+
+
+def test_cli_writes_stats_file(tmp_path):
+    """CLI 端到端：stats 由入库器自己落盘（t1b 验收的依赖）。
+
+    模型转抄 stdout 不可靠——数字必须从产生者直达消费者（设计 D6）。
+    用隔离 root 跑完整 CLI：契约/种子/observations 全在 tmp 下。
+    """
+    import shutil
+    from tools import sku_ingest
+
+    # 搭隔离环境：契约 + 种子 + observations
+    (tmp_path / "config" / "contracts").mkdir(parents=True)
+    for name in ("hardware.yaml", "hardware_entities.yaml"):
+        shutil.copy(ROOT / "config" / "contracts" / name,
+                    tmp_path / "config" / "contracts" / name)
+    _write_obs(tmp_path, [_row() for _ in range(10)])
+    # CLI 只入库不建种子——先给隔离库铺实体（真实环境 seed 是运维动作）
+    from tools import sku_db
+    seed_con = sku_db.connect(tmp_path / "data" / "sku.db")
+    sku_db.seed_entities(seed_con,
+                         tmp_path / "config" / "contracts" / "hardware_entities.yaml")
+    seed_con.close()
+
+    rc = sku_ingest.main(["--date", "2026-10-10", "--root", str(tmp_path)])
+    assert rc == 0
+    stats = json.loads(
+        (tmp_path / "artifacts" / "2026-10-10" / "t1b_ingest_stats.json")
+        .read_text(encoding="utf-8"))
+    assert stats["ok"] + stats["updated"] == 10
+    assert stats["date"] == "2026-10-10" and stats["domain"] == "hardware"
+    assert stats["dry_run"] is False

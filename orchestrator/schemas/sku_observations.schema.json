@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sku_observations",
+  "description": "t1 采集的 SKU 观测副产物：时序库 sku.db 的进料口。identity_hint 键序=域契约声明序（hardware: category/series/spec）；attrs_hint 的 condition/channel/source 是 aggregate_scope 分轨维度（缺了序列口径就废，入库器会整行隔离）。",
+  "type": "array",
+  "minItems": 10,
+  "items": {
+    "type": "object",
+    "required": ["identity_hint", "attrs_hint", "low_price", "price_date", "shop"],
+    "additionalProperties": true,
+    "properties": {
+      "identity_hint": {
+        "type": "object",
+        "required": ["category", "series", "spec"],
+        "additionalProperties": false,
+        "properties": {
+          "category": {"type": "string", "description": "显卡/CPU/主板/内存/固态硬盘"},
+          "series": {"type": "string", "description": "规范型号名：RTX 5060 Ti——渠道/成色/品牌不许塞这里"},
+          "spec": {"type": "string", "description": "规格：8GB/16GB×2/1TB；CPU 无规格写空串"}
+        }
+      },
+      "attrs_hint": {
+        "type": "object",
+        "required": ["condition", "channel", "source"],
+        "additionalProperties": true,
+        "properties": {
+          "condition": {"type": "string", "enum": ["全新", "二手", "官翻", "展示机"]},
+          "channel": {"type": "string", "enum": ["国行单卡", "整机参考", "美行折算", "百亿补贴", "自营", "第三方"]},
+          "source": {"type": "string", "enum": ["自采", "manmanmai", "smzdm", "gwdang", "xianyi_app", "beike_app", "jd_app"]},
+          "vendor": {"type": "string"},
+          "grade": {"type": "string"},
+          "promo_event": {"type": "string"}
+        }
+      },
+      "low_price": {"type": "number", "exclusiveMinimum": 0, "description": "券后到手价；数字不带单位"},
+      "raw_price": {"type": "number", "exclusiveMinimum": 0, "description": "券前价，页面划线价"},
+      "metric": {"type": "string", "default": "price"},
+      "price_date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "页面标注的价格日，不得晚于采集日"},
+      "shop": {
+        "type": "object",
+        "required": ["name", "platform"],
+        "properties": {
+          "name": {"type": "string"},
+          "platform": {"type": "string", "description": "京东/天猫/拼多多/闲鱼…"},
+          "url": {"type": "string"}
+        }
+      },
+      "coupons": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string"},
+            "amount": {"type": "number"},
+            "threshold": {"type": "number"},
+            "expire": {"type": "string"}
+          }
+        }
+      },
+      "in_stock": {"type": "boolean"},
+      "source_url": {"type": "string"},
+      "source_tier": {"type": "string"}
+    }
+  }
+}

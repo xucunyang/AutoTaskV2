@@ -1,0 +1,21 @@
+# t1b_sku_ingest 的验收（全链共用，硬件链首发）。
+#
+# 这条任务本身是确定性脚本的触发器——验收的核心不是文风，而是
+# **入库真的发生了**：stats 文件由 tools.sku_ingest 自己落盘
+# （不经过模型转抄），行数门槛是设计 D6 的兜底（模型没跑命令 =
+# stats 不存在或行数不足 = FAIL）。
+- type: file_exists
+  path: artifacts/{date}/t1b_ingest_stats.json
+
+# 入库量门槛：ok+updated ≥ 10。用 j_get 取字段相加——expr 沙箱
+# 不放行 j.get()（Attribute 节点面），j_get 是唯一深路径取值法。
+- type: business_rule
+  path: artifacts/{date}/t1b_ingest_stats.json
+  expr: 'j_get(j, ["ok"], 0) + j_get(j, ["updated"], 0) >= 10'
+
+# 隔离区透明：隔离行超过入库行 = 采集质量出了问题，该被人看见
+# 而不是静默通过（数值放宽到 2 倍：新 SKU 冷启动期 no_entity 偏多是
+# 正常现象，收编闭环会消化它们）。
+- type: business_rule
+  path: artifacts/{date}/t1b_ingest_stats.json
+  expr: 'j_get(j, ["quarantined"], 0) + j_get(j, ["no_entity"], 0) <= 2 * (j_get(j, ["ok"], 0) + j_get(j, ["updated"], 0))'

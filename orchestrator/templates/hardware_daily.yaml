@@ -24,13 +24,50 @@ tasks:
       **不许估算或凭记忆补**——显卡内存价格一天一变，凭记忆必错，
       而且错得从表面看不出来。同时交齐 sources.json / claims.json，
       优先引厂商官网、自营商品页与主流硬件媒体（A 类来源占比 ≥20%）。
+      **另交一份 SKU 观测副产物** artifacts/{date}/t1_sku_observations.json
+      （JSON 数组，≥10 行，形状见卡上「JSON 形状」小节）：每行一笔
+      具体报价——identity_hint 写规范型号（series 如 "RTX 5060 Ti"，
+      **渠道/成色/品牌不许塞进 series**，放 attrs_hint 的
+      channel/condition/vendor）；attrs_hint 必含 condition/channel/
+      source 三个分轨字段（source 一律写 "自采"）；low_price 为券后
+      到手价、raw_price 为券前划线价；shop 写店铺名与平台；coupons
+      列出 applicable 优惠券（名称/金额/门槛/到期日）。这份文件是
+      时序数据库的进料口，形状不对整批作废。
     depends_on: []
-    outputs: ["artifacts/{date}/t1_gpu_ram.csv"]
+    outputs: ["artifacts/{date}/t1_gpu_ram.csv",
+              "artifacts/{date}/t1_sku_observations.json"]
     acceptance_ref: schemas/acceptance_hardware_t1.yaml
     needs_web: true
     freshness: recent
     max_attempts: 3
     budget: {max_steps: 12, timeout_s: 720}
+
+  # t1b（2026-10-10 P0 新增）：确定性入库——把 t1 的观测副产物写进
+  # data/sku.db。simple + needs_web=false：模型只负责触发命令，
+  # 归一化/校验/隔离全部由 tools/sku_ingest 确定性完成（设计：
+  # docs/design/sku-timeseries-db-v3.3.md §4 D6 方案 B）。
+  # 验收读入库器自己落盘的 stats（模型转抄 stdout 不可靠）。
+  # 注意：全链共用同构任务，改这里时同步审视其他链的 t1b（P2 接入时）。
+  - id: t1b_sku_ingest
+    name: 观测入库
+    complexity: simple
+    objective: >-
+      在 orchestrator 目录下执行命令：
+      `python -X utf8 -m tools.sku_ingest --date {date} --domain hardware`。
+      命令会把 artifacts/{date}/t1_sku_observations.json 校验入库
+      （归一化/实体匹配/隔离坏行），并把统计写到
+      artifacts/{date}/t1b_ingest_stats.json。你只需：执行命令、
+      确认退出码为 0、读取 stats 文件核对 ok+updated ≥ 10。
+      若大量行进隔离区（quarantined 或 no_entity 占比过半），
+      检查 observations.json 的 hint 字段是否写错并在 stats 旁
+      写一份 t1b_ingest_review.md 说明原因；**不要手工改库**。
+    depends_on: [t1_gpu_ram]
+    inputs: ["artifacts/{date}/t1_sku_observations.json"]
+    outputs: ["artifacts/{date}/t1b_ingest_stats.json"]
+    acceptance_ref: schemas/acceptance_sku_ingest.yaml
+    needs_web: false
+    max_attempts: 3
+    budget: {max_steps: 4, timeout_s: 300}
 
   - id: t2_hw_news
     name: 硬件新闻
