@@ -27,10 +27,12 @@ def _root(tmp_path):
     r = tmp_path / "proj"
     (r / "templates").mkdir(parents=True)
     for f in (ROOT / "templates").glob("*"):
-        (r / "templates" / f.name).write_bytes(f.read_bytes())
+        if f.is_file():            # config 下出现子目录（contracts/）不能炸：
+            (r / "templates" / f.name).write_bytes(f.read_bytes())
     (r / "config").mkdir(exist_ok=True)
     for f in (ROOT / "config").glob("*"):
-        (r / "config" / f.name).write_bytes(f.read_bytes())
+        if f.is_file():            # 2026-10-10 实测：contracts/ 子目录进
+            (r / "config" / f.name).write_bytes(f.read_bytes())
     return r
 
 

@@ -1,0 +1,37 @@
+# 硬件域契约（v3.3 §5 蓝本落地）。
+# 这是「interface 的 implementation」：核心表/入库器/计算器只认这里的
+# 声明，不认识任何具体字段（Q1 拍板：yaml 为唯一源，git 可评审）。
+domain: hardware
+identity: [category, series, spec]        # 序列键（identity 严出）
+attrs:
+  vendor:    {values: [公版, 七彩虹, 微星, 华硕, 技嘉, 索泰, 影驰, 七彩虹iGame], level: optional}
+  condition: {values: [全新, 二手, 官翻, 展示机], level: required}   # 跨域通用维度（Q13 发散）
+  channel:   {values: [国行单卡, 整机参考, 美行折算, 百亿补贴, 自营, 第三方], level: required}
+  grade:     {values: [95新, 9成新, 8成新, 7成新及以下], level: optional}  # 二手成色
+  used_duration_months: {type: int, level: optional}
+  promo_event: {values: [618, 双11, 国补, 以旧换新, 无], level: optional}
+  cooler:    {values: [公版, 双风扇, 三风扇, 水冷], level: optional}
+  cpu_box:   {values: [盒装, 散片], level: optional}                  # 仅 cpu 类目用
+  seller_type: {values: [个人, 商家], level: optional}                # 二手轨
+  mine_risk: {values: [疑似矿卡, 无标注], level: optional}            # 显卡二手命门
+  accessories: {values: [全套, 缺配件], level: optional}
+  source:    {values: [自采, manmanmai, smzdm, gwdang, xianyi_app, beike_app, jd_app],
+              level: required}            # 数据来源轨（v3.3 M2：aggregate_scope 分组维度）
+aggregate_rule: min        # 序列点=当日最低价
+aggregate_scope:           # v3.3 M1/M2：切轨维度与主序列过滤
+  group_by: [condition, source]
+  default_filter: {condition: 全新, source: 自采}
+metrics:
+  price:
+    unit: CNY
+    sufficiency: {L0: 5, stab_risk: 60, wait_value: 120}
+report:
+  change_threshold: {label_changed: true, abs_d1_pct: 1.0}   # 「显著变化」（v3.3 M4）
+  significant_only: true    # 无显著变化的实体链接前日报告（Q8）
+normalizers:                # 确定性归一化规则（入库器实现）
+  - strip_paren_suffix      # 剥「(京东全新)(丐版国内)」类渠道/成色后缀
+  - fullwidth_to_halfwidth  # 全角字母数字→半角
+  - collapse_spaces         # 连续空白→单空格
+  - ti_case                 # 5060ti/5060TI→5060 Ti
+  - gb_unit                 # 8G/8g→8GB（显存统一）
+propose_threshold: 0.8     # 收编提案 confidence 阈值（v3.3 M3）

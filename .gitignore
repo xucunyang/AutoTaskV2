@@ -24,9 +24,22 @@ orchestrator/backup/
 orchestrator/artifacts/
 # 模型用 run_cmd 留下的临时脚本（tool loop 允许python -c，拦不住写文件）。
 # 这不是产物，是垃圾——模型自己验产物时顺手造的。
-orchestrator/tools/
+# tools/ 下只放行正经模块（sku_*.py，设计文档 v3.3 钉死的确定性组件位）；
+# 其余仍是模型 run_cmd 临时脚本的隔离区，不进库
+orchestrator/tools/*
+!orchestrator/tools/sku_*.py
+
 # reports/ 不忽略：chaos_*.log 与 smoke_*.log 是验收证据，要留。
 # 但 alerts.jsonl 是运行时追加的日志，每次真跑都会变——它进仓库只会
 # 让每轮 diff 里混进噪音，不该入库。
 orchestrator/reports/alerts.jsonl
 # 只想忽略每日产物的话用 orchestrator/reports/*.md 精确规则。
+
+# ---- 运行日志与运行时产物（2026-10-10 加：每天跑无数任务产生无数条，
+#      全部不进版本统计；定位问题的价值在跑完当时就消耗完了）----
+orchestrator/reports/run_daily_*.log
+orchestrator/reports/*.err
+orchestrator/reports/*.out
+orchestrator/reports/alerts_suppressed.jsonl
+orchestrator/outputs/
+orchestrator/data/

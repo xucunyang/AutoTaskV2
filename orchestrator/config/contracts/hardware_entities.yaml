@@ -1,0 +1,75 @@
+# 硬件域首发实体种子清单（Q7 拍板：~30 个主流 SKU，P0 建库时导入）。
+# identity 键序 = 契约声明序 [category, series, spec]。
+# perf_anchor 留空：Q14 拍板用手机看京东/天猫官方旗舰店销量定基底
+# （同代销量最大者=1.0），P0 骨架完成后采集时顺带定，不在此猜。
+domain: hardware
+entities:
+  # ---- NVIDIA 50 系 ----
+  - identity: {category: 显卡, series: RTX 5090, spec: 32GB}
+    display_name: RTX 5090 32GB
+    aliases: ["5090", "RTX5090"]
+  - identity: {category: 显卡, series: RTX 5090D, spec: 32GB}
+    display_name: RTX 5090D 32GB
+    aliases: ["5090D", "5090 D"]
+  - identity: {category: 显卡, series: RTX 5080, spec: 16GB}
+    display_name: RTX 5080 16GB
+  - identity: {category: 显卡, series: RTX 5070 Ti, spec: 16GB}
+    display_name: RTX 5070 Ti 16GB
+  - identity: {category: 显卡, series: RTX 5070, spec: 12GB}
+    display_name: RTX 5070 12GB
+  - identity: {category: 显卡, series: RTX 5060 Ti, spec: 16GB}
+    display_name: RTX 5060 Ti 16GB
+  - identity: {category: 显卡, series: RTX 5060 Ti, spec: 8GB}
+    display_name: RTX 5060 Ti 8GB
+    aliases: ["5060Ti 8G", "5060 TI 8GB"]
+  - identity: {category: 显卡, series: RTX 5060, spec: 8GB}
+    display_name: RTX 5060 8GB
+  - identity: {category: 显卡, series: RTX 5050, spec: 8GB}
+    display_name: RTX 5050 8GB
+  # ---- AMD RX 9000 系 ----
+  - identity: {category: 显卡, series: RX 9070 XT, spec: 16GB}
+    display_name: RX 9070 XT 16GB
+  - identity: {category: 显卡, series: RX 9070, spec: 16GB}
+    display_name: RX 9070 16GB
+  - identity: {category: 显卡, series: RX 9060 XT, spec: 16GB}
+    display_name: RX 9060 XT 16GB
+  # ---- 40 系过渡款（清仓期仍在售）----
+  - identity: {category: 显卡, series: RTX 4070 Super, spec: 12GB}
+    display_name: RTX 4070 Super 12GB
+  - identity: {category: 显卡, series: RTX 4060, spec: 8GB}
+    display_name: RTX 4060 8GB
+  # ---- CPU ----
+  - identity: {category: CPU, series: Ryzen 7 9800X3D, spec: ""}
+    display_name: Ryzen 7 9800X3D
+    aliases: ["9800X3D", "R7 9800X3D"]
+  - identity: {category: CPU, series: Ryzen 7 9700X, spec: ""}
+    display_name: Ryzen 7 9700X
+  - identity: {category: CPU, series: Ryzen 5 9600X, spec: ""}
+    display_name: Ryzen 5 9600X
+  - identity: {category: CPU, series: Core i5-14600KF, spec: ""}
+    display_name: Core i5-14600KF
+    aliases: ["14600KF", "i5 14600KF"]
+  - identity: {category: CPU, series: Core Ultra 7 265K, spec: ""}
+    display_name: Core Ultra 7 265K
+    aliases: ["265K", "Ultra7 265K"]
+  # ---- 主板 ----
+  - identity: {category: 主板, series: B650M, spec: AM5}
+    display_name: B650M (AM5)
+  - identity: {category: 主板, series: Z890, spec: LGA1851}
+    display_name: Z890 (LGA1851)
+  - identity: {category: 主板, series: B760M, spec: LGA1700}
+    display_name: B760M (LGA1700)
+  # ---- 内存 ----
+  - identity: {category: 内存, series: DDR5 6000, spec: 16GB×2}
+    display_name: DDR5 6000 16GB×2
+  - identity: {category: 内存, series: DDR5 6400, spec: 16GB×2}
+    display_name: DDR5 6400 16GB×2
+  - identity: {category: 内存, series: DDR5 5600, spec: 16GB×2}
+    display_name: DDR5 5600 16GB×2
+  # ---- 固态硬盘 ----
+  - identity: {category: 固态硬盘, series: 致态 TiPlus7100, spec: 1TB}
+    display_name: 致态 TiPlus7100 1TB
+  - identity: {category: 固态硬盘, series: 三星 990 EVO, spec: 1TB}
+    display_name: 三星 990 EVO 1TB
+  - identity: {category: 固态硬盘, series: WD SN770, spec: 1TB}
+    display_name: WD SN770 1TB
