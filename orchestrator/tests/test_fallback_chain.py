@@ -305,19 +305,19 @@ def test_minimax_not_registered_without_key():
 
 
 def test_chain_collapses_to_original_when_minimax_absent():
-    """核心保证：加了 MiniMax 但没启用时，行为与改动前逐跳一致。"""
+    """核心保证：智谱/MiniMax 都没配 key 时，链塌缩成纯按量+本地。"""
     m = build_models(CFG, env={"ONLINE_API_KEY": "k", "ONLINE_FLASH_MODEL": "f",
                                "ONLINE_PRO_MODEL": "p", "ONLINE_BASE_URL": "u"})
-    assert m["simple_chain"]._names() == ["local"]
-    assert m["medium_chain"]._names() == ["flash"]
+    assert m["simple_chain"]._names() == ["local", "flash"]
+    assert m["medium_chain"]._names() == ["pro", "flash"]
     assert m["complex_chain"]._names() == ["pro"]
 
 
-def test_minimax_leads_only_simple_and_medium_when_enabled():
-    """2026-10-09 分工调整：MiniMax 只领 simple/medium（中低档）。
+def test_minimax_leads_when_zhipu_absent():
+    """智谱没配 key 时三档都从 MiniMax 起跳（2026-10-10 链形）。
 
-    complex 让位给 glm（用户点名"MiniMax 任务等级是中级或低级"）。
-    这里没配 ZHIPU key，glm 不注册，complex 塌缩成 [pro]。
+    glm/glm_flash 共用 ZHIPU_GLM_API_KEY——没有它，两个条目都不注册，
+    链上剩 minimax 领头。
     """
     env = {"ONLINE_API_KEY": "k", "ONLINE_FLASH_MODEL": "f",
            "ONLINE_PRO_MODEL": "p", "ONLINE_BASE_URL": "u",
@@ -326,32 +326,34 @@ def test_minimax_leads_only_simple_and_medium_when_enabled():
     cfg = yaml.safe_load(yaml.safe_dump(CFG))
     cfg["models"]["minimax"]["enabled"] = True
     m = build_models(cfg, env=env)
-    assert m["simple_chain"]._names() == ["minimax", "local"]
-    assert m["medium_chain"]._names() == ["minimax", "flash"]
-    assert m["complex_chain"]._names() == ["pro"]   # minimax 不再进 complex
+    assert m["simple_chain"]._names() == ["minimax", "local", "flash"]
+    assert m["medium_chain"]._names() == ["minimax", "pro", "flash"]
+    assert m["complex_chain"]._names() == ["minimax", "pro"]
 
 
 def test_glm_leads_complex_chain_when_enabled():
-    """complex 第一跳是 glm，额度耗尽回落 pro（用户 2026-10-09 点名）。"""
+    """complex 第一跳 glm，额度耗尽逐跳回落（用户 2026-10-10 点名顺序）。"""
     env = {"ONLINE_API_KEY": "k", "ONLINE_FLASH_MODEL": "f",
            "ONLINE_PRO_MODEL": "p", "ONLINE_BASE_URL": "u",
            "MINIMAX_API_KEY": "mk", "MINIMAX_BASE_URL": "https://api.minimax.io/v1",
            "MINIMAX_MODEL": "MiniMax-M3",
-           "ZHIPU_GLM_API_KEY": "zk"}
+           "ZHIPU_GLM_API_KEY": "zk",
+           "ZHIPU_GLM_MODEL": "glm-5.3",
+           "ZHIPU_GLM_MODEL_FLASH": "glm-5.3-flash"}
     cfg = yaml.safe_load(yaml.safe_dump(CFG))
     cfg["models"]["minimax"]["enabled"] = True
     m = build_models(cfg, env=env)
-    assert m["complex_chain"]._names() == ["glm", "pro"]
-    # glm 不染指中低档：simple/medium 仍是 minimax 领头
-    assert m["simple_chain"]._names() == ["minimax", "local"]
-    assert m["medium_chain"]._names() == ["minimax", "flash"]
-    p = m["glm"]
-    # Coding Plan 端点 + 套餐模型（打标准端点会 429 余额不足，实测踩过）
-    assert p.base_url == "https://open.bigmodel.cn/api/coding/paas/v4"
-    assert p.base_url + p.path == \
-        "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"
-    assert p.model == "glm-4.6"
-    assert p.api_key == "zk"
+    assert m["complex_chain"]._names() == ["glm", "minimax", "pro"]
+    assert m["medium_chain"]._names() == ["glm_flash", "minimax", "pro", "flash"]
+    assert m["simple_chain"]._names() == ["glm_flash", "minimax", "local", "flash"]
+    g, gf = m["glm"], m["glm_flash"]
+    # 两条目都是 Coding Plan 端点（打标准端点会 429/400，实测踩过）
+    for p in (g, gf):
+        assert p.base_url == "https://open.bigmodel.cn/api/coding/paas/v4"
+        assert p.base_url + p.path == \
+            "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"
+    assert g.model == "glm-5.3" and gf.model == "glm-5.3-flash"
+    assert g.api_key == "zk" and gf.api_key == "zk"   # 共用一把 key
 
 
 def test_glm_quota_error_falls_back_to_pro():
@@ -389,23 +391,24 @@ def test_minimax_uses_configured_model_and_url():
 
 
 def test_chain_collapses_when_minimax_disabled():
-    """把 minimax 关掉时链必须塌缩回原逻辑（而不是留下一个空跳）。"""
+    """把 minimax 关掉时链必须塌缩（而不是留下一个空跳）。"""
     cfg = yaml.safe_load(yaml.safe_dump(CFG))
     cfg["models"]["minimax"]["enabled"] = False
     m = build_models(cfg, env={"ONLINE_API_KEY": "k", "ONLINE_FLASH_MODEL": "f",
                                "ONLINE_PRO_MODEL": "p", "ONLINE_BASE_URL": "u",
                                "MINIMAX_API_KEY": "mk"})
-    assert m["medium_chain"]._names() == ["flash"]
+    assert m["medium_chain"]._names() == ["pro", "flash"]
     assert m["complex_chain"]._names() == ["pro"]
-    assert m["simple_chain"]._names() == ["local"]
+    assert m["simple_chain"]._names() == ["local", "flash"]
 
 
 def test_online_variant_exists_only_when_local_is_a_member():
     """__online 变体只对含本地的链生成，别给纯在线链造一份多余的。"""
     m = build_models(CFG, env={"ONLINE_API_KEY": "k", "ONLINE_FLASH_MODEL": "f",
                                "ONLINE_PRO_MODEL": "p", "ONLINE_BASE_URL": "u"})
-    # minimax 关着时 simple 塌缩成 [local]，此时没有"在线"可退，不该造变体
-    assert "simple_chain__online" not in m
+    # 套餐成员都没配时 simple 塌缩成 [local, flash]——去掉 local 还剩
+    # 在线的 flash，变体存在且只剩它（2026-10-10 链尾加了 flash 兜底）
+    assert m["simple_chain__online"]._names() == ["flash"]
     cfg = yaml.safe_load(yaml.safe_dump(CFG))
     cfg["models"]["minimax"]["enabled"] = True
     m2 = build_models(cfg, env={"ONLINE_API_KEY": "k", "ONLINE_FLASH_MODEL": "f",
@@ -413,7 +416,7 @@ def test_online_variant_exists_only_when_local_is_a_member():
                                 "MINIMAX_API_KEY": "mk",
                                 "MINIMAX_BASE_URL": "u", "MINIMAX_MODEL": "m"})
     assert "simple_chain__online" in m2
-    assert m2["simple_chain__online"]._names() == ["minimax"]
+    assert m2["simple_chain__online"]._names() == ["minimax", "flash"]
     assert "medium_chain__online" not in m2     # medium 链本来就不含 local
 
 

@@ -88,11 +88,12 @@ def test_configured_mapping_is_authoritative():
     比没这个配置更糟。"""
     ctx = gateway.build_ctx(CFG)
     r = gateway.route(T("medium"), ctx)
-    # 真实配置下 medium 指向降级链。链的**声明顺序**头是 minimax
-    # （yaml 层），但 minimax 默认 enabled: false，build_models 不会注册它，
-    # 于是实际链塌缩成 [flash]——两层分工不同，这里只断言路由层。
+    # 真实配置下 medium 指向降级链（2026-10-10 新序：
+    # glm_flash → minimax → pro → flash）。链头是 glm_flash——
+    # 依赖 .env 配了 ZHIPU_GLM_API_KEY（没配时塌缩成 minimax 领头，
+    # 见 test_fallback_chain.test_minimax_leads_when_zhipu_absent）。
     assert r["model"] == "medium_chain"
-    assert r["chain"][0] == "minimax"
+    assert r["chain"][0] == "glm_flash"
     assert r["chain"][-1] == "flash"      # 兜底必须在，且是原来的在线快模型
     assert r["reason"] == "configured_medium"
 
@@ -146,7 +147,9 @@ def test_local_window_insufficient_drops_local_from_chain():
     assert r["model"] == "simple_chain__online"
     assert r["reason"] == "local_window_insufficient"
     assert "local" not in r["chain"]
-    assert r["chain"][0] == "minimax"          # 仍按顺序，不是随便挑
+    # 仍按声明顺序：智谱 Flash 领头（依赖 .env 的 ZHIPU key），
+    # 不是随便挑一个在线的
+    assert r["chain"][0] == "glm_flash"
 
 
 def test_local_overload_keeps_the_whole_chain():

@@ -168,25 +168,32 @@ def test_gateway_minimax_is_not_pointed_at_anthropic_endpoint():
 
 
 def test_gateway_glm_points_at_coding_plan_endpoint():
-    """glm 必须走 Coding Plan 专用端点，complex 链头 glm、尾 pro。
+    """glm/glm_flash 必须走 Coding Plan 专用端点，三条链按用户点名顺序。
 
     同一把 key 打标准 /api/paas/v4 端点会 429「余额不足或无可用资源包」
-    （2026-10-09 实测：coding 端点 glm-4.6/5 全 200，标准端点全 429）。
-    两套计费共用同一把 key，端点退回标准版的表现只是"每次 complex 都
-    回落 pro、GLM 套餐白闲置"——不炸、不报错，纯浪费，必须有门禁钉住。
+    或 400「该模型始终思考」（实测 2026-10-09/10：coding 端点
+    glm-4.6/5.3/5.3-flash 全 200，标准端点全拒绝）。两套计费共用同一
+    把 key，端点退回标准版的表现只是"每次都回落 DeepSeek、智谱套餐白
+    闲置"——不炸、不报错，纯浪费，必须有门禁钉住。
+
+    2026-10-10 用户重新梳理的链序（逐字照单）：
+      simple : glm_flash → minimax → local → flash
+      medium : glm_flash → minimax → pro → flash
+      complex: glm → minimax → pro
     """
     data = yaml.safe_load((CONFIG_DIR / "gateway.yaml").read_text(
         encoding="utf-8"))
-    glm = data["models"]["glm"]
-    assert "/coding/" in glm["base_url"], \
-        f"glm base_url={glm['base_url']!r} 不是 Coding Plan 端点，会 429 余额不足"
-    chain = data["chains"]["complex_chain"]
-    assert chain[0] == "glm", f"complex 链头应是 glm：{chain!r}"
-    assert chain[-1] == "pro", f"complex 链尾（兜底）应是 pro：{chain!r}"
-    # minimax 已按用户 2026-10-09 指示降为中低档，不得再进 complex
-    assert "minimax" not in chain, "MiniMax 任务等级是中级/低级，不进 complex"
-    assert "minimax" in data["chains"]["simple_chain"]
-    assert "minimax" in data["chains"]["medium_chain"]
+    for entry in ("glm", "glm_flash"):
+        p = data["models"][entry]
+        assert "/coding/" in p["base_url"], \
+            f"{entry} base_url={p['base_url']!r} 不是 Coding Plan 端点，" \
+            "会 429 余额不足或 400 始终思考"
+    assert data["models"]["glm_flash"]["model"] == "${ZHIPU_GLM_MODEL_FLASH}"
+    assert data["chains"]["simple_chain"] == \
+        ["glm_flash", "minimax", "local", "flash"]
+    assert data["chains"]["medium_chain"] == \
+        ["glm_flash", "minimax", "pro", "flash"]
+    assert data["chains"]["complex_chain"] == ["glm", "minimax", "pro"]
 
 
 def test_load_cfg_does_not_swallow_silently(tmp_path):

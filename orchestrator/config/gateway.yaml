@@ -33,10 +33,9 @@ models:
       max_concurrency: 1,
       slo_p50_ms: 15000,
     }
-  # MiniMax：按 token 套餐计费的通道。2026-10-09 用户调整分工：
-  # **只服务 simple/medium（中低档）**，complex 让位给 glm——
-  # 套餐额度优先花在小任务上更划算，高档任务交给 GLM 套餐。
-  # 额度耗尽时熔断/限流，FallbackProvider 自动回到下面的 flash/local。
+  # MiniMax：按 token 套餐计费的通道。2026-10-10 重新梳理后的站位：
+  # 三条链的**第二跳**（智谱优先、MiniMax 承接、DeepSeek 兜底）——
+  # 套餐额度优先花在智谱之后的任务上，额度再耗尽回落 DeepSeek 按量。
   #
   # path 要与 base_url 配套，两种写法只能选一种，别叠加：
   #   base_url .../v1        + path /chat/completions
@@ -59,30 +58,49 @@ models:
       max_concurrency: 4,
       extra_body: { thinking: { type: "disabled" } },  # 简单任务不需要长思考
     }
-  # 智谱 GLM（2026-10-09 接入，用户点名）：**complex 专用第一跳**。
-  # ⚠️ 端点必须是 Coding Plan 专用 coding/paas/v4——同一把 key 打标准
-  # paas/v4 会 429「余额不足或无可用资源包」（实测 2026-10-09：coding
-  # 端点 glm-4.6/5 全 200，标准端点全 429）。这不是没配好，是两套计费。
+  # 智谱 GLM 旗舰（2026-10-09 接入；10-10 模型名改从 .env 读）：
+  # **complex 专用第一跳**。⚠️ 端点必须是 Coding Plan 专用 coding/paas/v4
+  # ——同一把 key 打标准 paas/v4 会 429「余额不足或无可用资源包」或
+  # 400「该模型始终思考」（实测：coding 端点 glm-4.6/5.3 全 200，标准
+  # 端点全拒绝）。这不是没配好，是两套计费。
   # 与 minimax 一样是 token 套餐：额度耗尽（402/429/quota 文案）由
-  # FallbackProvider 自动落到链上下一跳 pro（按量付费，总有额度）——
-  # 「额度用完回落到有额度的那个」就是 chains 的既有语义，无需新代码。
-  # 没配 key 时 build_models 不注册本条目，complex 链塌缩成 [pro]，
-  # 行为与接入前完全一致（401 鉴权失败是永久错误、不降级，key 填错
-  # 时整链硬炸，所以 key 变量名要盯紧）。
+  # FallbackProvider 自动落到链上下一跳——「额度用完回落到有额度的
+  # 那个」就是 chains 的既有语义，无需新代码。
   # thinking 关闭与 minimax 同理：正文够用，省 token；更关键的是多轮
   # 工具循环回传 assistant 消息时，思考模型的 reasoning_content 回传
   # 要求在多家 API 上都是坑（deepseek 已实测炸过 http_400）。
+  # 模型名从 .env 取（ZHIPU_GLM_MODEL，当前 glm-5.3）——变量删了会
+  # 展开成空串打 400，响亮失败优于静默用错模型。
   glm:
     {
       type: openai_compat,
       base_url: "https://open.bigmodel.cn/api/coding/paas/v4",
       api_key_env: ZHIPU_GLM_API_KEY,
-      model: glm-4.6,           # 套餐若含更新的型号（如 glm-5）只改这一行
+      model: "${ZHIPU_GLM_MODEL}",
       path: /chat/completions,
       context_window: null,
       timeout_s: 180,
       enabled: true,
       max_concurrency: 4,
+      extra_body: { thinking: { type: "disabled" } },
+    }
+  # 智谱 GLM Flash（2026-10-10 用户点名新增）：**simple/medium 第一跳**。
+  # 与 glm 共用一把 key（api_key_env 相同），模型走 .env 的
+  # ZHIPU_GLM_MODEL_FLASH（当前 glm-5.3-flash）。端点同 coding——
+  # 实测 flash 型号在标准端点也是 400「该模型始终思考」。
+  # timeout 收紧到 90s / 并发放 8：中低档任务量大、模型本身快，
+  # 拖满 180s 只会让队列白等。
+  glm_flash:
+    {
+      type: openai_compat,
+      base_url: "https://open.bigmodel.cn/api/coding/paas/v4",
+      api_key_env: ZHIPU_GLM_API_KEY,
+      model: "${ZHIPU_GLM_MODEL_FLASH}",
+      path: /chat/completions,
+      context_window: null,
+      timeout_s: 90,
+      enabled: true,
+      max_concurrency: 8,
       extra_body: { thinking: { type: "disabled" } },
     }
   # 快模型：适合 medium 及以下的批量活
@@ -131,21 +149,25 @@ complexity_models:
 # 降级链：每一档一个"按顺序试"的组合。第一个能用就用它，额度/限流/熔断
 # 就换下一个，最后一跳还不行才把错误抛给上层（走既有 RETRY/死信逻辑）。
 #
-# 2026-10-09 用户调整分工后的最终行为：
-#   simple : minimax → local   （MiniMax = 低档）
-#   medium : minimax → flash   （MiniMax = 中档；额度耗尽回落 flash）
-#   complex: glm → pro         （GLM = 高档；额度耗尽回落 pro 按量付费）
-# 没配 key 的成员自动从链上消失（glm/minimax 皆然），于是：
-#   glm 没配 key   → complex 塌缩成 [pro]，与接入前一致
-#   minimax 没配 key → simple/medium 塌缩成 [local]/[flash]
+# 2026-10-10 用户重新梳理后的分工（顺序逐字照单）：
+#   simple : 智谱Flash → MiniMax → local → DeepSeek Flash
+#   medium : 智谱Flash → MiniMax → DeepSeek PRO → DeepSeek Flash
+#   complex: 智谱(GLM旗舰) → MiniMax → DeepSeek PRO
+# 三条链智谱双条目（glm_flash/glm）共用一把 key，各自独立熔断记账。
+# MiniMax 回到 complex 第二跳（10-09 曾移出，10-10 用户点名放回）。
+# medium 里 PRO 在 Flash 前、simple 尾部再加 DeepSeek Flash，都是用户
+# 点名的顺序——按套餐优先、按量兜底的原则。
+# 没配 key 的成员自动从链上消失（glm*/minimax 皆然）：
+#   智谱没配 key   → 三档都从 MiniMax 起跳
+#   minimax 没配 key → 跳过它，前后成员直接衔接
 # 任一 token 套餐额度耗尽（402/429/quota/overloaded 文案）→ 链上下一跳
-# 接手，这就是「回落到有额度的那个」：glm 没额度走 pro，minimax 没额度
-# 走 local/flash。降级留痕（served_by / fell_from），产物谁写的可查。
+# 接手，这就是「回落到有额度的那个」。降级留痕（served_by/fell_from），
+# 产物谁写的可查。
 # ---------------------------------------------------------------------------
 chains:
-  simple_chain:  [minimax, local]
-  medium_chain:  [minimax, flash]
-  complex_chain: [glm, pro]
+  simple_chain:  [glm_flash, minimax, local, flash]
+  medium_chain:  [glm_flash, minimax, pro, flash]
+  complex_chain: [glm, minimax, pro]
 
 # 隐私强制覆盖：secret 任务不外发，无论复杂度都走这里指定的模型
 privacy_models:
