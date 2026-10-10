@@ -254,6 +254,79 @@ def h_business_rule(ctx: dict, rule: dict) -> dict:
     return {"ok": ok, "detail": detail or f"expr={expr}"}
 
 
+def h_data_period_match(ctx: dict, rule: dict) -> dict:
+    """data_period 与 t1 CSV 交易日列的机械比对（finance t3 专用）。
+
+    为什么需要它（2026-10-09/10 事故）：模板里给过一版「示例日期」
+    （A 股 = 9-30 节前、美股 = 10-05），模型把示例当指令照抄——t1 的
+    CSV 交易日列明明写着 10-09，t3 的 summary 却标 09-30，用户看到
+    「数据还是节前的」两天不敢信报告。数字其实是对的，标签错了。
+
+    business_rule 的 expr 沙箱一条规则只能绑一个文件（csv 或 json），
+    跨文件比对表达不出来——所以做成专用 handler：
+
+    - json（默认 finance_summary.json）的 data_period.{市场} 日期
+      必须**逐字等于** csv（默认 t1_stocks.csv）中该市场行的交易日列；
+    - json 里声明了、CSV 里一行都没有的市场 → FAIL（凭空捏造口径）；
+    - CSV 列名兼容「交易日」开头（历史产物出现过「交易日(YYYY-MM-DD)」）。
+    """
+    import csv as _csv
+    import json as _json
+
+    date = ctx["date"]
+    # normalize_path 不做 {date} 替换（上游加载验收时才展开）——这里自带
+    # 默认路径，得自己 replace
+    jraw = str(rule.get("json_path") or
+               "artifacts/{date}/finance_summary.json").replace("{date}", date)
+    craw = str(rule.get("csv_path") or
+               "artifacts/{date}/t1_stocks.csv").replace("{date}", date)
+    jp, jerr = normalize_path(jraw, date)
+    cp, cerr = normalize_path(craw, date)
+    if jerr or cerr:
+        return {"ok": False, "detail": f"security:{jerr or cerr}"}
+    jfull, cfull = ctx["root"] / jp, ctx["root"] / cp
+    for f, tag in ((jfull, "json"), (cfull, "csv")):
+        if not f.exists():
+            return {"ok": False, "detail": f"missing:{tag}:{f.name}"}
+    try:
+        summary = _json.loads(jfull.read_text(encoding="utf-8", errors="ignore"))
+    except Exception as e:      # noqa: BLE001 — 坏 json 归这条规则报，不炸整轮
+        return {"ok": False, "detail": f"json_parse:{e}"}
+    period = summary.get("data_period") if isinstance(summary, dict) else None
+    if not isinstance(period, dict) or not period:
+        return {"ok": False, "detail": "no_data_period_object"}
+
+    market_col = str(rule.get("market_col") or "市场")
+    with cfull.open("r", encoding="utf-8", errors="ignore", newline="") as f:
+        reader = _csv.DictReader(f)
+        headers = reader.fieldnames or []
+        day_col = next((h for h in headers if str(h).startswith("交易日")), None)
+        if day_col is None or market_col not in headers:
+            return {"ok": False,
+                    "detail": f"csv_cols:{headers[:6]}（缺{market_col}/交易日）"}
+        days_by_market: dict[str, set] = {}
+        for row in reader:
+            mkt = str(row.get(market_col) or "").strip()
+            day = str(row.get(day_col) or "").strip()
+            if mkt and day:
+                days_by_market.setdefault(mkt, set()).add(day)
+
+    mism, detail = [], []
+    for mkt, jday in period.items():
+        got = days_by_market.get(mkt)
+        if not got:
+            mism.append(mkt)
+            detail.append(f"{mkt}=json:{jday} csv:无该市场行")
+        elif str(jday).strip() not in got:
+            mism.append(mkt)
+            detail.append(f"{mkt}=json:{jday} csv:{sorted(got)}")
+    if mism:
+        return {"ok": False, "detail": "mismatch:" + "; ".join(detail)}
+    return {"ok": True,
+            "detail": "; ".join(f"{k}={v}" for k, v in
+                                sorted(period.items()))}
+
+
 def lint_chart_block(body: str) -> str | None:
     """mermaid 块的**渲染**判据：返回"这张图渲染不出来"的原因，看不出问题返回 None。
 
@@ -647,6 +720,7 @@ HANDLERS = {
     "python_test": h_python_test,
     "json_schema": h_json_schema,
     "business_rule": h_business_rule,
+    "data_period_match": h_data_period_match,
     "mermaid": h_mermaid,
     "source_traceable": h_source_traceable,
     "freshness": h_freshness,

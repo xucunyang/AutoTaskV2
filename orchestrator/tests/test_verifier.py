@@ -398,6 +398,84 @@ def test_business_rule_injects_empty_dict_when_json_breaks(tmp_path):
     assert "eval_error" not in got["detail"]
 
 
+# ---------- data_period_match：summary 标签与 CSV 交易日列的机械比对 ----------
+# 2026-10-09/10 事故：模板给过示例日期（A 股=9-30 节前），模型照抄——
+# t1 CSV 交易日列明明 10-09、summary 标签却 09-30，用户看标签以为数据
+# 是节前的。数字对、标签错也是错，这条门禁按 CSV 逐市场比对。
+
+def _fin_dir(tmp_path):
+    root = _root(tmp_path)
+    d = root / "artifacts" / DATE
+    d.mkdir(parents=True, exist_ok=True)
+    return root, d
+
+
+def _write_csv(d, day_header="交易日"):
+    (d / "t1_stocks.csv").write_text(
+        "标的,市场,收盘点位或收盘价,涨跌幅(%)," + day_header + "\n"
+        "上证指数,A股,3813.79,0.05,2026-10-09\n"
+        "恒生指数,港股,26752.59,-0.29,2026-10-09\n"
+        "道琼斯,美股,51231.64,0.10,2026-10-08\n",
+        encoding="utf-8")
+
+
+def test_data_period_match_passes_when_labels_match_csv(tmp_path):
+    root, d = _fin_dir(tmp_path)
+    _write_csv(d)
+    (d / "finance_summary.json").write_text(json.dumps({
+        "data_period": {"A股": "2026-10-09", "港股": "2026-10-09",
+                        "美股": "2026-10-08"}}, ensure_ascii=False),
+        encoding="utf-8")
+    got = vf.h_data_period_match(_ctx(root), {"type": "data_period_match"})
+    assert got["ok"] is True, got["detail"]
+
+
+def test_data_period_match_catches_stale_label(tmp_path):
+    """标签停在旧日期（事故形态）：CSV 10-09、summary 标 09-30 → FAIL。"""
+    root, d = _fin_dir(tmp_path)
+    _write_csv(d)
+    (d / "finance_summary.json").write_text(json.dumps({
+        "data_period": {"A股": "2026-09-30", "港股": "2026-10-09",
+                        "美股": "2026-10-08"}}, ensure_ascii=False),
+        encoding="utf-8")
+    got = vf.h_data_period_match(_ctx(root), {"type": "data_period_match"})
+    assert got["ok"] is False
+    assert "A股" in got["detail"] and "2026-10-09" in got["detail"]
+
+
+def test_data_period_match_accepts_legacy_day_header(tmp_path):
+    """历史产物的列名是「交易日(YYYY-MM-DD)」——按前缀认，不认就误杀。"""
+    root, d = _fin_dir(tmp_path)
+    _write_csv(d, day_header="交易日(YYYY-MM-DD)")
+    (d / "finance_summary.json").write_text(json.dumps({
+        "data_period": {"A股": "2026-10-09"}}, ensure_ascii=False),
+        encoding="utf-8")
+    assert vf.h_data_period_match(_ctx(root), {"type": "data_period_match"})["ok"]
+
+
+def test_data_period_match_fails_on_market_missing_from_csv(tmp_path):
+    """summary 声明了 CSV 里不存在的市场 = 凭空捏造口径 → FAIL。"""
+    root, d = _fin_dir(tmp_path)
+    _write_csv(d)
+    (d / "finance_summary.json").write_text(json.dumps({
+        "data_period": {"A股": "2026-10-09", "新三板": "2026-10-09"}},
+        ensure_ascii=False), encoding="utf-8")
+    got = vf.h_data_period_match(_ctx(root), {"type": "data_period_match"})
+    assert got["ok"] is False and "新三板" in got["detail"]
+
+
+def test_data_period_match_fails_gracefully_without_inputs(tmp_path):
+    root, d = _fin_dir(tmp_path)
+    # csv 在、json 不在 → missing 而不是异常
+    _write_csv(d)
+    got = vf.h_data_period_match(_ctx(root), {"type": "data_period_match"})
+    assert got["ok"] is False and "missing" in got["detail"]
+    # json 在但没 data_period 对象 → no_data_period_object
+    (d / "finance_summary.json").write_text("{}", encoding="utf-8")
+    got = vf.h_data_period_match(_ctx(root), {"type": "data_period_match"})
+    assert got["ok"] is False and "no_data_period" in got["detail"]
+
+
 def test_eval_expr_unknown_var_still_blocks_call_target():
     """`Call` 进白名单是为了 j_get，不是放 `open()`/`os.system()`。
     Attribute **没**放进白名单——`rows.__class__` 仍被 forbidden_node 拒。

@@ -29,17 +29,10 @@
   path: artifacts/{date}/finance_report.md
   min: 1
 
-# 10-05 美股先于 10-06 凌晨 04:00 已出齐；data_period.美股 < 10-05 一律 FAIL
-# （不让美股数据继续套 A 股节前最后交易日 9-30 的口径）
-# 用 j_get(j, ["a","b"], default) 取代 j.get("a").get("b")——后者需要 Attribute
-# 节点，Attribute 一进白名单就能爬 __class__/__bases__/__subclasses__，
-# 沙箱测试一直在拦的注入面就不能再挡了（见 core/verifier.eval_expr 注释）。
-- type: business_rule
-  path: artifacts/{date}/finance_summary.json
-  expr: 'j_get(j, ["data_period", "美股"], "") >= "2026-10-05"'
-- type: business_rule
-  path: artifacts/{date}/finance_summary.json
-  expr: 'j_get(j, ["data_period", "A股"], "") >= "2026-09-30"'
-- type: business_rule
-  path: artifacts/{date}/finance_summary.json
-  expr: 'j_get(j, ["data_period", "港股"], "") >= "2026-09-29"'
+# data_period 逐市场与 t1_stocks.csv 的交易日列机械比对。
+# 2026-10-09/10 事故：这里曾写死下限（美股 ≥10-05 / A股 ≥09-30 / 港股 ≥09-29）
+# ——静态日期过了当周就永远放行，管不住「标签错」。更早模板还给过示例日期
+# （A 股=9-30 节前），模型照抄示例，CSV 交易日列明明是 10-09、summary 却标
+# 09-30，用户看标签以为数据是节前的，两天不敢信报告。数字对、标签错也是错：
+# data_period.{市场} 必须逐字等于 CSV 中该市场行的交易日列。
+- type: data_period_match

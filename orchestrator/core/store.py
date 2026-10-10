@@ -745,9 +745,16 @@ class Store:
                 " WHERE plan_id=? AND task_id=?", (plan_id, task_id)).fetchone()
             attempts, fen = cur[0], cur[1]
             attempts_holder["old"] = attempts
+            # verify_progress 必须一并清空：reopen = 重新执行，产物会是
+            # **新的**，旧进度里的 verified_rules 指向的是上一次的产物。
+            # 2026-10-10 finance t3 事故：reopen 后 verified_rules 残留 8 条
+            # 全被 skip（验收事件 rules:0），重写的 summary 标错日期也
+            # 裸奔进 DONE。断点续验只在 VERIFYING 进程被杀的恢复场景
+            # 有意义（那不是 reopen）。
             con.execute(
                 "UPDATE tasks SET status='RETRY', attempts=0, owner=NULL,"
-                " lease_until=NULL, version=?, updated_at=?"
+                " lease_until=NULL, verify_progress_json='{}', version=?,"
+                " updated_at=?"
                 " WHERE plan_id=? AND task_id=?",
                 (expect_version + 1, now, plan_id, task_id))
             con.execute(

@@ -469,6 +469,38 @@ def test_reopen_done_resets_attempts(tmp_path):
     assert got["attempts"] == 0, f"attempts 未重置: {got['attempts']}"
 
 
+def test_reopen_clears_verify_progress(tmp_path):
+    """reopen 必须清空 verify_progress——否则重跑产物零验收直接 DONE。
+
+    2026-10-10 finance t3 事故：reopen 后 verified_rules 残留 8 条旧记录，
+    验收事件 rules:0（全部被 skip），重写的 summary 把 A 股标成 09-30
+    也没人拦。reopen = 重新执行 = 产物是新的，旧进度指向旧产物。
+    断点续验只在 VERIFYING 被杀的恢复场景有意义（那不走 reopen）。
+    """
+    root = _root(tmp_path)
+    s = _done(root)
+    t = s.get_task(PLAN, "t1")
+    s.update_verify_progress(PLAN, "t1", ["rule_0", "rule_1", "rule_2"],
+                             expect_version=t["version"])
+    assert s.get_task(PLAN, "t1")["verify_progress"]["verified_rules"]
+    got = s.reopen_done(PLAN, "t1", reason="data_period 改 per-market")
+    assert got["status"] == "RETRY"
+    assert not (got.get("verify_progress") or {}).get("verified_rules"), \
+        f"verified_rules 残留: {got.get('verify_progress')}"
+
+
+def test_reopen_dead_letter_clears_verify_progress(tmp_path):
+    """死信 reopen 同样要清——半程通过的规则对新产物也无意义。"""
+    root = _root(tmp_path)
+    s = _dead_letter(root)
+    t = s.get_task(PLAN, "t1")
+    s._write_txn(lambda con: con.execute(
+        "UPDATE tasks SET verify_progress_json=? WHERE plan_id=? AND task_id=?",
+        (json.dumps({"verified_rules": ["rule_0"]}), PLAN, "t1")))
+    got = s.reopen_dead_letter(PLAN, "t1", reason="修完模板重跑")
+    assert not (got.get("verify_progress") or {}).get("verified_rules")
+
+
 def test_reopen_done_requires_reason(tmp_path):
     """与死信 reopen 同门槛：没有理由的"重做"会变成随手按按钮的循环。"""
     s = _done(_root(tmp_path))
