@@ -27,7 +27,9 @@ orchestrator/artifacts/
 # tools/ 下只放行正经模块（sku_*.py，设计文档 v3.3 钉死的确定性组件位）；
 # 其余仍是模型 run_cmd 临时脚本的隔离区，不进库
 orchestrator/tools/*
+!orchestrator/tools/__init__.py
 !orchestrator/tools/sku_*.py
+!orchestrator/tools/trend_calc.py
 
 # reports/ 不忽略：chaos_*.log 与 smoke_*.log 是验收证据，要留。
 # 但 alerts.jsonl 是运行时追加的日志，每次真跑都会变——它进仓库只会
