@@ -39,3 +39,54 @@
 - 10-11 11:45:17 R11: LEASE_OK
 - 10-11 11:46:27 R11: DONE round11_1011_1145
 - 10-11 12:29:37 R12: LEASE_BUSY: BUSY AADEGL4701000138 held by [browse-images] task=浏览候选商品图片并提取关键文字 remain=566s (skip this round, no fighting)
+- 10-11 13:09:23 R12: LEASE_OK
+- 10-11 13:10:29 R12: DEVICE_STALE, recovering...
+- 10-11 13:10:35 R12: SWITCHED to wifi device
+- 10-11 13:10:37 R12: DEVICE_STALE, recovering...
+- 10-11 13:10:43 R12: SWITCHED to wifi device
+- 10-11 13:10:51 R12: DONE round12_1011_1309
+- 10-11 13:20:19 PAD R1: LEASE_OK
+- 10-11 13:20:41 PAD R1: KEYWORD 1/2: m2max
+- 10-11 13:21:44 PAD R1: KEYWORD 2/2: m4max
+- 10-11 13:22:48 PAD R1: DONE pad1_1011_1320
+- 10-11 13:25:02 PAD R2: LEASE_OK
+- 10-11 13:25:53 PAD R2: KEYWORD 1/1: m2max
+- 10-11 13:25:57 PAD R2: WARN: home search bar not found for m2max
+- 10-11 13:26:06 PAD R2: WARN: input field not found for m2max
+- 10-11 13:26:21 PAD R2: WARN: personal-idle filter not found for m2max
+- 10-11 13:26:55 PAD R2: DONE pad2_1011_1325
+- 10-11 13:30:12 PAD R3: LEASE_OK
+- 10-11 13:31:00 PAD R3: KEYWORD 1/1: m2max
+- 10-11 13:31:04 PAD R3: WARN: home search bar not found for m2max
+- 10-11 13:31:13 PAD R3: WARN: input field not found for m2max
+- 10-11 13:31:27 PAD R3: WARN: personal-idle filter not found for m2max
+- 10-11 13:32:01 PAD R3: DONE pad3_1011_1330
+- 10-11 13:33:26 PAD R4: LEASE_OK
+- 10-11 13:34:16 PAD R4: KEYWORD 1/1: m2max
+- 10-11 13:34:35 PAD R4: WARN: input field not found for m2max
+- 10-11 13:34:51 PAD R4: filter personal-idle tapped
+- 10-11 13:35:28 PAD R4: DONE pad4_1011_1333
+- 10-11 13:37:47 PAD R5: LEASE_OK
+- 10-11 13:38:37 PAD R5: KEYWORD 1/1: m2max
+- 10-11 13:38:42 PAD R5: tapped home search bar (1000,229)
+- 10-11 13:38:50 PAD R5: WARN: search input not found for m2max
+- 10-11 13:39:05 PAD R5: filter personal-idle tapped
+- 10-11 13:39:43 PAD R5: DONE pad5_1011_1337
+- 10-11 13:41:12 PAD R6: LEASE_OK
+- 10-11 13:42:01 PAD R6: KEYWORD 1/1: m2max
+- 10-11 13:42:05 PAD R6: tapped home search bar (1000,229)
+- 10-11 13:42:13 PAD R6: tapped search input (946,119)
+- 10-11 13:42:32 PAD R6: filter personal-idle tapped
+- 10-11 13:43:08 PAD R6: DONE pad6_1011_1341
+- 10-11 13:43:42 PAD R7: LEASE_OK
+- 10-11 13:44:30 PAD R7: KEYWORD 1/4: m4max
+- 10-11 13:44:35 PAD R7: tapped home search bar (1000,229)
+- 10-11 13:44:42 PAD R7: tapped search input (946,119)
+- 10-11 13:45:02 PAD R7: filter personal-idle tapped
+- 10-11 13:45:38 PAD R7: KEYWORD 2/4: m1max 64g
+- 10-11 13:45:43 PAD R7: tapped home search bar (1000,229)
+- 10-11 13:45:50 PAD R7: tapped search input (946,119)
+- 10-11 13:46:09 PAD R7: filter personal-idle tapped
+- 10-11 13:46:45 PAD R7: KEYWORD 3/4: macstudio
+- 10-11 13:46:50 PAD R7: tapped home search bar (1000,229)
+- 10-11 13:46:57 PAD R7: tapped search input (946,119)
