@@ -26,7 +26,9 @@
   path: artifacts/{date}/hw_trend.md
   min: 1
 
-# hw_recommend.json 形状对照（j_get 校验字段齐备）
+# hw_recommend.json 形状对照（j_get 校验字段齐备）。注意：表达式
+# 沙箱无 len()（BUILTIN_FNS 只有 j_get）——「decisions 键存在」用
+# in 判（In 节点在白名单），不写 len(...) >= 0（恒红，2026-10-11 排雷）。
 - type: business_rule
   path: artifacts/{date}/hw_recommend.json
-  expr: 'j_get(j, ["date"], "") and len(j_get(j, ["decisions"], [])) >= 0'
+  expr: 'j_get(j, ["date"], "") != "" and "decisions" in j'

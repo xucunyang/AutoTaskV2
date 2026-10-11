@@ -276,6 +276,10 @@ def ingest_file(con: sqlite3.Connection, obs_path: Path, contract: Contract,
 
     if not dry_run:
         con.commit()
+    # 派生字段（验收表达式沙箱无算术——BinOp 禁止，2026-10-11 实测
+    # t1b rule 恒红才暴露）：验收只做比较，加减在入库器这里算好。
+    stats["ingested"] = stats["ok"] + stats["updated"]
+    stats["isolated"] = stats["quarantined"] + stats["no_entity"]
     return stats
 
 
