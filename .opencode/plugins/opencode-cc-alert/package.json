@@ -1,0 +1,11 @@
+{
+  "name": "opencode-cc-alert",
+  "version": "0.1.0",
+  "description": "Push OpenCode provider errors (auth/429/quota/geo/model) to Feishu via cc-connect.",
+  "type": "module",
+  "main": "index.ts",
+  "private": true,
+  "scripts": {
+    "test": "echo 'no tests yet'"
+  }
+}
