@@ -207,8 +207,12 @@ def _match_entity(con: sqlite3.Connection, contract: Contract,
         aliases = {normalize_name(a) for a in json.loads(ent["aliases"] or "[]")}
         if norm_series in aliases or norm_full in aliases:
             return ent
-        # series-only 候选（可能多个，最后裁决）
-        if norm_series and norm_series == ent_series:
+        # series-only 候选（可能多个，最后裁决）。
+        # 空格容错：「RTX 5090 D」vs「RTX 5090D」是自然变体（2026-10-11
+        # 子 Agent 采集实测踩中）——归一化保留空格，此处剥空格再比
+        if norm_series and (
+                norm_series == ent_series
+                or norm_series.replace(" ", "") == ent_series.replace(" ", "")):
             series_hits.append(ent)
 
     if len(series_hits) == 1:

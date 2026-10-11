@@ -154,6 +154,34 @@ def test_entity_points_returns_trace_fields(db):
 now_ = "2026-10-11T00:00:00+00:00"
 
 
+def test_series_only_match_tolerates_space_variants(tmp_path):
+    """「RTX 5090 D」vs「RTX 5090D」是自然变体——series-only 兜底要
+    剥空格比较（2026-10-11 子 Agent 采集实测踩中）。"""
+    from tools.sku_db import connect
+    from tools.sku_ingest import _match_entity, Contract
+
+    con = connect(tmp_path / "sku.db")
+    now = "2026-10-11T00:00:00+00:00"
+    for ident in ({"category": "显卡", "series": "RTX 5090D", "spec": "32GB"},
+                  {"category": "显卡", "series": "RTX 5090D V2", "spec": "24GB"}):
+        con.execute(
+            "INSERT INTO entity(domain, identity_json, display_name,"
+            " created_at, updated_at) VALUES('hardware',?,?,?,?)",
+            (json.dumps(ident, ensure_ascii=False),
+             ident["series"] + " " + ident["spec"], now, now))
+    con.commit()
+    contract = Contract.load(ROOT, "hardware")
+    hit = _match_entity(con, contract, {"category": "显卡",
+                                        "series": "RTX 5090 D V2",
+                                        "spec": "24GB"})
+    assert hit is not None and "V2" in hit["display_name"]
+    hit2 = _match_entity(con, contract, {"category": "显卡",
+                                         "series": "RTX 5090 D",
+                                         "spec": "32GB"})
+    assert hit2 is not None and "V2" not in hit2["display_name"]
+    con.close()
+
+
 def test_ro_connect_rejects_writes(tmp_path):
     """铁律：Web 连接上任何写事务必须在 SQLite 层被拒。"""
     con = webapp.ro_connect(tmp_path / "sku.db")
