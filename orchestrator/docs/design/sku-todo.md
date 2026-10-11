@@ -87,16 +87,18 @@ metrics/report 阈值/normalizers/**attr_value_maps**）。
   ——预期 t1 DONE → t1b DONE（stats ok≥10）→ t4 DONE（快照当日）。
   若 t1 仍失败：看 verify_failed detail（A 类占比不足是已知张力）。
 
-### TODO-A Web MVP（用户最新需求，优先）
-- **核心形态（用户明确拍板）**：**每个 SKU 一张独立趋势图**，不是榜单
-  表格！曲线自己回答「比昨天贵还是便宜」，不需要文字转述。
-- 技术栈：FastAPI 只读 + ECharts 单页（无构建链）；访问边界待定
-  （127.0.0.1 vs 局域网）
-- 数据接口：GET /api/entities、/api/entity/{id}/series、/api/contrasts、
-  /api/recommend——只读 data/sku.db + trend_snapshot.json
-- 第一屏=单品图墙（价格主线+30期低点线+label 标色）；侧栏 SKU 索引；
-  第二层对比（同型号双 vendor 线叠加）；推荐页渲染 hw_recommend.json
-- **Web 永不写库**（单一入口铁律）
+### TODO-A Web MVP（✅ MVP 已落地，2026-10-11）
+- ✅ `tools/webapp.py`：FastAPI 只读看板（连接级 `PRAGMA query_only=ON`
+  ——「Web 永不写库」是机制不是纪律）；启动 `python -m tools.webapp`
+  （默认 127.0.0.1:8787，`--host 0.0.0.0` 局域网看）
+- ✅ `tools/webapp_static/index.html`：单品图墙（每 SKU 一张独立 ECharts
+  趋势图 + 30期低点虚线 + label 红涨绿跌标色 + 样本不足 Q12 占位 +
+  vendor 对比轨叠加 + 侧栏索引/点击定位 + 点卡片放大）
+- ✅ 端点：/api/board（一屏全量）、/api/entities、/api/entity/{id}/series、
+  /api/snapshot、/api/recommend（t4 首跑后自动有数据）——指标语义复用
+  tools.trend_calc，与报告同源
+- 测试：tests/test_webapp.py 7 门禁（切轨/占位/只读铁律/最新产物扫描）
+- ⬜ 后续迭代：时间窗筛选、移动端适配（平板看）、快照对比视图
 
 ### TODO-B 真实跑批验证
 - ~~hardware_daily cron 14:00 触发~~ → **已由本轮手动触发并跑通大半**

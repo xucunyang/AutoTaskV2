@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SKU 趋势看板</title>
+<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<script>
+  /* CDN 兜底：bootcdn 失败自动切 jsdelivr */
+  window.echarts || document.write(
+    '<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"><\/script>');
+</script>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --line: #e4e7ec;
+    --txt: #2c3340; --sub: #7a8499; --accent: #3a6ff2;
+    --fast-drop: #1e9e5a; --drop: #6bbf8a; --stable: #5b8db8;
+    --rise: #e07a6a; --fast-rise: #c0392b; --none: #9aa3b2;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--txt);
+         font: 14px/1.5 "Microsoft YaHei", system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 10; background: var(--card);
+           border-bottom: 1px solid var(--line); padding: 10px 18px;
+           display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; }
+  header .meta { color: var(--sub); font-size: 12.5px; }
+  header .spacer { flex: 1; }
+  header label { font-size: 13px; color: var(--txt); cursor: pointer;
+                 user-select: none; }
+  .wrap { display: flex; min-height: calc(100vh - 53px); }
+  nav { width: 210px; flex: none; border-right: 1px solid var(--line);
+        background: var(--card); padding: 10px 0; overflow-y: auto;
+        position: sticky; top: 53px; height: calc(100vh - 53px); }
+  nav .group { margin: 10px 0 4px; padding: 0 14px; color: var(--sub);
+               font-size: 12px; }
+  nav a { display: flex; justify-content: space-between; gap: 6px;
+          padding: 5px 14px; color: var(--txt); text-decoration: none;
+          font-size: 13px; }
+  nav a:hover { background: #eef3ff; }
+  nav a .n { color: var(--sub); font-size: 12px; flex: none; }
+  main { flex: 1; padding: 16px; display: grid; gap: 14px;
+         grid-template-columns: repeat(auto-fill, minmax(430px, 1fr));
+         align-content: start; }
+  .card { background: var(--card); border: 1px solid var(--line);
+          border-radius: 10px; padding: 12px 14px 6px; cursor: pointer; }
+  .card.wide { grid-column: 1 / -1; }
+  .card.flash { outline: 2px solid var(--accent); }
+  .card .hd { display: flex; align-items: baseline; gap: 8px;
+              flex-wrap: wrap; margin-bottom: 2px; }
+  .card .hd .name { font-weight: 600; font-size: 14.5px; }
+  .badge { font-size: 11.5px; color: #fff; border-radius: 4px;
+           padding: 1px 6px; }
+  .anchor { font-size: 11px; color: var(--accent); border: 1px solid var(--accent);
+            border-radius: 4px; padding: 0 5px; }
+  .price { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .price b { font-size: 16px; }
+  .d1 { font-size: 12.5px; }
+  .vsel { margin-left: auto; font-size: 12px; color: var(--sub);
+          cursor: pointer; user-select: none; display: none; }
+  .chart { width: 100%; height: 230px; }
+  .card.wide .chart { height: 430px; }
+  .placeholder { color: var(--sub); font-size: 12.5px; padding: 6px 2px 10px; }
+  footer { color: var(--sub); font-size: 12px; padding: 6px 18px 16px; }
+  .err { color: var(--fast-rise); padding: 30px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SKU 趋势看板</h1>
+  <span class="meta" id="meta">加载中…</span>
+  <span class="spacer"></span>
+  <label><input type="checkbox" id="vtoggle"> vendor 对比轨</label>
+</header>
+<div class="wrap">
+  <nav id="nav"></nav>
+  <main id="wall"></main>
+</div>
+<footer>数据源：data/sku.db（只读）· 序列口径：自采 + 全新 · 每日最低价 ·
+指标与 t4 报告同源（tools.trend_calc）· Web 不写库</footer>
+<script>
+const LABELS = {
+  fast_drop: ["急跌", "var(--fast-drop)"],
+  drop:      ["阴跌", "var(--drop)"],
+  stable:    ["企稳", "var(--stable)"],
+  rise:      ["上涨", "var(--rise)"],
+  fast_rise: ["急涨", "var(--fast-rise)"],
+};
+const charts = [];
+const UP = '▲', DOWN = '▼';
+
+function money(v) { return '¥' + Number(v).toLocaleString('zh-CN'); }
+
+function render(data) {
+  const c = data.counts;
+  const snapDate = data.snapshot ? data.snapshot.date : '—';
+  document.getElementById('meta').textContent =
+    `快照 ${snapDate} · 实体 ${c.total} · 有数据 ${c.with_data} · L0 达标 ${c.l0_ok} · 生成 ${data.generated_at.replace('T', ' ')}`;
+
+  const nav = document.getElementById('nav'), wall = document.getElementById('wall');
+  const withData = data.entities.filter(e => e.n_periods > 0)
+                                .sort((a, b) => b.n_periods - a.n_periods);
+  const noData = data.entities.filter(e => e.n_periods === 0);
+
+  nav.innerHTML = '<div class="group">有数据</div>';
+  for (const e of withData) {
+    const a = document.createElement('a');
+    a.href = '#'; a.innerHTML = `<span>${e.display_name}</span><span class="n">${e.n_periods}期</span>`;
+    a.onclick = ev => { ev.preventDefault(); focusCard(e.entity_id); };
+    nav.appendChild(a);
+  }
+  nav.appendChild(Object.assign(document.createElement('div'),
+    { className: 'group', textContent: `样本不足（${noData.length}）` }));
+  for (const e of noData) {
+    const a = document.createElement('a');
+    a.href = '#'; a.style.color = 'var(--sub)';
+    a.innerHTML = `<span>${e.display_name}</span><span class="n">0期</span>`;
+    a.onclick = ev => ev.preventDefault();
+    nav.appendChild(a);
+  }
+
+  for (const e of withData) wall.appendChild(makeCard(e));
+  if (!withData.length)
+    wall.innerHTML = '<div class="err">库中还没有观测数据——先跑 hardware_daily 的 t1→t1b。</div>';
+}
+
+function makeCard(e) {
+  const m = e.metrics;
+  const card = document.createElement('div');
+  card.className = 'card'; card.id = 'card-' + e.entity_id;
+
+  const hd = document.createElement('div'); hd.className = 'hd';
+  const badge = m
+    ? `<span class="badge" style="background:${LABELS[m.label][1]}">${LABELS[m.label][0]}</span>`
+    : `<span class="badge" style="background:var(--none)">样本 ${e.n_periods}/5 期</span>`;
+  const d1 = m ? `<span class="d1" style="color:${m.d1_pct < 0 ? 'var(--fast-drop)' : 'var(--fast-rise)'}">
+                    ${m.d1_pct < 0 ? DOWN : UP}${Math.abs(m.d1_pct)}%</span>` : '';
+  const anchor = e.perf_anchor ? '<span class="anchor">基底</span>' : '';
+  const nTracks = Object.keys(e.tracks).length;
+  hd.innerHTML = `<span class="name">${e.display_name}</span>${anchor}${badge}${d1}
+    <span class="price">${m ? '<b>' + money(m.last_price) + '</b>' : ''}</span>`;
+  card.appendChild(hd);
+
+  let trackSel = null;
+  if (nTracks > 1) {
+    trackSel = document.createElement('label');
+    trackSel.className = 'vsel';
+    trackSel.innerHTML = `<input type="checkbox"> ${nTracks}家对比`;
+    hd.appendChild(trackSel);
+  }
+
+  const chartDiv = document.createElement('div');
+  chartDiv.className = 'chart';
+  card.appendChild(chartDiv);
+
+  if (!m) {
+    const ph = document.createElement('div');
+    ph.className = 'placeholder';
+    ph.textContent = `样本 ${e.n_periods}/5 期——指标计算暂缓（Q12 占位），曲线照常展示`;
+    card.appendChild(ph);
+  }
+
+  let showTracks = false;
+  const draw = () => drawChart(chartDiv, e, showTracks && nTracks > 1);
+
+  card.onclick = ev => {
+    if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'LABEL') return;
+    card.classList.toggle('wide');
+    setTimeout(() => charts.find(x => x.div === chartDiv).inst.resize(), 50);
+  };
+  if (trackSel) trackSel.querySelector('input').onchange = ev => {
+    showTracks = ev.target.checked; draw();
+  };
+
+  document.getElementById('vtoggle').onchange = ev => {
+    document.querySelectorAll('.vsel input').forEach(cb => {
+      if (cb.checked !== ev.target.checked) { cb.checked = ev.target.checked; cb.dispatchEvent(new Event('change')); }
+    });
+  };
+
+  const inst = echarts.init(chartDiv);
+  charts.push({ div: chartDiv, inst, e, draw });
+  draw();
+  return card;
+}
+
+function drawChart(div, e, withTracks) {
+  const inst = charts.find(x => x.div === div).inst;
+  const m = e.metrics;
+  const dates = e.series.map(p => p[0]);
+  const lines = [{
+    name: '每日最低', type: 'line', data: e.series.map(p => p[1]),
+    symbol: 'circle', symbolSize: 5, lineWidth: 2,
+    lineStyle: { width: 2, color: m ? LABELS[m.label][1] : '#7a8499' },
+    itemStyle: { color: m ? LABELS[m.label][1] : '#7a8499' },
+  }];
+  if (m) lines[0].markLine = {
+    silent: true, symbol: 'none',
+    data: [{ yAxis: m.min_30, label: { formatter: '30期低点 ' + money(m.min_30),
+             position: 'insideEndTop', fontSize: 11, color: '#7a8499' } }],
+    lineStyle: { type: 'dashed', color: '#b9c0cc' }
+  };
+  const colors = ['#8e6fd8', '#d8a13a', '#3aa0c9', '#c96f9a'];
+  if (withTracks) Object.entries(e.tracks).forEach(([v, s], i) => {
+    if (s.length < 2) return;   // 单点 vendor 轨画不了线，跳过
+    lines.push({ name: v, type: 'line', data: s.map(p => p[1]),
+      symbol: 'none', lineStyle: { width: 1.4, type: 'dashed', color: colors[i % 4] },
+      itemStyle: { color: colors[i % 4] } });
+  });
+  inst.setOption({
+    animation: false,
+    grid: { left: 62, right: 16, top: withTracks && lines.length > 1 ? 30 : 14, bottom: 26 },
+    legend: withTracks && lines.length > 1
+      ? { top: 2, textStyle: { fontSize: 11, color: '#7a8499' } } : null,
+    tooltip: { trigger: 'axis', valueFormatter: v => money(v) },
+    xAxis: { type: 'category', data: dates, axisLabel: { fontSize: 11, color: '#7a8499' } },
+    yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 11, color: '#7a8499' },
+             splitLine: { lineStyle: { color: '#eef0f4' } } },
+    series: lines,
+  }, { notMerge: true });
+}
+
+function focusCard(id) {
+  const card = document.getElementById('card-' + id);
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  card.classList.add('flash');
+  setTimeout(() => card.classList.remove('flash'), 1600);
+}
+
+fetch('/api/board').then(r => r.json()).then(render)
+  .catch(err => { document.getElementById('wall').innerHTML =
+    `<div class="err">加载失败：${err}（看板服务没起来？python -m tools.webapp）</div>`; });
+window.addEventListener('resize', () => charts.forEach(x => x.inst.resize()));
+</script>
+</body>
+</html>
