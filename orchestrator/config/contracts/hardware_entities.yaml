@@ -4,13 +4,16 @@
 # （同代销量最大者=1.0），P0 骨架完成后采集时顺带定，不在此猜。
 domain: hardware
 entities:
-  # ---- NVIDIA 50 系 ----
+  # ---- NVIDIA 50 系（已发售全型号，R30 核对于 2026-10-11）----
   - identity: {category: 显卡, series: RTX 5090, spec: 32GB}
     display_name: RTX 5090 32GB
     aliases: ["5090", "RTX5090"]
   - identity: {category: 显卡, series: RTX 5090D, spec: 32GB}
     display_name: RTX 5090D 32GB
     aliases: ["5090D", "5090 D"]
+  - identity: {category: 显卡, series: RTX 5090D V2, spec: 24GB}
+    display_name: RTX 5090D V2 24GB
+    aliases: ["5090D V2", "5090Dv2", "5090 D v2"]
   - identity: {category: 显卡, series: RTX 5080, spec: 16GB}
     display_name: RTX 5080 16GB
   - identity: {category: 显卡, series: RTX 5070 Ti, spec: 16GB}
@@ -31,13 +34,34 @@ entities:
     display_name: RX 9070 XT 16GB
   - identity: {category: 显卡, series: RX 9070, spec: 16GB}
     display_name: RX 9070 16GB
+  - identity: {category: 显卡, series: RX 9070 GRE, spec: 12GB}
+    display_name: RX 9070 GRE 12GB
+    aliases: ["9070 GRE", "9070GRE"]
   - identity: {category: 显卡, series: RX 9060 XT, spec: 16GB}
     display_name: RX 9060 XT 16GB
+  - identity: {category: 显卡, series: RX 9060 XT, spec: 8GB}
+    display_name: RX 9060 XT 8GB
+  - identity: {category: 显卡, series: RX 9050, spec: 8GB}
+    display_name: RX 9050 8GB
+  # ---- Intel Arc B 系 ----
+  - identity: {category: 显卡, series: Arc B580, spec: 12GB}
+    display_name: Arc B580 12GB
+    aliases: ["B580", "b580"]
+  - identity: {category: 显卡, series: Arc B570, spec: 10GB}
+    display_name: Arc B570 10GB
+    aliases: ["B570"]
   # ---- 40 系过渡款（清仓期仍在售）----
   - identity: {category: 显卡, series: RTX 4070 Super, spec: 12GB}
     display_name: RTX 4070 Super 12GB
+  - identity: {category: 显卡, series: RTX 4060 Ti, spec: 16GB}
+    display_name: RTX 4060 Ti 16GB
+  - identity: {category: 显卡, series: RTX 4060 Ti, spec: 8GB}
+    display_name: RTX 4060 Ti 8GB
   - identity: {category: 显卡, series: RTX 4060, spec: 8GB}
     display_name: RTX 4060 8GB
+  # 观察名单（未发售不入库，发售即加）：
+  #   RTX 50 SUPER 系列（5060S 12G / 5070S 18G / 5070TiS 24G / 5080S 24G，
+  #   传闻 2026 末-2027 初）；5070 官方无 16G 版（16G 是 5070 Ti）。
   # ---- CPU ----
   - identity: {category: CPU, series: Ryzen 7 9800X3D, spec: ""}
     display_name: Ryzen 7 9800X3D
