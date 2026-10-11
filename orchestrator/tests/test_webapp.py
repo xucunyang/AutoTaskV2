@@ -134,19 +134,21 @@ def test_entity_points_returns_trace_fields(db):
     assert p["low_price"] == 999.0
     assert p["condition"] == "二手" and p["vendor"] == "七彩虹"
     assert {q["vendor"] for q in pts["points"]} == {"七彩虹", "微星"}
-    # 补一笔带完整店铺字段的观测验证链接透传
+    # 补一笔带完整店铺字段的观测验证链接透传 + img_url（R22）
     db.execute(
         "INSERT INTO observation(entity_id, obs_date, collected_on,"
         " low_price, attrs_json, shop_name, shop_platform, shop_url,"
-        " source_url, coupons, created_at)"
+        " source_url, coupons, raw_json, created_at)"
         " VALUES(1,'2026-10-09','2026-10-11',2960,'{\"condition\":\"全新\","
         "\"source\":\"自采\",\"vendor\":\"微星\"}','微星京东自营',"
-        "'京东','https://item.jd.com/1.html','https://w.cn','[]',?)", (now_,))
+        "'京东','https://item.jd.com/1.html','https://w.cn','[]',"
+        "'{\"img_url\":\"/img/2026-10-09/ms.png\"}',?)", (now_,))
     db.commit()
     pts = webapp.entity_points(db, 1, "2026-10-09")
     p = next(q for q in pts["points"] if q["shop_name"])
     assert p["shop_url"] == "https://item.jd.com/1.html"
     assert p["shop_platform"] == "京东" and p["shop_name"] == "微星京东自营"
+    assert p["img_url"] == "/img/2026-10-09/ms.png"      # R22 透传
 
 
 now_ = "2026-10-11T00:00:00+00:00"

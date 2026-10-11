@@ -109,6 +109,13 @@
   .pt .cpn { font-size: 12px; color: #b0541f; background: #fdf1e7;
              border-radius: 4px; padding: 0 6px; }
   .none { color: var(--sub); padding: 20px 6px; }
+  .sec-hd { grid-column: 1 / -1; font-size: 13px; font-weight: 600;
+            color: var(--sub); margin-top: 4px; letter-spacing: .5px; }
+  .pt .img { margin-top: 8px; }
+  .pt .img img { max-height: 120px; border: 1px solid var(--line);
+                 border-radius: 6px; }
+  .pt .img a { font-size: 12px; color: var(--accent); margin-left: 8px;
+               text-decoration: none; }
 </style>
 </head>
 <body>
@@ -233,8 +240,7 @@ function renderDomain() {
 function renderNavAndWall() {
   const inView = state.data.entities.filter(
     e => e.domain === state.domain && e.group === state.group);
-  const withData = inView.filter(e => e.n_periods > 0)
-                         .sort((a, b) => b.n_periods - a.n_periods);
+  const withData = inView.filter(e => e.n_periods > 0);
   const noData = inView.filter(e => e.n_periods === 0);
 
   const nav = document.getElementById('nav'), wall = document.getElementById('wall');
@@ -259,9 +265,45 @@ function renderNavAndWall() {
       nav.appendChild(a);
     }
   }
-  for (const e of withData) wall.appendChild(makeCard(e));
+
+  /* R23 排序：系分列（50 系/40 系/RX 9000 系…），列内价格由低到高 */
+  const ordered = withData.map(e => ({ ...e, gen: seriesGen(e) }));
+  const genOrder = ['RTX 50 系', 'RTX 40 系', 'RX 9000 系'];
+  ordered.sort((a, b) =>
+    (genOrder.indexOf(a.gen) + 1 || 99) - (genOrder.indexOf(b.gen) + 1 || 99) ||
+    (lastPrice(a) - lastPrice(b)));
+
+  /* 先挂载全部卡片，再初始化图表（BUG-13：init 在挂载前会得到
+     0 尺寸画布 → 首屏空白，点开再缩回才显示） */
+  let gen = null;
+  for (const e of ordered) {
+    if (e.gen !== gen) {
+      gen = e.gen;
+      const h = document.createElement('div');
+      h.className = 'sec-hd';
+      h.textContent = gen;
+      wall.appendChild(h);
+    }
+    wall.appendChild(makeCard(e));
+  }
+  for (const e of ordered) initChart(e);
+
   if (!withData.length)
     wall.innerHTML = '<div class="err">该分组还没有观测数据——先跑对应链的采集任务。</div>';
+}
+
+function lastPrice(e) {
+  if (e.metrics) return e.metrics.last_price;
+  return e.series.length ? e.series[e.series.length - 1][1] : Infinity;
+}
+
+/* 系列代际（R23）：RTX 5060 → 「RTX 50 系」；RX 9070 → 「RX 9000 系」 */
+function seriesGen(e) {
+  const s = `${e.identity?.series || ''} ${e.display_name}`;
+  const rtx = s.match(/RTX\s?(\d{2,4})/i), rx = s.match(/RX\s?(\d{3,4})/i);
+  if (rtx) return `RTX ${rtx[1].slice(0, 2)} 系`;
+  if (rx) return `RX ${rx[1].slice(0, 2)}00 系`;
+  return '其他';
 }
 
 function makeCard(e) {
@@ -303,8 +345,11 @@ function makeCard(e) {
   let showTracks = false;
   const draw = () => drawChart(chartDiv, e, showTracks && nTracks > 1);
 
+  /* 点击图表数据点 = 溯源弹窗；点卡片其余区域 = 放大/缩小。
+     （BUG-14：图表点击会冒泡到卡片——chart 区域内不触发 toggle） */
   card.onclick = ev => {
     if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'LABEL') return;
+    if (ev.target.closest('.chart')) return;
     card.classList.toggle('wide');
     setTimeout(() => charts.find(x => x.div === chartDiv).inst.resize(), 50);
   };
@@ -312,14 +357,25 @@ function makeCard(e) {
     showTracks = ev.target.checked; draw();
   };
 
+  card.dataset.ready = '0';           // initChart 在挂载后执行（BUG-13）
+  return card;
+}
+
+function initChart(e) {
+  const card = document.getElementById('card-' + e.entity_id);
+  if (!card) return;
+  const chartDiv = card.querySelector('.chart');
   const inst = echarts.init(chartDiv);
   inst.on('click', params => {
     if (params.componentType === 'series' && params.name)
       showPoints(e, params.name);
   });
-  charts.push({ div: chartDiv, inst, e, draw });
-  draw();
-  return card;
+  const entry = { div: chartDiv, inst, e, card };
+  entry.draw = () => drawChart(chartDiv, entry.e,
+    card.querySelector('.vsel input')?.checked &&
+    Object.keys(entry.e.tracks).length > 1);
+  charts.push(entry);
+  entry.draw();
 }
 
 function drawChart(div, e, withTracks) {
@@ -328,7 +384,7 @@ function drawChart(div, e, withTracks) {
   const dates = e.series.map(p => p[0]);
   const lines = [{
     name: '每日最低', type: 'line', data: e.series.map(p => p[1]),
-    symbol: 'circle', symbolSize: 6,
+    symbol: 'circle', symbolSize: 7,
     lineStyle: { width: 2, color: m ? LABELS[m.label][1] : '#7a8499' },
     itemStyle: { color: m ? LABELS[m.label][1] : '#7a8499' },
   }];
@@ -399,6 +455,9 @@ function showPoints(e, date) {
             ${p.source_tier ? `<span>来源等级 ${esc(p.source_tier)}</span>` : ''}
             ${cpn}
           </div>
+          ${p.img_url ? `<div class="img"><img src="${esc(p.img_url)}" loading="lazy"
+              onerror="this.style.display='none'"><a href="${esc(p.img_url)}"
+              target="_blank" rel="noopener">图片原地址 ↗</a></div>` : ''}
         </div>`;
       }).join('');
     })

@@ -113,7 +113,7 @@ def entity_points(con: sqlite3.Connection, entity_id: int,
         """
         SELECT obs_date, low_price, raw_price, metric, attrs_json,
                shop_name, shop_platform, shop_url, source_url,
-               source_tier, coupons, collected_on
+               source_tier, coupons, collected_on, raw_json
           FROM observation
          WHERE entity_id = ? AND obs_date = ?
          ORDER BY low_price
@@ -128,6 +128,12 @@ def entity_points(con: sqlite3.Connection, entity_id: int,
             coupons = _json.loads(r["coupons"] or "[]")
         except ValueError:
             coupons = []
+        # img_url（R22）不在主列里——从 raw_json 透传（采集页的
+        # 商品/报价截图 URL，或本地截图的 /img/ 路径）
+        try:
+            raw = _json.loads(r["raw_json"] or "{}")
+        except ValueError:
+            raw = {}
         points.append({
             "obs_date": r["obs_date"],
             "low_price": r["low_price"], "raw_price": r["raw_price"],
@@ -140,6 +146,7 @@ def entity_points(con: sqlite3.Connection, entity_id: int,
             "shop_url": r["shop_url"], "source_url": r["source_url"],
             "source_tier": r["source_tier"], "coupons": coupons,
             "collected_on": r["collected_on"],
+            "img_url": raw.get("img_url"),
         })
     return {"entity_id": entity_id, "date": obs_date, "points": points}
 
@@ -250,6 +257,21 @@ def api_points(entity_id: int, date: str) -> dict:
         return entity_points(con, entity_id, date)
     finally:
         con.close()
+
+
+@app.get("/img/{date}/{fname}")
+def api_img(date: str, fname: str) -> FileResponse:
+    """本地截图（R22）：t1 手机采集存的截图，artifacts/{date}/img/ 下。"""
+    import re
+
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) \
+            or not re.fullmatch(r"[\w.-]+", fname) \
+            or ".." in fname:
+        raise HTTPException(422, "bad path")
+    f = ROOT / "artifacts" / date / "img" / fname
+    if not f.is_file():
+        raise HTTPException(404, "no such image")
+    return FileResponse(f)
 
 
 @app.get("/api/snapshot")

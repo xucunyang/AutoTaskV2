@@ -58,6 +58,7 @@
         }
       },
       "in_stock": {"type": "boolean"},
+      "img_url": {"type": "string", "description": "商品/报价截图或来源页图片 URL（R22 溯源证据，可选）"},
       "source_url": {"type": "string"},
       "source_tier": {"type": "string"}
     }

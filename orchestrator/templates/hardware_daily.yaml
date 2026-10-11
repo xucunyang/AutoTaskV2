@@ -32,8 +32,9 @@ tasks:
       channel/condition/vendor）；attrs_hint 必含 condition/channel/
       source 三个分轨字段（source 一律写 "自采"）；low_price 为券后
       到手价、raw_price 为券前划线价；shop 写店铺名与平台；coupons
-      列出 applicable 优惠券（名称/金额/门槛/到期日）。这份文件是
-      时序数据库的进料口，形状不对整批作废。
+      列出 applicable 优惠券（名称/金额/门槛/到期日）。如来源页有
+      商品图/报价截图，把图片 URL 写入 img_url 字段（可选，溯源证据）。
+      这份文件是时序数据库的进料口，形状不对整批作废。
     depends_on: []
     outputs: ["artifacts/{date}/t1_gpu_ram.csv",
               "artifacts/{date}/t1_sku_observations.json"]
