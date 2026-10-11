@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "sku_observations",
-  "description": "t1 采集的 SKU 观测副产物：时序库 sku.db 的进料口。identity_hint 键序=域契约声明序（hardware: category/series/spec）；attrs_hint 的 condition/channel/source 是 aggregate_scope 分轨维度（缺了序列口径就废，入库器会整行隔离）。",
+  "description": "t1 采集的 SKU 观测副产物：时序库 sku.db 的进料口。identity_hint 键序=域契约声明序（hardware: category/series/spec）；attrs_hint 的 condition/channel/source 是 aggregate_scope 分轨维度（缺了序列口径就废，入库器会整行隔离）。形状归本 Schema；condition/channel 的语义枚举归契约 attr_value_maps（入库器是唯一裁决者，本 Schema 不重复枚举——2026-10-11 五轮死信教训：双层枚举 + 模型自然变体 = 死锁）。",
   "type": "array",
   "minItems": 10,
   "items": {
@@ -24,8 +24,8 @@
         "required": ["condition", "channel", "source"],
         "additionalProperties": true,
         "properties": {
-          "condition": {"type": "string", "enum": ["全新", "二手", "官翻", "展示机"]},
-          "channel": {"type": "string", "enum": ["国行单卡", "整机参考", "美行折算", "百亿补贴", "自营", "第三方"]},
+          "condition": {"type": "string", "description": "全新/二手/官翻/展示机——写自然说法即可，入库器按契约别名映射归一"},
+          "channel": {"type": "string", "description": "自营/第三方/国行单卡/百亿补贴…——写自然说法即可，入库器按契约别名映射归一（京东自营→自营等）"},
           "source": {"type": "string", "enum": ["自采", "manmanmai", "smzdm", "gwdang", "xianyi_app", "beike_app", "jd_app"]},
           "vendor": {"type": "string"},
           "grade": {"type": "string"},
@@ -51,8 +51,8 @@
           "type": "object",
           "properties": {
             "name": {"type": "string"},
-            "amount": {"type": "number"},
-            "threshold": {"type": "number"},
+            "amount": {"type": ["number", "null"]},
+            "threshold": {"type": ["number", "null"], "description": "无门槛券写 null，不要发明 0 或省略"},
             "expire": {"type": "string"}
           }
         }

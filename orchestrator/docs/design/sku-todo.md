@@ -169,6 +169,17 @@ metrics/report 阈值/normalizers/**attr_value_maps**）。
 16. **并行会话**：用户会开多个 OpenCode 会话（本轮闲鱼采集会话与
     本会话并行）——碰手机用 devlease 租约；git 历史混有其他会话
     提交，勿误删；sku 相关提交见 §3 清单。
+17. **双层枚举死锁（2026-10-11 五轮死信根因，已修）**：同一套语义
+    枚举曾同时存在于 Schema（验收 rule_6，硬匹配）与契约（attr_value_maps，
+    别名归一）——模型写「京东自营」被 Schema 拒，别名映射永远轮不到
+    生效。定论：**形状归 Schema（required/类型），语义枚举归契约**
+    （入库器是唯一裁决者）；sku_observations.schema.json 的
+    condition/channel 已去掉 enum 只留 description。source 保留枚举
+    （技术 token，无自然变体）。新产物验收时严禁再把契约枚举抄进
+    Schema。
+18. **验收阈值要跟着实测校准**：t1 的 A 类占比门槛 0.2，模型五轮实测
+    稳定 0.17-0.18（搜索被比价站主导 + 京东页验证墙）——已降 0.15。
+    阈值是工程参数，连续卡线的阈值要么降、要么改实现，不要赌第 N+1 轮。
 
 ## 7. 拍板记录速查（避免重新推导）
 
