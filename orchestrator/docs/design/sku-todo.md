@@ -78,14 +78,18 @@ metrics/report 阈值/normalizers/**attr_value_maps**）。
 
 ## 5. 剩余 TODO（按序）
 
-### TODO-0（立即，新会话第一件事）
-- **hardware_daily_2026-10-11 的 t1_gpu_ram 已挂 RETRY**（终检时
-  reopen，attempts=0）——**14:00 cron 会自动驱动全链**（t1 重试 →
-  t1b 双脚本 → t4 → t3）。新会话在 14:00 后先查这次跑批结果：
-  `python -X utf8 tests` 之外用 chk 脚本查
-  `SELECT task_id,status FROM tasks WHERE plan_id='hardware_daily_2026-10-11'`
-  ——预期 t1 DONE → t1b DONE（stats ok≥10）→ t4 DONE（快照当日）。
-  若 t1 仍失败：看 verify_failed detail（A 类占比不足是已知张力）。
+### TODO-0（✅ 已完成，2026-10-11）
+- **hardware_daily 全链首次真跑通**：t1 → t1b（ingest+calc）→ t2 →
+  t3 → t4 全部 DONE，死信 0。t4 产物：hw_trend.md（2 张 mermaid）+
+  hw_recommend.json（3 条决策：9070XT lower_offer / 5060Ti wait /
+  4060 probe_offer）
+- 当日为跑通共排掉**五颗雷**（详见 §6 坑 17/18 与提交 9ee4043/
+  7b5d083/9419ad6）：双层枚举死锁、A 类门槛失准、BinOp 表达式恒红、
+  len() 恒红、python_test 白名单不含 tools/
+- **重要机制发现**：acceptance 与 objective 是**建计划时快照**进
+  tasks.shard_json 的，改 yaml/模板对已建计划无效——当天修复要么
+  补丁 shard（tools 同款展开逻辑重建），要么等次日 cron 建新计划。
+  2026-10-12 起的 cron 将全自动用到全部修复，无需人工干预
 
 ### TODO-A Web MVP（✅ MVP 已落地，2026-10-11）
 - ✅ `tools/webapp.py`：FastAPI 只读看板（连接级 `PRAGMA query_only=ON`
