@@ -23,3 +23,8 @@
 - 10-10 19:56:05 R8: DONE round8_1010_1954
 - 10-10 20:19:55 R8: LEASE_OK
 - 10-10 20:21:01 R8: DONE round8_1010_2019
+- 10-10 20:56:18 R9: LEASE_OK
+- 10-10 20:57:24 R9: DONE round9_1010_2056
+- 10-10 21:40:46 R10: LEASE_BUSY: BUSY AADEGL4701000138 held by [star-candidates] task=收藏5台候选到主账号(与K60同账号) remain=518s (skip this round, no fighting)
+- 10-10 夜间: 手动收藏会话（star-candidates）完成 4/5（成都/北京14寸/贵州/北京朝外），澳版官翻出池（涨价+疑似售出）；隔夜未排扫描
+- 10-11 上午: R10 重启（补昨晚被让路的一轮）；福建 9,699 监管机拉黑；北京朝外规格区实锤 64GB
