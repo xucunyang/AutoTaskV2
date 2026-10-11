@@ -29,6 +29,11 @@ attr_value_maps:
     官方旗舰店: 自营
     渠道参考价: 国行单卡
     参考价: 国行单卡
+    电商: 第三方
+    市场零售: 第三方
+    海外电商: 美行折算
+  condition:
+    展机卡: 展示机
 
 aggregate_rule: min        # 序列点=当日最低价
 aggregate_scope:           # v3.3 M1/M2：切轨维度与主序列过滤

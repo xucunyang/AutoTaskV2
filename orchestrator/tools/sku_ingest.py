@@ -105,10 +105,13 @@ def validate_row(row: dict, contract: Contract, collected_on: str
     hints = row.get("identity_hint")
     if not isinstance(hints, dict) or not hints:
         return None, "no_identity_hint"
-    # identity 键必须与契约声明一致（多键/少键都是坏行）
-    if set(hints) != set(contract.identity_keys):
-        return None, (f"identity_keys_mismatch:want={contract.identity_keys} "
-                      f"got={sorted(hints)}")
+    # identity 键检查：契约声明的键**必须全有**（序列键），额外键忽略
+    # （模型顺手多写的 model/note 等不致命——v3.3 实测第三轮就有
+    #   {series, model, category} 的写法，缺 spec 仍隔离，多 model 无妨）
+    missing = [k for k in contract.identity_keys if k not in hints]
+    if missing:
+        return None, f"identity_keys_missing:{missing}"
+    hints = {k: hints[k] for k in contract.identity_keys}
 
     attrs = dict(row.get("attrs_hint") or {})
     unknown = sorted(set(attrs) - set(contract.attrs))
@@ -121,15 +124,20 @@ def validate_row(row: dict, contract: Contract, collected_on: str
             return None, f"missing_required_attr:{key}"
     # 枚举校验（值漂移拦截）：先应用契约别名映射（「京东自营」→「自营」
     # 这类自然变体——模型会发明变体，映射比逐词扩枚举可持续），
-    # 映射后合法则替换入库值，仍不合法才隔离
+    # 映射后合法则替换入库值。
+    # required（分轨维度）映射失败 → 隔离（口径废了）；
+    # optional（宽进）映射失败 → **保留原值入库**——promo_event 这类
+    # 自由描述维度，隔离一行等于丢一笔真实报价，得不偿失。
     for key, val in attrs.items():
         allowed = (contract.attrs.get(key) or {}).get("values")
-        if allowed and val not in allowed:
-            mapped = (contract.attr_value_maps.get(key) or {}).get(val)
-            if mapped and mapped in allowed:
-                attrs[key] = mapped
-            else:
-                return None, f"attr_value_not_allowed:{key}={val}"
+        if not allowed or val in allowed:
+            continue
+        mapped = (contract.attr_value_maps.get(key) or {}).get(val)
+        if mapped and mapped in allowed:
+            attrs[key] = mapped
+        elif (contract.attrs.get(key) or {}).get("level") == "required":
+            return None, f"attr_value_not_allowed:{key}={val}"
+        # optional 漂移：保留原值（宽进），由后续聚合按需清洗
 
     lp, rp = row.get("low_price"), row.get("raw_price")
     err = _bad_price(lp) or (_bad_price(rp) if rp is not None else None)
@@ -168,10 +176,14 @@ def validate_row(row: dict, contract: Contract, collected_on: str
 
 def _match_entity(con: sqlite3.Connection, contract: Contract,
                   hint: dict) -> sqlite3.Row | None:
-    """identity_hint → entity。精确匹配（键序一致）优先，别名兜底。
+    """identity_hint → entity。三级匹配：
 
-    归一化后的 hint 仍匹配不上 → None（调用方进隔离区，收编提案
-    闭环 v3.3 M3 由后续的收编器处理，本模块只负责隔离）。
+    1. 精确匹配（键序一致的 identity_json）；
+    2. 别名兜底（契约 aliases 数组归一化后命中 series 或 series+spec）；
+    3. series-only 兜底（hint.series 归一后与实体 identity.series 相等，
+       且该 series 下**只有一个**活跃实体——唯一即可归属，多个则隔离
+       待收编；v3.3 实测：模型的 spec 天然带品牌/系列后缀，精确匹配
+       太苛刻，16 行能隔离 14 行）。
     """
     ident = json.dumps(hint, ensure_ascii=False)
     row = con.execute(
@@ -179,17 +191,29 @@ def _match_entity(con: sqlite3.Connection, contract: Contract,
         (contract.domain, ident)).fetchone()
     if row:
         return row
-    # 别名兜底：别名本身也归一化（「5060Ti 8G」入库时被归一成什么形态，
-    # 比较就在同一形态下做）；series 与 series+spec 两种形态都试——
-    # 种子别名有的带规格有的不带，宽进两侧。
-    probe = {normalize_name(hint.get("series") or ""),
-             normalize_name(f"{hint.get('series') or ''} {hint.get('spec') or ''}")}
+
+    norm_series = normalize_name(hint.get("series") or "")
+    norm_full = normalize_name(
+        f"{hint.get('series') or ''} {hint.get('spec') or ''}")
+
+    series_hits = []
     for ent in con.execute(
-            "SELECT * FROM entity WHERE domain=?", (contract.domain,)):
+            "SELECT * FROM entity WHERE domain=? AND active=1",
+            (contract.domain,)):
+        ident_d = json.loads(ent["identity_json"] or "{}")
+        ent_series = normalize_name(ident_d.get("series") or "")
+        ent_full = normalize_name(f"{ent_series} {ident_d.get('spec') or ''}")
+        # 别名兜底
         aliases = {normalize_name(a) for a in json.loads(ent["aliases"] or "[]")}
-        if probe & aliases:
+        if norm_series in aliases or norm_full in aliases:
             return ent
-    return None
+        # series-only 候选（可能多个，最后裁决）
+        if norm_series and norm_series == ent_series:
+            series_hits.append(ent)
+
+    if len(series_hits) == 1:
+        return series_hits[0]
+    return None   # 0 个或多个候选 → 隔离区（收编闭环裁决）
 
 
 def ingest_file(con: sqlite3.Connection, obs_path: Path, contract: Contract,
