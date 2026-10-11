@@ -4,12 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SKU 趋势看板</title>
-<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
-<script>
-  /* CDN 兜底：bootcdn 失败自动切 jsdelivr */
-  window.echarts || document.write(
-    '<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"><\/script>');
-</script>
+<script src="/static/vendor/echarts.min.js"></script>
 <style>
   :root {
     --bg: #f5f6f8; --card: #ffffff; --line: #e4e7ec;
@@ -366,9 +361,14 @@ function initChart(e) {
   if (!card) return;
   const chartDiv = card.querySelector('.chart');
   const inst = echarts.init(chartDiv);
-  inst.on('click', params => {
-    if (params.componentType === 'series' && params.name)
-      showPoints(e, params.name);
+  /* BUG-17（用户：点不到那个点，太费劲）：不再依赖精准命中 symbol——
+     在绘图区内点任意位置，按像素反解出最近的日期，弹当天原始报价 */
+  inst.getZr().on('click', ev => {
+    const pt = inst.convertFromPixel('grid', [ev.offsetX, ev.offsetY]);
+    if (!pt || pt[0] == null || isNaN(pt[0])) return;
+    const idx = Math.round(pt[0]);
+    const dates = e.series.map(p => p[0]);
+    if (idx >= 0 && idx < dates.length) showPoints(e, dates[idx]);
   });
   const entry = { div: chartDiv, inst, e, card };
   entry.draw = () => drawChart(chartDiv, entry.e,
@@ -382,11 +382,14 @@ function drawChart(div, e, withTracks) {
   const inst = charts.find(x => x.div === div).inst;
   const m = e.metrics;
   const dates = e.series.map(p => p[0]);
+  /* BUG-16：hover 触发 emphasis 重绘导致曲线/点闪没——直接禁掉
+     emphasis（悬停只留 tooltip 与 axisPointer，图形不再变样） */
   const lines = [{
     name: '每日最低', type: 'line', data: e.series.map(p => p[1]),
     symbol: 'circle', symbolSize: 7,
     lineStyle: { width: 2, color: m ? LABELS[m.label][1] : '#7a8499' },
     itemStyle: { color: m ? LABELS[m.label][1] : '#7a8499' },
+    emphasis: { disabled: true },
   }];
   if (m) lines[0].markLine = {
     silent: true, symbol: 'none',
@@ -399,17 +402,18 @@ function drawChart(div, e, withTracks) {
     if (s.length < 2) return;
     lines.push({ name: v, type: 'line', data: s.map(p => p[1]),
       symbol: 'none', lineStyle: { width: 1.4, type: 'dashed', color: colors[i % 4] },
-      itemStyle: { color: colors[i % 4] } });
+      itemStyle: { color: colors[i % 4] }, emphasis: { disabled: true } });
   });
   inst.setOption({
     animation: false,
     grid: { left: 62, right: 16, top: withTracks && lines.length > 1 ? 30 : 14, bottom: 26 },
     legend: withTracks && lines.length > 1
-      ? { top: 2, textStyle: { fontSize: 11, color: '#7a8499' } } : null,
+      ? { top: 2, textStyle: { fontSize: 11, color: '#7a8499' }, selectedMode: false } : null,
     tooltip: { trigger: 'axis', valueFormatter: v => money(v),
+               axisPointer: { type: 'line', lineStyle: { color: '#c3cbd8' } },
                formatter: ps => esc(ps[0].name) + '<br>' +
                  ps.map(p => `${p.marker}${esc(p.seriesName)} ${money(p.value)}`).join('<br>') +
-                 '<br><span style="color:#7a8499">点击数据点查看原始报价</span>' },
+                 '<br><span style="color:#7a8499">点击查看当天原始报价</span>' },
     xAxis: { type: 'category', data: dates, axisLabel: { fontSize: 11, color: '#7a8499' } },
     yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 11, color: '#7a8499' },
              splitLine: { lineStyle: { color: '#eef0f4' } } },

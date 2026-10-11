@@ -20,6 +20,9 @@
 | BUG-12 | 10-11 | verify_snap 空快照 0 检查假 PASS | 冷启动日 calc 产出无可检实体的空快照，一致性校验空转 | latest_snapshot 跳过无可检内容的快照 | `2ea5202` | 测试覆盖 | ✅ |
 | BUG-13 | 10-11 16:32 | **图表首屏空白**（用户报告）：首次加载每个 SKU 图表是空的，点开再缩回才看到曲线 | `echarts.init` 在卡片尚未挂到 DOM 时执行 → 画布 0 尺寸；点开/缩回触发 resize 才画出来 | 先挂载全部卡片、再统一 initChart（挂载后 init，画布尺寸正确） | 本次提交 | 前端规范：ECharts 必须在元素挂载后 init | ✅ |
 | BUG-14 | 10-11 16:32 | **数据点点不出详情**（用户报告）：图上每一天的数据点点不开溯源详情 | 同 BUG-13 根因（0 尺寸画布上事件不可用）+ 图表点击会冒泡到卡片触发放大、与弹窗冲突 | 同 BUG-13 修复；卡片点击忽略 .chart 区域（图上点击=溯源，卡片其余=放大）；symbol 加大到 7 | 本次提交 | 同上；弹窗与卡片动作的冒泡边界要在 handler 里划清 | ✅ |
+| BUG-15 | 10-11 16:56 | **本地页面加载 5-6 秒**（用户报告，目标 2-3s） | ECharts 走 CDN（bootcdn ~1MB），本地页面也被 CDN 延迟拖住 | echarts.min.js 本地化到 webapp_static/vendor/，/static 挂载 + etag 缓存，去除 CDN 兜底脚本 | 本次提交 | 部署形态审查：本地服务不依赖任何外网资源 | ✅ |
+| BUG-16 | 10-11 16:56 | **悬停时曲线消失只剩点、有时点也没了**（用户报告，概率性） | hover 触发 ECharts emphasis 重绘（line/symbol 样式切换）——闪没即 emphasis 重绘毛刺 | series `emphasis: { disabled: true }`（悬停只留 tooltip 与 axisPointer，图形不变样）；legend selectedMode=false | 本次提交 | 前端规范：看板类图形禁用 emphasis 动效 | ✅ |
+| BUG-17 | 10-11 16:56 | **点不到数据点**（用户报告：「必须精准点到那个点上才能触发，太费劲」） | 精准命中 symbol 才触发 click——目标太小；鼠标落在线上不生效 | 改 zrender 层点击：绘图区内点**任意位置**，像素反解出最近日期弹详情（convertFromPixel grid→xIndex 四舍五入） | 本次提交 | 交互规范：小目标点击一律给「就近命中」兜底 | ✅ |
 
 ## 附：遗留观察（不是 bug，记录在案）
 

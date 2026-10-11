@@ -25,6 +25,10 @@ tasks:
       而且错得从表面看不出来。同时交齐 sources.json / claims.json，
       优先引厂商官网、自营商品页与主流硬件媒体（A 类来源占比 ≥15%，
       达不到会卡验收——哪怕凑数也要有一两个官方页）。
+      **shop_url 必须是商品详情页**（item.jd.com / 天猫 item 页等），
+      用户要能点开链接看到同款同价；中关村文章、比价站转述页、新闻
+      页一律**不得**作为 shop_url（R24：点了找不到同款=数据不可信），
+      它们只能放 source_url 作参考。
       **另交一份 SKU 观测副产物** artifacts/{date}/t1_sku_observations.json
       （JSON 数组，≥10 行，形状见卡上「JSON 形状」小节）：每行一笔
       具体报价——identity_hint 写规范型号（series 如 "RTX 5060 Ti"，

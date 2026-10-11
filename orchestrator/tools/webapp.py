@@ -32,6 +32,7 @@ sys.path.insert(0, str(ROOT))
 
 from fastapi import FastAPI, HTTPException  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from tools.sku_db import DB_PATH, connect  # noqa: E402
 from tools.trend_calc import (  # noqa: E402
@@ -43,6 +44,9 @@ from tools.trend_calc import (  # noqa: E402
 STATIC = Path(__file__).resolve().parent / "webapp_static"
 
 app = FastAPI(title="SKU 趋势看板", docs_url=None, redoc_url=None)
+# 本地静态资源（echarts 等走 /static/vendor/——消除 CDN 依赖，
+# 本地加载秒出；StaticFiles 自带 etag/304 缓存）
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 def ro_connect(db_path: Path | None = None) -> sqlite3.Connection:
