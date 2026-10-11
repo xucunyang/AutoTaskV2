@@ -194,7 +194,38 @@ metrics/report 阈值/normalizers/**attr_value_maps**）。
   （方法论已沉淀 skill：value-lens）
 - 「Web 前端随时改展示方式，数据存储起来」——DB+Web 解耦（本轮新需求）
 
+## 9. 终检记录（2026-10-11，换会话前的发版检查，三项全过）
+
+**1. 代码完整性 ✅**
+
+- 全量 pytest **959 passed**（sku 系列 ~40 条门禁全绿）
+- tools/ 八个确定性组件全部入库（sku_db / sku_ingest / sku_anchor /
+  sku_backfill / trend_calc / verify_snap / stab_risk /
+  quarantine_replay / e2e_smoke）
+- 发现并修复：`_root` fixture 对 config 子目录的脆弱点（contracts/
+  出现导致 29 个测试炸——已加 is_file() 防护）
+
+**2. 无自相矛盾 ✅**
+
+- 库现状终检：28 实体 / 28 观测（全部 source=自采）/ 3 基底锚点=1.0 /
+  隔离区 33 行（语义正确：待收编，不丢不混）
+- 序列覆盖 7 实体：9070XT 11 期、5060Ti 8GB 与 4060 各 5 期（L0 可算）、
+  5060 4 期、5080/5070Ti/5070 各 1 期（series-only 兜底匹配生效）
+- 首份真实快照已产出：5060Ti 8GB=2859 drop、9070XT=4159 **fast_drop**、
+  4060=2559 drop
+
+**3. 交接就绪 ✅**
+
+- 本文档（sku-todo.md）：背景、13 提交清单、库现状终检、TODO-0~E、
+  16 条实踩坑、拍板记录速查——新会话读它 + v3.3 设计文档即可无缝接手
+- **TODO-0 已写明**：t1 已挂 RETRY，14:00 cron 自动驱动全链
+  （t1 重试 → t1b 双脚本 → t4 → t3），新会话先查这次跑批结果
+
+**环境事实（留意）**：main 历史里混有**并行会话**（闲鱼采集）的提交——
+这解释了之前的设备租约占用；已写进 §3 与坑 16（互不冲突，勿误删）。
+
 ---
 
 **新会话开场建议**：「继续 sku 项目（docs/design/sku-todo.md），做
-TODO-A Web MVP」或指定 TODO-B/C/D/E。
+TODO-A Web MVP」或指定 TODO-B/C/D/E。这边等 14:00 跑批结果，有异常
+在原会话继续处理。
