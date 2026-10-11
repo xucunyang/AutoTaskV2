@@ -52,15 +52,17 @@ tasks:
     name: 观测入库
     complexity: simple
     objective: >-
-      在 orchestrator 目录下执行命令：
-      `python -X utf8 -m tools.sku_ingest --date {date} --domain hardware`。
-      命令会把 artifacts/{date}/t1_sku_observations.json 校验入库
-      （归一化/实体匹配/隔离坏行），并把统计写到
-      artifacts/{date}/t1b_ingest_stats.json。你只需：执行命令、
-      确认退出码为 0、读取 stats 文件核对 ok+updated ≥ 10。
-      若大量行进隔离区（quarantined 或 no_entity 占比过半），
-      检查 observations.json 的 hint 字段是否写错并在 stats 旁
-      写一份 t1b_ingest_review.md 说明原因；**不要手工改库**。
+      在 orchestrator 目录下依次执行两条命令（顺序不可颠倒）：
+      ① `python -X utf8 -m tools.sku_ingest --date {date} --domain hardware`
+         ——把 artifacts/{date}/t1_sku_observations.json 校验入库，
+         统计写到 artifacts/{date}/t1b_ingest_stats.json；
+      ② `python -X utf8 -m tools.trend_calc --date {date}`
+         ——基于库内数据生成趋势快照 artifacts/{date}/trend_snapshot.json
+         （t4 依赖它，缺这步 t4 读到旧快照）。
+      你只需：依次执行两条命令、确认退出码均为 0、读取 stats 文件核对
+      ok+updated ≥ 10。若大量行进隔离区（quarantined 或 no_entity
+      占比过半），检查 observations.json 的 hint 字段是否写错并在
+      stats 旁写一份 t1b_ingest_review.md 说明原因；**不要手工改库**。
     depends_on: [t1_gpu_ram]
     inputs: ["artifacts/{date}/t1_sku_observations.json"]
     outputs: ["artifacts/{date}/t1b_ingest_stats.json"]

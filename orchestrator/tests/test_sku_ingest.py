@@ -102,6 +102,16 @@ def test_validate_rejects_attr_value_drift():
     assert reason.startswith("attr_value_not_allowed")
 
 
+def test_validate_maps_channel_alias():
+    """「京东自营」是「自营」的自然变体（Q14 实测：模型连发明三种写法）
+    ——契约 attr_value_maps 映射后入库，不再隔离。"""
+    shaped, reason = validate_row(_row(attrs_hint={
+        "condition": "全新", "channel": "京东自营", "source": "自采"}),
+        CONTRACT, "2026-10-10")
+    assert reason is None, reason
+    assert shaped["attrs"]["channel"] == "自营"      # 入库值=映射后规范值
+
+
 # ---------------------------------------------------------------- 入库
 
 def test_ingest_happy_path_and_idempotent(db, tmp_path):

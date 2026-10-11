@@ -40,6 +40,9 @@ class Contract:
         self.attrs: dict = data.get("attrs") or {}
         self.metrics: dict = data.get("metrics") or {}
         self.propose_threshold = float(data.get("propose_threshold", 0.8))
+        # 枚举别名映射（v3.3 实测：模型发明「京东自营/渠道参考价」等
+        # 自然变体——映射比逐词扩枚举可持续）
+        self.attr_value_maps: dict = data.get("attr_value_maps") or {}
 
     @classmethod
     def load(cls, root: Path, domain: str) -> "Contract":
@@ -116,11 +119,17 @@ def validate_row(row: dict, contract: Contract, collected_on: str
     for key, spec in contract.attrs.items():
         if spec.get("level") == "required" and not attrs.get(key):
             return None, f"missing_required_attr:{key}"
-    # 枚举校验（值漂移拦截：「中间层」这种写法进隔离而不是静默入库）
+    # 枚举校验（值漂移拦截）：先应用契约别名映射（「京东自营」→「自营」
+    # 这类自然变体——模型会发明变体，映射比逐词扩枚举可持续），
+    # 映射后合法则替换入库值，仍不合法才隔离
     for key, val in attrs.items():
         allowed = (contract.attrs.get(key) or {}).get("values")
         if allowed and val not in allowed:
-            return None, f"attr_value_not_allowed:{key}={val}"
+            mapped = (contract.attr_value_maps.get(key) or {}).get(val)
+            if mapped and mapped in allowed:
+                attrs[key] = mapped
+            else:
+                return None, f"attr_value_not_allowed:{key}={val}"
 
     lp, rp = row.get("low_price"), row.get("raw_price")
     err = _bad_price(lp) or (_bad_price(rp) if rp is not None else None)

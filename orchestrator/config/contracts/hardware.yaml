@@ -17,6 +17,19 @@ attrs:
   accessories: {values: [全套, 缺配件], level: optional}
   source:    {values: [自采, manmanmai, smzdm, gwdang, xianyi_app, beike_app, jd_app],
               level: required}            # 数据来源轨（v3.3 M2：aggregate_scope 分组维度）
+# 枚举别名映射（v3.3 实测：模型会发明「京东自营/渠道参考价/电商自营」
+# 等自然变体——逐词扩充枚举不可持续，映射才是正解。入库器在枚举
+# 校验前应用映射，映射后仍不合法才隔离）
+attr_value_maps:
+  channel:
+    京东自营: 自营
+    天猫自营: 自营
+    电商自营: 自营
+    品牌自营: 自营
+    官方旗舰店: 自营
+    渠道参考价: 国行单卡
+    参考价: 国行单卡
+
 aggregate_rule: min        # 序列点=当日最低价
 aggregate_scope:           # v3.3 M1/M2：切轨维度与主序列过滤
   group_by: [condition, source]
