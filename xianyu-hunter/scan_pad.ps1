@@ -67,7 +67,8 @@ function Dump-Uixml([string]$name) {
     A "uiautomator dump /sdcard/ui.xml" | Out-Null
     adb -s $script:Dev pull /sdcard/ui.xml "$OutDir\$name.xml" 2>$null | Out-Null
   }
-  python $ParseScript "$OutDir\$name.xml" > "$OutDir\$name.txt" 2>$null
+  # NOTE: no .txt via `>` redirection -- PS 5.1 writes GBK and mangles CJK.
+  # XML is authoritative UTF-8; parse with python explicitly when needed.
 }
 
 # find node center from raw XML (avoids encoding pitfalls of txt round-trip)
