@@ -530,6 +530,19 @@ L0 ≥5 期；`stab_risk` ≥60、`wait_value` ≥120 期；其余 L1/L2
 矩阵落在各域契约里（`metrics.<name>.allowed_sources`），加域时
 按需裁剪——计算器不感知具体域，只读矩阵。
 
+### 9.6 实施状态（2026-10-10/11）
+
+| 项 | 状态 |
+|---|---|
+| L0（trend_calc） | ✅ 已实现（tools/trend_calc.py，7 单测） |
+| contrast（vendor 轨） | ✅ 已实现（蓝宝石 vs 华擎 ≈5.2% 价差实测） |
+| L1 stab_risk（全史中位数版，Q10-A） | ✅ 已实现（tools/stab_risk.py，6 单测；真实序列待累积 60 期） |
+| L1 其余（wait_value/anchor_check/sloth_tax/offer_percentile） | ⬜ P1.5 后续 |
+| L2 跨域信号 | ⬜ P2 |
+| 快照一致性验收 | ✅ tools/verify_snap.py（acceptance_hw_t4 cmd 形态） |
+| 端到端 smoke | ✅ tools/e2e_smoke.py（20/20 入库→快照→校验 PASS） |
+| 首次真实入库 | ✅ data/sku.db：5 期 × 3 基底 × 双 vendor（20 行） |
+
 ## 10. 数据质量防线
 
 抄错价（偏离近7期均值>50%→隔离区+告警）；发明维度（键白名单）；

@@ -113,6 +113,14 @@ def _schema_hint(root: Path, acceptance) -> str:
             continue
         if not isinstance(data, dict):        # schema 文件不是对象 → 不猜，保持原样
             continue
+        # 顶层数组（{"type":"array","items":{...}}）：形状看 items——
+        # 2026-10-11 实测：sku_observations.json 是数组根，本函数只认
+        # 顶层对象 → fields 空 → 返回空 hint → 卡上零形状 → 模型盲写
+        # 13 行全进死信。数组型产物（观测列表类）很常见，必须支持。
+        array_root = False
+        if data.get("type") == "array" and isinstance(data.get("items"), dict):
+            data = data["items"]
+            array_root = True
         props = data.get("properties") or {}
         required = data.get("required") or list(props)
         fields = []                            # (字段名, 类型, description)
@@ -127,6 +135,11 @@ def _schema_hint(root: Path, acceptance) -> str:
         sample = "{" + ", ".join(
             f'"{k}": "<{t}>"' if t == "string" else f'"{k}": <{t}>'
             for k, t, _d in fields) + "}"
+        root_shape = ("JSON 数组：直接写 [ {...}, {...} ]，数组元素字段如下"
+                      if array_root else "顶层对象")
+        header = (f"{ref}（{rule.get('rule_id') or f'rule_{i}'}，{root_shape}）"
+                  f"必需字段（缺一个或类型不对=整条 schema_violation）：\n"
+                  f"  {sample}\n  ")
         # description 是"这个字段到底放什么"的唯一说明，必须跟着进卡——
         # 只给类型的话，模型知道 rows 要整数，却不知道该填什么整数。
         header = (f"{ref}（{rule.get('rule_id') or f'rule_{i}'}）必需字段"
