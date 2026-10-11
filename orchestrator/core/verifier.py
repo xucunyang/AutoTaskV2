@@ -25,7 +25,9 @@ from pathlib import Path
 from core.search import pipeline as search_pipeline
 from core.utils import jlog, now_utc_iso
 
-CMD_WHITELIST = ("pytest tests/", "python tests/", "python -m pytest tests/")
+CMD_WHITELIST = ("pytest tests/", "python tests/", "python -m pytest tests/",
+                 "python -X utf8 orchestrator/tools/",
+                 "python orchestrator/tools/")
 SHELL_METACHARS = set(";|&`$><\n\r")
 ALLOWED_EXPR_NODES = (ast.Expression, ast.Compare, ast.BoolOp, ast.Name,
                       ast.Constant, ast.Load, ast.And, ast.Or, ast.Not,

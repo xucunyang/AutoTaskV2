@@ -70,6 +70,19 @@ def test_hw_t4_recommend_rule():
     assert not ok3                      # 缺日期
 
 
+def test_python_test_whitelist_covers_first_party_tools():
+    """t4 的 verify_snap cmd 必须过白名单（2026-10-11 实测：白名单只有
+    tests/ 前缀，tools/ 的第一方校验脚本恒红——第三颗同质地雷）。"""
+    from core.verifier import CMD_WHITELIST, SHELL_METACHARS
+
+    cmd = "python -X utf8 orchestrator/tools/verify_snap.py"
+    assert cmd.startswith(CMD_WHITELIST)
+    assert not (SHELL_METACHARS & set(cmd))     # 无 shell 注入面
+    # 白名单不放开任意命令：裸 python 与任意路径仍被拒
+    assert not "python evil.py".startswith(CMD_WHITELIST)
+    assert not "python -X utf8 C:/Temp/x.py".startswith(CMD_WHITELIST)
+
+
 def test_sku_ingest_stats_writes_derived_fields(tmp_path):
     """入库器 stats 必须带 ingested/isolated 预计算字段（验收依赖）。"""
     import json
