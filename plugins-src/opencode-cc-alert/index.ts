@@ -7,7 +7,7 @@
 //   2. ctx.event.subscribe        - fallback for session/error-shaped events
 // Patterns: 401/403/429/451, auth, quota, geo-block, model unknown, expired.
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
+import { appendFileSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
 import { spawn } from "node:child_process"
 import { tmpdir, homedir } from "node:os"
 import { join } from "node:path"
@@ -53,9 +53,11 @@ function push(message: string, cfg: any) {
     const tmp = join(tmpdir(), "opencode-cc-alert.txt")
     writeFileSync(tmp, message, "utf8")
     const pushPath = cfg.ccPushPath || join(homedir(), ".local", "bin", "cc-push.ps1")
+    // cc-push.ps1 takes a single arg (file path or text); the target session
+    // is baked into the script itself and matches config.json.
     const child = spawn(
       "powershell.exe",
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", pushPath, "-s", String(cfg.sessionKey), tmp],
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", pushPath, tmp],
       { windowsHide: true, detached: true, stdio: "ignore" },
     )
     child.on("error", (e: unknown) => console.warn("[cc-alert] spawn error:", e))
@@ -106,10 +108,48 @@ const plugin: any = {
     }
 
     const controllers: Array<AbortController> = []
+    const flog = (line: string) => {
+      try {
+        appendFileSync(join(tmpdir(), "opencode-cc-alert.log"), `${new Date().toISOString()} ${line}\n`)
+      } catch {}
+    }
+    flog(`plugin setup; hooks=` + [typeof ctx?.session?.hook === "function" ? "session.hook" : "", typeof ctx?.event?.subscribe === "function" ? "event.subscribe" : ""].filter(Boolean).join("+"))
 
-    // 1) provider retry hook (V2 plugin-only API; defensive in case ctx differs)
+    // 1) http.response hook - THE primary detector.
+    // Sees every provider HTTP response. Catches terminal errors that never
+    // reach the retry hook (e.g. AI.Error.Authentication geo-block, 401, 403).
     try {
       if (typeof ctx?.session?.hook === "function") {
+        await ctx.session.hook("http.response", async (event: any) => {
+          try {
+            const res = event?.response
+            if (!res || typeof res.status !== "number" || res.status < 400) return
+            const status = res.status
+            let body = ""
+            try {
+              const clone = res.clone()
+              body = String(await clone.text()).slice(0, 600)
+            } catch {}
+            const hit = classify(`HTTP ${status} ${body} ${event?.kind ?? ""}`)
+            if (!hit) return
+            const sig = `http:${hit.id}:${status}:${body.slice(0, 60)}`
+            if (!shouldNotify(sig)) return
+            flog(`push http.response status=${status} pattern=${hit.id}`)
+            push(
+              format(hit, `HTTP ${status}`, {
+                sessionID: event?.sessionID,
+                model: event?.model,
+                text: body || "(no body)",
+              }),
+              cfg,
+            )
+          } catch (e) {
+            flog("http.response hook error: " + String(e))
+          }
+        })
+        flog("http.response hook registered")
+
+        // 2) retry hook - fires when OpenCode classifies a failure as retryable.
         await ctx.session.hook("retry", (event: any) => {
           try {
             const err = event?.error ?? {}
@@ -118,6 +158,7 @@ const plugin: any = {
             if (!hit) return
             const sig = `retry:${hit.id}:${err.status ?? ""}:${msg.slice(0, 80)}`
             if (!shouldNotify(sig)) return
+            flog(`push retry pattern=${hit.id}`)
             push(
               format(hit, "provider.retry", {
                 sessionID: event?.sessionID,
@@ -128,18 +169,18 @@ const plugin: any = {
               cfg,
             )
           } catch (e) {
-            console.warn("[cc-alert] retry hook error:", e)
+            flog("retry hook error: " + String(e))
           }
         })
-        console.log("[cc-alert] retry hook registered")
+        flog("retry hook registered")
       } else {
-        console.warn("[cc-alert] ctx.session.hook unavailable; event-stream only")
+        flog("ctx.session.hook unavailable; event-stream only")
       }
     } catch (e) {
-      console.warn("[cc-alert] failed to register retry hook:", e)
+      flog("failed to register hooks: " + String(e))
     }
 
-    // 2) event stream fallback
+    // 3) event stream fallback
     try {
       if (typeof ctx?.event?.subscribe === "function") {
         const controller = new AbortController()
@@ -155,16 +196,17 @@ const plugin: any = {
               if (!hit) continue
               const sig = `ev:${hit.id}:${t}:${text.slice(0, 60)}`
               if (!shouldNotify(sig)) continue
+              flog(`push event ${t} pattern=${hit.id}`)
               push(format(hit, t, { sessionID: (props as any)?.sessionID, text }), cfg)
             }
           } catch (e) {
-            console.warn("[cc-alert] event stream ended:", e)
+            flog("event stream ended: " + String(e))
           }
         })()
-        console.log("[cc-alert] event stream subscribed")
+        flog("event stream subscribed")
       }
     } catch (e) {
-      console.warn("[cc-alert] failed to subscribe event stream:", e)
+      flog("failed to subscribe event stream: " + String(e))
     }
 
     return () => {
