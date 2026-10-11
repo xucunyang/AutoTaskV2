@@ -100,9 +100,18 @@ def classify(desc):
         flags.append('MDM!')
     if u'\u65e0\u5934' in desc:
         flags.append('HEADLESS!')
-    if any(k in desc for k in (u'\u5e93\u5b58', u'\u6279\u53d1', u'\u6392\u884c\u699c')):
-        flags.append('BULK!')
-    if any(k in desc for k in (u'\u4e13\u8425', u'\u5e97\u94fa', u'\u4f18\u9009')):
+    # Hard-redline: 引流款（极速发/特价几台/限量/抢购）无论贩子个人都出局。
+    teaser = any(k in desc for k in (
+        u'\u6781\u901f\u53d1', u'\u7279\u4ef7\u51e0\u53f0', u'\u7279\u4ef7\u53d1\u8d27',
+        u'\u9650\u91cf', u'\u62a2\u62cd', u'\u62a2\u8d2d', u'\u8d85\u4f4e\u4ef7',
+    ))
+    bulk = any(k in desc for k in (u'\u5e93\u5b58', u'\u6279\u53d1', u'\u6392\u884c\u699c'))
+    shop = any(k in desc for k in (u'\u4e13\u8425', u'\u5e97\u94fa', u'\u4f18\u9009'))
+    if teaser:
+        flags.append('TEASER!')
+    if bulk:
+        flags.append('BULK?')   # soft -- per 10-12 user auth, ask first
+    if shop:
         flags.append('SHOP?')
     if '64g' in low:
         flags.append('64G')
@@ -116,7 +125,7 @@ def main():
         SCANS, '%s_leads.md' % tag)
 
     out = [u'# Pad widescan leads (%s)\n' % tag]
-    stats = {'total': 0, '64g': 0, 'blocked': 0}
+    stats = {'total': 0, '64g': 0, 'blocked': 0, 'soft': 0}
     for kw in kws:
         rows = list(load(tag, kw))
         if not rows:
@@ -131,16 +140,18 @@ def main():
                 stats['64g'] += 1
             if any(f.endswith('!') for f in flags):
                 stats['blocked'] += 1
+            elif any(f.endswith('?') for f in flags):
+                stats['soft'] += 1
             out.append(u'- **%s** `%s` %s\n'
                        % (format(price, '.0f'),
                           '/'.join(flags) or '-',
                           desc[:190].replace('\n', ' ')))
-    out.append(u'\n---\ntotal=%d  with-64G=%d  auto-blocked=%d\n'
-               % (stats['total'], stats['64g'], stats['blocked']))
+    out.append(u'\n---\ntotal=%d  with-64G=%d  auto-blocked=%d  soft-warn=%d\n'
+               % (stats['total'], stats['64g'], stats['blocked'], stats['soft']))
     io.open(out_path, 'w', encoding='utf-8').write(u''.join(out))
     print('written %s' % out_path)
-    print('total=%d with64G=%d blocked=%d'
-          % (stats['total'], stats['64g'], stats['blocked']))
+    print('total=%d with64G=%d blocked=%d soft=%d'
+          % (stats['total'], stats['64g'], stats['blocked'], stats['soft']))
 
 
 if __name__ == '__main__':
