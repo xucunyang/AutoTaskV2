@@ -4,7 +4,7 @@
 domain: hardware
 identity: [category, series, spec]        # 序列键（identity 严出）
 attrs:
-  vendor:    {values: [公版, 七彩虹, 微星, 华硕, 技嘉, 索泰, 影驰, 七彩虹iGame], level: optional}
+  vendor:    {values: [公版, 七彩虹, 微星, 华硕, 技嘉, 索泰, 影驰, 耕升, 华擎, 蓝宝石, 铭瑄, 映众], level: optional}
   condition: {values: [全新, 二手, 官翻, 展示机], level: required}   # 跨域通用维度（Q13 发散）
   channel:   {values: [国行单卡, 整机参考, 美行折算, 百亿补贴, 自营, 第三方], level: required}
   grade:     {values: [95新, 9成新, 8成新, 7成新及以下], level: optional}  # 二手成色

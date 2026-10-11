@@ -10,17 +10,14 @@
 - type: file_exists
   path: artifacts/{date}/hw_recommend.json
 
-# python_test：从 DB 重算 3 个抽样基底实体的 d1_pct / slope_7_pct_per_day
-# 与 trend_snapshot.json 比对，差 0.01 内——防止模型微调数字。
-# （写 hw_trend 任务的 card 时提示模型这是红线）
+# python_test：从 DB 重算基底实体的 L0 指标与 trend_snapshot.json
+# 逐字段比对（容差 0.01），不一致 exit 1——防模型微调数字。
+# 脚本自扫最新快照（t4 验收跑在 t4 完成后，最新=当日）。
+# cmd 无 {date} 展开（h_python_test 不做占位替换），所以脚本自己找日期。
+# cwd=仓库根（h_python_test 固定），路径带 orchestrator/ 前缀。
 - type: python_test
-  path: artifacts/{date}/hw_recommend.json
-  module: tools.sku_db
-  test_func: tracking_snap_consistency
-  args:
-    date: "{date}"
-    json_path: "artifacts/{date}/trend_snapshot.json"
-    tol: 0.01
+  cmd: "python -X utf8 orchestrator/tools/verify_snap.py"
+  timeout_s: 120
 
 # mermaid：模型必须画图。mermaid handler 默认 ≥1 张。当日全库无
 # 显著变化时退化为全局汇总图（v3.3 §9.0 M4 修正）——这部分逻辑放
