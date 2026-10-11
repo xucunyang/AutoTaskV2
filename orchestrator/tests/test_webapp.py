@@ -116,6 +116,42 @@ def test_track_series_also_filtered(db):
         assert all(p > 1000 for _, p in track)
 
 
+def test_board_entities_carry_domain_group(db):
+    """R20：实体带 domain 与二级分组（硬件=category）。"""
+    board = webapp.build_board(db, root=ROOT)
+    a = next(e for e in board["entities"] if e["entity_id"] == 1)
+    assert a["domain"] == "hardware"
+    assert a["group"] == "显卡"                      # identity.category
+
+
+def test_entity_points_returns_trace_fields(db):
+    """R21 数据点溯源：某日全部原始观测带店铺/平台/链接/券/采集时间。"""
+    import json as _json
+    # 10-10 有三笔（七彩虹全新 2950 + 微星全新 3080 + 二手 999）——溯源要全部列出
+    pts = webapp.entity_points(db, 1, "2026-10-10")
+    assert len(pts["points"]) == 3
+    p = pts["points"][0]                              # 按 low_price 排序，999 在前
+    assert p["low_price"] == 999.0
+    assert p["condition"] == "二手" and p["vendor"] == "七彩虹"
+    assert {q["vendor"] for q in pts["points"]} == {"七彩虹", "微星"}
+    # 补一笔带完整店铺字段的观测验证链接透传
+    db.execute(
+        "INSERT INTO observation(entity_id, obs_date, collected_on,"
+        " low_price, attrs_json, shop_name, shop_platform, shop_url,"
+        " source_url, coupons, created_at)"
+        " VALUES(1,'2026-10-09','2026-10-11',2960,'{\"condition\":\"全新\","
+        "\"source\":\"自采\",\"vendor\":\"微星\"}','微星京东自营',"
+        "'京东','https://item.jd.com/1.html','https://w.cn','[]',?)", (now_,))
+    db.commit()
+    pts = webapp.entity_points(db, 1, "2026-10-09")
+    p = next(q for q in pts["points"] if q["shop_name"])
+    assert p["shop_url"] == "https://item.jd.com/1.html"
+    assert p["shop_platform"] == "京东" and p["shop_name"] == "微星京东自营"
+
+
+now_ = "2026-10-11T00:00:00+00:00"
+
+
 def test_ro_connect_rejects_writes(tmp_path):
     """铁律：Web 连接上任何写事务必须在 SQLite 层被拒。"""
     con = webapp.ro_connect(tmp_path / "sku.db")

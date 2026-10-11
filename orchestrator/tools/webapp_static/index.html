@@ -21,17 +21,34 @@
   body { margin: 0; background: var(--bg); color: var(--txt);
          font: 14px/1.5 "Microsoft YaHei", system-ui, sans-serif; }
   header { position: sticky; top: 0; z-index: 10; background: var(--card);
-           border-bottom: 1px solid var(--line); padding: 10px 18px;
-           display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-  header h1 { font-size: 17px; margin: 0; }
+           border-bottom: 1px solid var(--line); padding: 8px 18px 0; }
+  .hd-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0 4px 0 0; }
   header .meta { color: var(--sub); font-size: 12.5px; }
   header .spacer { flex: 1; }
-  header label { font-size: 13px; color: var(--txt); cursor: pointer;
-                 user-select: none; }
-  .wrap { display: flex; min-height: calc(100vh - 53px); }
+  header label { font-size: 13px; cursor: pointer; user-select: none; }
+  /* 大类 tab（R20）：硬件/房产/金融… */
+  .tabs { display: flex; gap: 4px; margin-top: 6px; }
+  .tab { padding: 7px 16px; font-size: 14px; border: none; background: none;
+         color: var(--sub); cursor: pointer; border-radius: 8px 8px 0 0;
+         border-bottom: 2px solid transparent; }
+  .tab:hover { color: var(--txt); background: #f0f3fa; }
+  .tab.active { color: var(--accent); font-weight: 600; background: #eef3ff;
+                border-bottom-color: var(--accent); }
+  .tab .cnt { font-size: 11.5px; color: var(--sub); margin-left: 4px; }
+  /* 二级分组 chips（带图标） */
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 2px; }
+  .chip { padding: 6px 14px; border: 1px solid var(--line); border-radius: 18px;
+          background: var(--card); cursor: pointer; font-size: 13.5px;
+          user-select: none; }
+  .chip:hover { border-color: var(--accent); }
+  .chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .chip.active .cnt { color: #dbe6ff; }
+  .chip .cnt { font-size: 11.5px; color: var(--sub); margin-left: 4px; }
+  .wrap { display: flex; min-height: calc(100vh - 96px); }
   nav { width: 210px; flex: none; border-right: 1px solid var(--line);
         background: var(--card); padding: 10px 0; overflow-y: auto;
-        position: sticky; top: 53px; height: calc(100vh - 53px); }
+        position: sticky; top: 96px; height: calc(100vh - 96px); }
   nav .group { margin: 10px 0 4px; padding: 0 14px; color: var(--sub);
                font-size: 12px; }
   nav a { display: flex; justify-content: space-between; gap: 6px;
@@ -39,7 +56,7 @@
           font-size: 13px; }
   nav a:hover { background: #eef3ff; }
   nav a .n { color: var(--sub); font-size: 12px; flex: none; }
-  main { flex: 1; padding: 16px; display: grid; gap: 14px;
+  main { flex: 1; padding: 4px 16px 16px; display: grid; gap: 14px;
          grid-template-columns: repeat(auto-fill, minmax(430px, 1fr));
          align-content: start; }
   .card { background: var(--card); border: 1px solid var(--line);
@@ -56,28 +73,72 @@
   .price { margin-left: auto; font-variant-numeric: tabular-nums; }
   .price b { font-size: 16px; }
   .d1 { font-size: 12.5px; }
+  .hint-dot { font-size: 11.5px; color: var(--sub); }
   .vsel { margin-left: auto; font-size: 12px; color: var(--sub);
           cursor: pointer; user-select: none; display: none; }
   .chart { width: 100%; height: 230px; }
   .card.wide .chart { height: 430px; }
   .placeholder { color: var(--sub); font-size: 12.5px; padding: 6px 2px 10px; }
   footer { color: var(--sub); font-size: 12px; padding: 6px 18px 16px; }
-  .err { color: var(--fast-rise); padding: 30px; }
+  .err { color: var(--fast-rise); padding: 30px; grid-column: 1 / -1; }
+  /* 数据点溯源弹窗（R21） */
+  .modal { position: fixed; inset: 0; z-index: 50; background: rgba(20,26,40,.45);
+           display: flex; align-items: center; justify-content: center; }
+  .modal.hidden { display: none; }
+  .modal-box { background: var(--card); border-radius: 12px; width: min(680px, 94vw);
+               max-height: 84vh; display: flex; flex-direction: column;
+               box-shadow: 0 18px 50px rgba(0,0,0,.22); }
+  .modal-hd { display: flex; align-items: center; gap: 10px;
+              padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .modal-hd .t { font-weight: 600; font-size: 15px; }
+  .modal-x { margin-left: auto; border: none; background: none; font-size: 17px;
+             color: var(--sub); cursor: pointer; }
+  .modal-body { overflow-y: auto; padding: 10px 18px 16px; }
+  .pt { border: 1px solid var(--line); border-radius: 10px;
+        padding: 10px 14px; margin: 10px 0; }
+  .pt .r1 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .pt .p { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pt .raw { color: var(--sub); text-decoration: line-through; font-size: 12.5px; }
+  .pt .shop { font-size: 13.5px; }
+  .pt .plat { font-size: 12px; color: var(--accent); }
+  .pt .links { margin-left: auto; display: flex; gap: 12px; }
+  .pt .links a { color: var(--accent); font-size: 12.5px; text-decoration: none; }
+  .pt .links a:hover { text-decoration: underline; }
+  .pt .r2 { color: var(--sub); font-size: 12px; margin-top: 4px;
+            display: flex; gap: 10px; flex-wrap: wrap; }
+  .pt .cpn { font-size: 12px; color: #b0541f; background: #fdf1e7;
+             border-radius: 4px; padding: 0 6px; }
+  .none { color: var(--sub); padding: 20px 6px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>SKU 趋势看板</h1>
-  <span class="meta" id="meta">加载中…</span>
-  <span class="spacer"></span>
-  <label><input type="checkbox" id="vtoggle"> vendor 对比轨</label>
+  <div class="hd-row">
+    <h1>SKU 趋势看板</h1>
+    <div class="tabs" id="dom-tabs"></div>
+    <span class="spacer"></span>
+    <span class="meta" id="meta"></span>
+    <label><input type="checkbox" id="vtoggle"> vendor 对比轨</label>
+  </div>
+  <div class="chips" id="chips"></div>
 </header>
 <div class="wrap">
   <nav id="nav"></nav>
   <main id="wall"></main>
 </div>
 <footer>数据源：data/sku.db（只读）· 序列口径：自采 + 全新 · 每日最低价 ·
-指标与 t4 报告同源（tools.trend_calc）· Web 不写库</footer>
+指标与 t4 报告同源 · Web 不写库 · 点图上任意数据点可溯源到店铺与原文</footer>
+
+<div class="modal hidden" id="modal">
+  <div class="modal-box">
+    <div class="modal-hd">
+      <span class="t" id="modal-title"></span>
+      <button class="modal-x" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
 <script>
 const LABELS = {
   fast_drop: ["急跌", "var(--fast-drop)"],
@@ -86,42 +147,121 @@ const LABELS = {
   rise:      ["上涨", "var(--rise)"],
   fast_rise: ["急涨", "var(--fast-rise)"],
 };
+/* 大类与二级分组的图标（R20）。新域/新分组回退到 📦，无需改代码 */
+const DOMAIN_META = {
+  hardware: { name: "硬件", icon: "🖥️" },
+  housing:  { name: "房产", icon: "🏠" },
+  finance:  { name: "金融", icon: "💹" },
+};
+const GROUP_ICONS = {
+  "显卡": "🎮", "CPU": "⚙️", "内存": "🧠", "内存条": "🧠",
+  "固态硬盘": "💾", "主板": "🔲", "整机": "🖥️",
+};
 const charts = [];
+const state = { data: null, domain: null, group: null };
 const UP = '▲', DOWN = '▼';
+const esc = s => String(s ?? '').replace(/[&<>"]/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money = v => '¥' + Number(v).toLocaleString('zh-CN');
+const domMeta = d => DOMAIN_META[d] || { name: d, icon: '📦' };
+const grpIcon = g => GROUP_ICONS[g] || '📦';
 
-function money(v) { return '¥' + Number(v).toLocaleString('zh-CN'); }
+fetch('/api/board').then(r => r.json()).then(data => {
+  state.data = data;
+  const domains = [...new Set(data.entities.map(e => e.domain))];
+  state.domain = domains.find(d =>
+    data.entities.some(e => e.domain === d && e.n_periods > 0)) || domains[0];
+  renderDomainTabs(domains);
+  renderDomain();
+}).catch(err => {
+  document.getElementById('wall').innerHTML =
+    `<div class="err">加载失败：${esc(err)}（看板服务没起来？python -m tools.webapp）</div>`;
+});
 
-function render(data) {
-  const c = data.counts;
-  const snapDate = data.snapshot ? data.snapshot.date : '—';
+function renderDomainTabs(domains) {
+  const box = document.getElementById('dom-tabs');
+  box.innerHTML = '';
+  for (const d of domains) {
+    const m = domMeta(d);
+    const n = state.data.entities.filter(e => e.domain === d).length;
+    const b = document.createElement('button');
+    b.className = 'tab' + (d === state.domain ? ' active' : '');
+    b.innerHTML = `${m.icon} ${esc(m.name)}<span class="cnt">${n}</span>`;
+    b.onclick = () => {
+      state.domain = d;
+      box.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      renderDomain();
+    };
+    box.appendChild(b);
+  }
+}
+
+function renderDomain() {
+  const inDom = state.data.entities.filter(e => e.domain === state.domain);
+  /* 二级分组：硬件=category（显卡/CPU/内存…），房产=city；有数据的组排前 */
+  const groups = {};
+  for (const e of inDom) {
+    (groups[e.group] = groups[e.group] || { with: 0, total: 0 });
+    groups[e.group].total += 1;
+    if (e.n_periods > 0) groups[e.group].with += 1;
+  }
+  const order = Object.keys(groups).sort((a, b) =>
+    groups[b].with - groups[a].with || groups[b].total - groups[a].total);
+  state.group = order.find(g => groups[g].with > 0) || order[0];
+
+  const chips = document.getElementById('chips');
+  chips.innerHTML = '';
+  for (const g of order) {
+    const c = document.createElement('span');
+    c.className = 'chip' + (g === state.group ? ' active' : '');
+    c.innerHTML = `${grpIcon(g)} ${esc(g)}<span class="cnt">${groups[g].with}/${groups[g].total}</span>`;
+    c.onclick = () => {
+      state.group = g;
+      chips.querySelectorAll('.chip').forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+      renderNavAndWall();
+    };
+    chips.appendChild(c);
+  }
+  const m = domMeta(state.domain);
   document.getElementById('meta').textContent =
-    `快照 ${snapDate} · 实体 ${c.total} · 有数据 ${c.with_data} · L0 达标 ${c.l0_ok} · 生成 ${data.generated_at.replace('T', ' ')}`;
+    `${m.icon} ${m.name} · 快照 ${state.data.snapshot?.date ?? '—'}`;
+  renderNavAndWall();
+}
+
+function renderNavAndWall() {
+  const inView = state.data.entities.filter(
+    e => e.domain === state.domain && e.group === state.group);
+  const withData = inView.filter(e => e.n_periods > 0)
+                         .sort((a, b) => b.n_periods - a.n_periods);
+  const noData = inView.filter(e => e.n_periods === 0);
 
   const nav = document.getElementById('nav'), wall = document.getElementById('wall');
-  const withData = data.entities.filter(e => e.n_periods > 0)
-                                .sort((a, b) => b.n_periods - a.n_periods);
-  const noData = data.entities.filter(e => e.n_periods === 0);
+  charts.forEach(x => x.inst.dispose()); charts.length = 0;
+  wall.innerHTML = ''; nav.innerHTML = '<div class="group">有数据</div>';
 
-  nav.innerHTML = '<div class="group">有数据</div>';
   for (const e of withData) {
     const a = document.createElement('a');
-    a.href = '#'; a.innerHTML = `<span>${e.display_name}</span><span class="n">${e.n_periods}期</span>`;
+    a.href = '#';
+    a.innerHTML = `<span>${esc(e.display_name)}</span><span class="n">${e.n_periods}期</span>`;
     a.onclick = ev => { ev.preventDefault(); focusCard(e.entity_id); };
     nav.appendChild(a);
   }
-  nav.appendChild(Object.assign(document.createElement('div'),
-    { className: 'group', textContent: `样本不足（${noData.length}）` }));
-  for (const e of noData) {
-    const a = document.createElement('a');
-    a.href = '#'; a.style.color = 'var(--sub)';
-    a.innerHTML = `<span>${e.display_name}</span><span class="n">0期</span>`;
-    a.onclick = ev => ev.preventDefault();
-    nav.appendChild(a);
+  if (noData.length) {
+    nav.appendChild(Object.assign(document.createElement('div'),
+      { className: 'group', textContent: `样本不足（${noData.length}）` }));
+    for (const e of noData) {
+      const a = document.createElement('a');
+      a.href = '#'; a.style.color = 'var(--sub)';
+      a.innerHTML = `<span>${esc(e.display_name)}</span><span class="n">0期</span>`;
+      a.onclick = ev => ev.preventDefault();
+      nav.appendChild(a);
+    }
   }
-
   for (const e of withData) wall.appendChild(makeCard(e));
   if (!withData.length)
-    wall.innerHTML = '<div class="err">库中还没有观测数据——先跑 hardware_daily 的 t1→t1b。</div>';
+    wall.innerHTML = '<div class="err">该分组还没有观测数据——先跑对应链的采集任务。</div>';
 }
 
 function makeCard(e) {
@@ -137,7 +277,7 @@ function makeCard(e) {
                     ${m.d1_pct < 0 ? DOWN : UP}${Math.abs(m.d1_pct)}%</span>` : '';
   const anchor = e.perf_anchor ? '<span class="anchor">基底</span>' : '';
   const nTracks = Object.keys(e.tracks).length;
-  hd.innerHTML = `<span class="name">${e.display_name}</span>${anchor}${badge}${d1}
+  hd.innerHTML = `<span class="name">${grpIcon(e.group)} ${esc(e.display_name)}</span>${anchor}${badge}${d1}
     <span class="price">${m ? '<b>' + money(m.last_price) + '</b>' : ''}</span>`;
   card.appendChild(hd);
 
@@ -156,7 +296,7 @@ function makeCard(e) {
   if (!m) {
     const ph = document.createElement('div');
     ph.className = 'placeholder';
-    ph.textContent = `样本 ${e.n_periods}/5 期——指标计算暂缓（Q12 占位），曲线照常展示`;
+    ph.textContent = `样本 ${e.n_periods}/5 期——指标计算暂缓（Q12 占位），曲线照常展示；点数据点可看原始报价`;
     card.appendChild(ph);
   }
 
@@ -172,13 +312,11 @@ function makeCard(e) {
     showTracks = ev.target.checked; draw();
   };
 
-  document.getElementById('vtoggle').onchange = ev => {
-    document.querySelectorAll('.vsel input').forEach(cb => {
-      if (cb.checked !== ev.target.checked) { cb.checked = ev.target.checked; cb.dispatchEvent(new Event('change')); }
-    });
-  };
-
   const inst = echarts.init(chartDiv);
+  inst.on('click', params => {
+    if (params.componentType === 'series' && params.name)
+      showPoints(e, params.name);
+  });
   charts.push({ div: chartDiv, inst, e, draw });
   draw();
   return card;
@@ -190,7 +328,7 @@ function drawChart(div, e, withTracks) {
   const dates = e.series.map(p => p[0]);
   const lines = [{
     name: '每日最低', type: 'line', data: e.series.map(p => p[1]),
-    symbol: 'circle', symbolSize: 5, lineWidth: 2,
+    symbol: 'circle', symbolSize: 6,
     lineStyle: { width: 2, color: m ? LABELS[m.label][1] : '#7a8499' },
     itemStyle: { color: m ? LABELS[m.label][1] : '#7a8499' },
   }];
@@ -202,7 +340,7 @@ function drawChart(div, e, withTracks) {
   };
   const colors = ['#8e6fd8', '#d8a13a', '#3aa0c9', '#c96f9a'];
   if (withTracks) Object.entries(e.tracks).forEach(([v, s], i) => {
-    if (s.length < 2) return;   // 单点 vendor 轨画不了线，跳过
+    if (s.length < 2) return;
     lines.push({ name: v, type: 'line', data: s.map(p => p[1]),
       symbol: 'none', lineStyle: { width: 1.4, type: 'dashed', color: colors[i % 4] },
       itemStyle: { color: colors[i % 4] } });
@@ -212,13 +350,74 @@ function drawChart(div, e, withTracks) {
     grid: { left: 62, right: 16, top: withTracks && lines.length > 1 ? 30 : 14, bottom: 26 },
     legend: withTracks && lines.length > 1
       ? { top: 2, textStyle: { fontSize: 11, color: '#7a8499' } } : null,
-    tooltip: { trigger: 'axis', valueFormatter: v => money(v) },
+    tooltip: { trigger: 'axis', valueFormatter: v => money(v),
+               formatter: ps => esc(ps[0].name) + '<br>' +
+                 ps.map(p => `${p.marker}${esc(p.seriesName)} ${money(p.value)}`).join('<br>') +
+                 '<br><span style="color:#7a8499">点击数据点查看原始报价</span>' },
     xAxis: { type: 'category', data: dates, axisLabel: { fontSize: 11, color: '#7a8499' } },
     yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 11, color: '#7a8499' },
              splitLine: { lineStyle: { color: '#eef0f4' } } },
     series: lines,
   }, { notMerge: true });
 }
+
+/* ---------- 数据点溯源（R21）：点一个点，看这一天所有原始报价 ---------- */
+function showPoints(e, date) {
+  const modal = document.getElementById('modal');
+  document.getElementById('modal-title').textContent =
+    `${e.display_name} · ${date} · 原始报价`;
+  const body = document.getElementById('modal-body');
+  body.innerHTML = '<div class="none">加载中…</div>';
+  modal.classList.remove('hidden');
+  fetch(`/api/entity/${e.entity_id}/points?date=${date}`)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.points.length) {
+        body.innerHTML = '<div class="none">该日期无原始观测。</div>';
+        return;
+      }
+      body.innerHTML = d.points.map(p => {
+        const links = [
+          p.shop_url ? `<a href="${esc(p.shop_url)}" target="_blank" rel="noopener">商品页 ↗</a>` : '',
+          p.source_url ? `<a href="${esc(p.source_url)}" target="_blank" rel="noopener">来源 ↗</a>` : '',
+        ].filter(Boolean).join('');
+        const cpn = (p.coupons || []).map(c =>
+          `<span class="cpn">${esc(c.name || '券')}${c.amount ? ' -¥' + c.amount : ''}</span>`).join(' ');
+        return `<div class="pt">
+          <div class="r1">
+            <span class="p">${money(p.low_price)}</span>
+            ${p.raw_price ? `<span class="raw">${money(p.raw_price)}</span>` : ''}
+            ${p.channel ? `<span class="badge" style="background:var(--stable)">${esc(p.channel)}</span>` : ''}
+            ${p.vendor ? `<span class="badge" style="background:var(--none)">${esc(p.vendor)}</span>` : ''}
+            <span class="shop">${esc(p.shop_name || '未知店铺')}${p.shop_platform ? ' · <span class="plat">' + esc(p.shop_platform) + '</span>' : ''}</span>
+            <span class="links">${links}</span>
+          </div>
+          <div class="r2">
+            ${p.condition ? `<span>成色 ${esc(p.condition)}</span>` : ''}
+            ${p.promo_event ? `<span>活动 ${esc(p.promo_event)}</span>` : ''}
+            <span>采集 ${esc(p.collected_on || '')}</span>
+            ${p.source_tier ? `<span>来源等级 ${esc(p.source_tier)}</span>` : ''}
+            ${cpn}
+          </div>
+        </div>`;
+      }).join('');
+    })
+    .catch(err => { body.innerHTML = `<div class="err">加载失败：${esc(err)}</div>`; });
+}
+function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+document.getElementById('modal').addEventListener('click',
+  ev => { if (ev.target.id === 'modal') closeModal(); });
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeModal(); });
+
+/* 全局 vendor 对比轨开关：同步到所有卡片 */
+document.getElementById('vtoggle').onchange = ev => {
+  document.querySelectorAll('.vsel input').forEach(cb => {
+    if (cb.checked !== ev.target.checked) {
+      cb.checked = ev.target.checked;
+      cb.dispatchEvent(new Event('change'));
+    }
+  });
+};
 
 function focusCard(id) {
   const card = document.getElementById('card-' + id);
@@ -228,9 +427,6 @@ function focusCard(id) {
   setTimeout(() => card.classList.remove('flash'), 1600);
 }
 
-fetch('/api/board').then(r => r.json()).then(render)
-  .catch(err => { document.getElementById('wall').innerHTML =
-    `<div class="err">加载失败：${err}（看板服务没起来？python -m tools.webapp）</div>`; });
 window.addEventListener('resize', () => charts.forEach(x => x.inst.resize()));
 </script>
 </body>

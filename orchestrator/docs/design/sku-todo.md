@@ -91,18 +91,23 @@ metrics/report 阈值/normalizers/**attr_value_maps**）。
   补丁 shard（tools 同款展开逻辑重建），要么等次日 cron 建新计划。
   2026-10-12 起的 cron 将全自动用到全部修复，无需人工干预
 
-### TODO-A Web MVP（✅ MVP 已落地，2026-10-11）
+### TODO-A Web MVP（✅ MVP 已落地，2026-10-11；UX 升级同日完成）
 - ✅ `tools/webapp.py`：FastAPI 只读看板（连接级 `PRAGMA query_only=ON`
   ——「Web 永不写库」是机制不是纪律）；启动 `python -m tools.webapp`
   （默认 127.0.0.1:8787，`--host 0.0.0.0` 局域网看）
 - ✅ `tools/webapp_static/index.html`：单品图墙（每 SKU 一张独立 ECharts
   趋势图 + 30期低点虚线 + label 红涨绿跌标色 + 样本不足 Q12 占位 +
   vendor 对比轨叠加 + 侧栏索引/点击定位 + 点卡片放大）
+- ✅ **UX 升级（10-11，R20/R21）**：大类 tab（🖥️硬件/🏠房产/💹金融，
+  新域自动出现）→ 二级分组 chips 带图标（硬件=显卡🎮/CPU⚙️/内存🧠/
+  固态硬盘💾，房产=城市）→ **数据点溯源弹窗**（点图上任一点看该日
+  全部原始报价：店铺/平台/商品页链接/来源链接/券后券前/采集时间）
 - ✅ 端点：/api/board（一屏全量）、/api/entities、/api/entity/{id}/series、
-  /api/snapshot、/api/recommend（t4 首跑后自动有数据）——指标语义复用
-  tools.trend_calc，与报告同源
-- 测试：tests/test_webapp.py 7 门禁（切轨/占位/只读铁律/最新产物扫描）
-- ⬜ 后续迭代：时间窗筛选、移动端适配（平板看）、快照对比视图
+  /api/entity/{id}/points（溯源）、/api/snapshot、/api/recommend——
+  指标语义复用 tools.trend_calc，与报告同源
+- 测试：tests/test_webapp.py 9 门禁（切轨/占位/只读铁律/最新产物扫描/
+  溯源字段/domain+group）
+- ⬜ 后续迭代：时间窗筛选、快照对比视图
 
 ### TODO-B 真实跑批验证
 - ~~hardware_daily cron 14:00 触发~~ → **已由本轮手动触发并跑通大半**

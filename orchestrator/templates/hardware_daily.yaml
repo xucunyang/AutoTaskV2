@@ -105,37 +105,20 @@ tasks:
     max_attempts: 3
     budget: {max_steps: 10, timeout_s: 600}
 
-  - id: t3_hw_report
-    name: 生成日报
-    complexity: complex
-    objective: >-
-      基于 artifacts/{date}/t1_gpu_ram.csv 与 artifacts/{date}/t2_hw_news.md 生成：
-      ① artifacts/{date}/hardware_summary.json——顶层**必须**有这 5 个字段，
-         缺一个或类型不对 = rule_2 schema_violation：
-         {"date": "YYYY-MM-DD", "data_period": "YYYY-MM-DD",
-          "rows": <整数行数>, "price_summary": <按部件类别的价格汇总>,
-          "key_findings": ["结论1", "结论2"]}
-         `rows` 是 t1_gpu_ram.csv 的**整数行数**（如 18）：不是数组、不放型号明细；
-         price_summary 按显卡/内存汇总均价与周环比；
-         key_findings 每条一句话，数字要对得上输入文件。字段含义见卡上的「JSON 形状」小节；
-      ② artifacts/{date}/hardware_report.md——先给结论与关键价格，再把
-         t2_hw_news.md 里的 mermaid 图块**原样贴进**对应小节
-         （正文至少 1 张图，验收按 mermaid 计数），最后注明数据期次与来源。
-         只贴表格不贴图 = FAIL。
-    # 上游两条互相独立（并行），汇总要等它们都完
-    depends_on: [t1_gpu_ram, t2_hw_news]
-    inputs: ["artifacts/{date}/t1_gpu_ram.csv", "artifacts/{date}/t2_hw_news.md"]
-    outputs: ["artifacts/{date}/hardware_summary.json", "artifacts/{date}/hardware_report.md"]
-    # 汇总类验收：不含 source_* 三条（本任务不检索、不产 sources.json）
-    acceptance_ref: schemas/acceptance_hardware_t3.yaml
-    needs_web: false
-    max_attempts: 3
-    budget: {max_steps: 8, timeout_s: 420}
+  # t3_hw_report 已注销（2026-10-11，用户裁决：「我不想看这个东西，
+  # 没有价值。我也不知道昨天的价格是多少，也看不出来趋势」）。
+  # 旧日报的两个职能都有更好的承载：
+  # - 价格汇总 → t4_hw_trend（每 SKU 趋势+推荐，数字逐字引用快照）
+  #   + Web 看板（每品一图，曲线回答涨跌）
+  # - 新闻摘要 → t2_hw_news.md 本身（且 t3 把不同渠道成色的 CSV 行
+  #   混算均价/周环比，口径错误，5090 报 46000/周环比+69% 即混轨产物）
+  # 历史任务定义见 git：本文件删除前的最后一个 commit；
+  # acceptance_hardware_t3.yaml 保留（未删除，仅供参考）。
 
   # t4（2026-10-10 P1 新增）：趋势与推荐——读 trend_snapshot.json 写
   # 趋势榜 + 对比段 + 推荐，模型只解读不改数（设计铁律）。depends_on
-  # t1b（必须有观测才能算快照），与 t2 并行（新闻互不依赖）。t3 引用
-  # t4 的产物，所以 t4 必须在 t3 之前完成。
+  # t1b（必须有观测才能算快照），与 t2 并行（新闻互不依赖）。
+  # t3 注销后本任务为链的终点（日报产物=hw_trend.md/hw_recommend.json）。
   - id: t4_hw_trend
     name: 趋势与推荐
     complexity: complex

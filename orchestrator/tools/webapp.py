@@ -99,6 +99,51 @@ def _entity_tracks(con: sqlite3.Connection, entity_id: int,
     return tracks
 
 
+def entity_points(con: sqlite3.Connection, entity_id: int,
+                  obs_date: str) -> dict:
+    """某实体某日的**全部原始观测**（数据点溯源，R21）。
+
+    曲线上的一个点是当日多笔报价的 min——点开要能看到每一笔：
+    来自哪家店（京东/拼多多百亿补贴…）、券后券前、采集时间与
+    来源链接。「不一定是真的」的解法是让每笔可追溯，不是让用户
+    信任一条聚合线。
+    """
+    import json as _json
+    rows = con.execute(
+        """
+        SELECT obs_date, low_price, raw_price, metric, attrs_json,
+               shop_name, shop_platform, shop_url, source_url,
+               source_tier, coupons, collected_on
+          FROM observation
+         WHERE entity_id = ? AND obs_date = ?
+         ORDER BY low_price
+        """, (entity_id, obs_date)).fetchall()
+    points = []
+    for r in rows:
+        try:
+            attrs = _json.loads(r["attrs_json"] or "{}")
+        except ValueError:
+            attrs = {}
+        try:
+            coupons = _json.loads(r["coupons"] or "[]")
+        except ValueError:
+            coupons = []
+        points.append({
+            "obs_date": r["obs_date"],
+            "low_price": r["low_price"], "raw_price": r["raw_price"],
+            "metric": r["metric"],
+            "vendor": attrs.get("vendor"), "channel": attrs.get("channel"),
+            "condition": attrs.get("condition"),
+            "promo_event": attrs.get("promo_event"),
+            "source": attrs.get("source"),
+            "shop_name": r["shop_name"], "shop_platform": r["shop_platform"],
+            "shop_url": r["shop_url"], "source_url": r["source_url"],
+            "source_tier": r["source_tier"], "coupons": coupons,
+            "collected_on": r["collected_on"],
+        })
+    return {"entity_id": entity_id, "date": obs_date, "points": points}
+
+
 def build_board(con: sqlite3.Connection, root: Path | None = None,
                 as_of: str | None = None) -> dict:
     """一屏全量数据（前端一次 fetch 全渲染）。"""
@@ -106,15 +151,24 @@ def build_board(con: sqlite3.Connection, root: Path | None = None,
     root = root or ROOT
     entities = []
     for row in con.execute(
-            "SELECT entity_id, display_name, identity_json, perf_anchor "
-            "FROM entity WHERE active=1 ORDER BY entity_id"):
+            "SELECT entity_id, domain, display_name, identity_json, "
+            "perf_anchor FROM entity WHERE active=1 ORDER BY entity_id"):
         eid = row["entity_id"]
         series = aggregate_series(con, eid, as_of)
         metrics = l0_metrics(series)          # <5 期 → None（Q12 占位）
+        try:
+            identity = json.loads(row["identity_json"] or "{}")
+        except ValueError:
+            identity = {}
+        # 二级划分（R20）：硬件按 category（显卡/CPU/内存…），
+        # 房产按 city，其余回落「其他」
         entities.append({
             "entity_id": eid,
+            "domain": row["domain"],
+            "group": (identity.get("category") or identity.get("city")
+                      or "其他"),
             "display_name": row["display_name"],
-            "identity": json.loads(row["identity_json"] or "{}"),
+            "identity": identity,
             "perf_anchor": row["perf_anchor"],
             "n_periods": len(series),
             "series": [[d, p] for d, p in series],
@@ -180,6 +234,20 @@ def api_series(entity_id: int, all_tracks: bool = False) -> dict:
         if all_tracks:
             out["tracks"] = _entity_tracks(con, entity_id, as_of)
         return out
+    finally:
+        con.close()
+
+
+@app.get("/api/entity/{entity_id}/points")
+def api_points(entity_id: int, date: str) -> dict:
+    """数据点溯源（R21）：某实体某日的全部原始观测（店铺/链接/券）。"""
+    import re
+
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+        raise HTTPException(422, "date 须为 YYYY-MM-DD")
+    con = ro_connect()
+    try:
+        return entity_points(con, entity_id, date)
     finally:
         con.close()
 
