@@ -1,19 +1,25 @@
-# opencode-cc-alert
+﻿# opencode-cc-alert
 
 Global OpenCode plugin that pushes **system-level provider errors** to your phone via Feishu + cc-connect, so you know the moment your agent hits:
 
 - Auth / API key problems (`401`, "please sign in", "invalid api key")
 - Permission denied (`403`, "access denied")
-- Rate limiting (`429`, "rate limit")
+- Rate limiting (`429`, "rate limit", "用量上限")
 - Geo-blocking (`451`, "not available in your country/region")
 - Quota / billing exhaustion ("quota", "insufficient credits", "billing required")
 - Model not found / deprecated / unsupported
 - Session / token expired
 
-It uses two hooks from the official `Plugin.define` API:
+It uses two hooks from the plugin context:
 
 - `ctx.session.hook("retry", ...)` - fires whenever the provider classifies a retryable failure
 - `ctx.event.subscribe(...)` - catches other `session.error` / `message.error` shaped events
+
+The plugin is a plain default export (`export default { id, setup }`) with **zero npm imports** - only node: builtins - so it loads even on machines where npm is unusable.
+
+## Layout
+
+Source of truth: `plugins-src/opencode-cc-alert/` in this repo (NOT under `.opencode/plugins/`, to avoid double-loading when working inside this repo - the global junction is the only load path).
 
 ## How it works
 
@@ -24,14 +30,11 @@ It uses two hooks from the official `Plugin.define` API:
 
 ## Install (this machine)
 
-The plugin lives in this repo under `.opencode/plugins/opencode-cc-alert/`. To activate it globally:
+The plugin lives in this repo under `plugins-src/opencode-cc-alert/`. To activate it globally:
 
 ```powershell
 # Create junction (no admin needed for directory junctions)
-if (Test-Path "$env:USERPROFILE\.config\opencode\plugins\opencode-cc-alert") {
-    Remove-Item "$env:USERPROFILE\.config\opencode\plugins\opencode-cc-alert" -Recurse -Force
-}
-cmd /c "mklink /J `"$env:USERPROFILE\.config\opencode\plugins\opencode-cc-alert`" `"$PWD\.opencode\plugins\opencode-cc-alert`""
+cmd /c "mklink /J `"$env:USERPROFILE\.config\opencode\plugins\opencode-cc-alert`" `"<repo>\plugins-src\opencode-cc-alert`""
 ```
 
 After restarting OpenCode, the plugin loads automatically. Look for `[cc-alert] enabled; ...` in the OpenCode log.
@@ -41,8 +44,8 @@ After restarting OpenCode, the plugin loads automatically. Look for `[cc-alert] 
 ```bash
 git clone <this-repo>
 cd <this-repo>
-powershell -Command "cmd /c 'mklink /J \"%USERPROFILE%\.config\opencode\plugins\opencode-cc-alert\" \"%CD%\.opencode\plugins\opencode-cc-alert\"'"
-# Install cc-push (or symlink the existing one):
+powershell -Command "cmd /c 'mklink /J \"%USERPROFILE%\.config\opencode\plugins\opencode-cc-alert\" \"%CD%\plugins-src\opencode-cc-alert\"'"
+# Install cc-push (or copy the existing one):
 cp C:\path\to\cc-push.ps1 ~/.local/bin/cc-push.ps1
 # Make sure cc-connect is running
 cc-connect
@@ -80,7 +83,7 @@ The plugin fires only on real provider errors. To verify the pipeline works with
 
 1. Temporarily edit `config.json` -> set `dedupMs: 0`
 2. Send a request with an invalid model name (e.g. `claude-nonexistent`)
-3. Check Feishu - you should see a `[MODEL] OpenCode 模型不可用` message
+3. Check Feishu - you should see a `[MODEL] OpenCode 妯″瀷涓嶅彲鐢╜ message
 
 ## Limitations
 
