@@ -67,9 +67,10 @@ entities:
   - identity: {category: 内存, series: DDR5 5600, spec: 16GB×2}
     display_name: DDR5 5600 16GB×2
   # ---- 固态硬盘 ----
-  - identity: {category: 固态硬盘, series: 致态 TiPlus7100, spec: 1TB}
-    display_name: 致态 TiPlus7100 1TB
-  - identity: {category: 固态硬盘, series: 三星 990 EVO, spec: 1TB}
+  # R28：spec 必须含接口/协议（PCIe/NVMe 影响价格，只写容量=比价失真）
+  - identity: {category: 固态硬盘, series: 致态 TiPlus7100, spec: 1TB PCIe4.0 NVMe}
+    display_name: 致态 TiPlus7100 1TB PCIe4.0
+  - identity: {category: 固态硬盘, series: 三星 990 EVO, spec: 1TB PCIe4.0 NVMe}
     display_name: 三星 990 EVO 1TB
   - identity: {category: 固态硬盘, series: WD SN770, spec: 1TB}
     display_name: WD SN770 1TB

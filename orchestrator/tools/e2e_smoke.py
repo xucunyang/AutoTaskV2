@@ -4,16 +4,17 @@
 
 做什么：
 1. 造真实形态的样本观测（5 期 × 3 基底实体 × 含双 vendor 触发 contrast）
-   写入 artifacts/{date}/t1_sku_observations.json；
-2. 走 tools.sku_ingest 入库（真实 data/sku.db，upsert 幂等——重跑安全）；
+   写入【沙箱】artifacts；
+2. 走 tools.sku_ingest 入库（【沙箱】db）；
 3. 走 tools.trend_calc 出快照；
 4. 走 tools.verify_snap.check 做一致性校验（与 t4 验收同一条代码路径）。
 
 全过打印各步统计；任何一步断言失败即非 0 退出。
 
-注意：样本观测会进入真实 data/sku.db（作为序列的早期期数，垫
-sufficiency）——这是有意为之（用户批准的首次入库），upsert 幂等
-保证重跑不产生重复点。
+⚠️ 沙箱（BUG-18 预防，2026-10-11）：本脚本默认**完全不碰**真实
+data/sku.db 与真实 artifacts/——早前版本把合成样本写进真实库，
+假历史价（2859 序列）混在真数据里直到用户裁决清理。沙箱 root =
+data/e2e_root/（独立 db + 独立 artifacts，幂等可重跑）。
 """
 from __future__ import annotations
 
@@ -58,15 +59,24 @@ def _make_sample_rows() -> list[dict]:
     return rows
 
 
-def run(date: str = "2026-10-08") -> int:
-    obs = ORCH / "artifacts" / date / "t1_sku_observations.json"
+def run(date: str = "2026-10-08",
+        root: Path | None = None) -> int:
+    """沙箱端到端：root 缺省为 data/e2e_root（独立 db + artifacts）。"""
+    root = root or (ORCH / "data" / "e2e_root")
+    (root / "data").mkdir(parents=True, exist_ok=True)
+
+    obs = root / "artifacts" / date / "t1_sku_observations.json"
     obs.parent.mkdir(parents=True, exist_ok=True)
     obs.write_text(json.dumps(_make_sample_rows(), ensure_ascii=False,
                               indent=1), encoding="utf-8")
     print(f"[1/3] observations written: {obs}")
 
     contract = Contract.load(ORCH, "hardware")
-    con = connect(ORCH / "data" / "sku.db")
+    con = connect(root / "data" / "sku.db")
+    from tools.sku_anchor import apply_anchors
+    from tools.sku_db import seed_entities
+    seed_entities(con, ORCH / "config" / "contracts" / "hardware_entities.yaml")
+    apply_anchors(con)          # 沙箱实体也要打基底锚点（compute_snapshot 只算 1.0）
     try:
         stats = ingest_file(con, obs, contract, date, dry_run=False)
         con.commit()
@@ -76,12 +86,12 @@ def run(date: str = "2026-10-08") -> int:
     assert stats["ok"] + stats["updated"] >= 10, f"入库行数不足: {stats}"
 
     from tools.trend_calc import compute_snapshot
-    con = connect(ORCH / "data" / "sku.db")
+    con = connect(root / "data" / "sku.db")
     try:
         snap = compute_snapshot(con, date)
     finally:
         con.close()
-    snap_path = ORCH / "artifacts" / date / "trend_snapshot.json"
+    snap_path = root / "artifacts" / date / "trend_snapshot.json"
     snap_path.write_text(json.dumps(snap, ensure_ascii=False, indent=2),
                          encoding="utf-8")
     filled = [e for e in snap["entities"] if e.get("metrics")]
@@ -91,7 +101,7 @@ def run(date: str = "2026-10-08") -> int:
     sample = filled[0]
     print(f"  sample: {sample['display_name']} -> {sample['metrics']}")
 
-    ok, detail = check(ORCH)
+    ok, detail = check(root)
     print(f"[verify_snap] {'PASS' if ok else 'FAIL'} {detail}")
     assert ok, detail
     print("E2E SMOKE PASS")
