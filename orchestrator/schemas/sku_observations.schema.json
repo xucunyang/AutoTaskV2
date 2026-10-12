@@ -25,7 +25,7 @@
         "additionalProperties": true,
         "properties": {
           "condition": {"type": "string", "description": "全新/二手/官翻/展示机——写自然说法即可，入库器按契约别名映射归一"},
-          "channel": {"type": "string", "description": "自营/第三方/国行单卡/百亿补贴…——写自然说法即可，入库器按契约别名映射归一（京东自营→自营等）"},
+          "channel": {"type": "string", "description": "渠道类型：自营/第三方/国行单卡/百亿补贴——写自然说法即可，入库器按契约别名映射归一；**禁止填平台名（京东/天猫）或店铺名**，那不是渠道"},
           "source": {"type": "string", "enum": ["自采", "manmanmai", "smzdm", "gwdang", "xianyi_app", "beike_app", "jd_app"]},
           "vendor": {"type": "string"},
           "grade": {"type": "string"},

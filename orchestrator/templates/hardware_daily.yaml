@@ -22,9 +22,7 @@ tasks:
       上期价格(CNY)、涨跌幅(%)、价格日期(YYYY-MM-DD)。
       每个数字必须能在你引用的原文里逐字找到；查不到的留空写"未查到"，
       **不许估算或凭记忆补**——显卡内存价格一天一变，凭记忆必错，
-      而且错得从表面看不出来。同时交齐 sources.json / claims.json，
-      优先引厂商官网、自营商品页与主流硬件媒体（A 类来源占比 ≥15%，
-      达不到会卡验收——哪怕凑数也要有一两个官方页）。
+      而且错得从表面看不出来。同时交齐 sources.json / claims.json。
       **shop_url 必须是商品详情页**（item.jd.com / 天猫 item 页等），
       用户要能点开链接看到同款同价；中关村文章、比价站转述页、新闻
       页一律**不得**作为 shop_url（R24：点了找不到同款=数据不可信），
@@ -77,38 +75,14 @@ tasks:
     max_attempts: 3
     budget: {max_steps: 4, timeout_s: 300}
 
-  - id: t2_hw_news
-    name: 硬件新闻
-    complexity: complex
-    key_questions:
-      - "近期 CPU / 显卡 / 内存存储 / 整机有哪些新品发布或价格调整？"
-      - "上游产能、供应链、出口管制有什么影响硬件价格的动向？"
-      - "内存与显卡的供需关系发生了什么变化？"
-      - "哪些消息会直接影响当期装机成本？"
-    objective: >-
-      检索并汇总当期的硬件新闻：CPU、显卡、内存与存储、整机与外设，
-      重点是**会影响价格与装机成本**的消息（新品、调价、产能、供应链、
-      政策）。写入 artifacts/{date}/t2_hw_news.md，正文至少 800 字节、
-      **至少 1 张 mermaid 图**（价格走势或型号间价格对比，数据逐字取自
-      来源原文），每条新闻标注来源与发布时间，查不到发布时间的写
-      "未查到"而不是估。
-      **来源时效是硬验收**：sources.json 里每条被引用的来源，其
-      published_at 必须落在卡尾「时效性要求」的窗口内（该窗口前的历史
-      消息只允许在正文作背景一笔带过，**不得作为 source 引用**——
-      验收按窗口逐条核对，超期来源太多会整单 FAIL）。检索时优先取
-      窗口内的最新报道；拿不准发布时间的宁可少引也不要超期。
-    depends_on: []
-    outputs: ["artifacts/{date}/t2_hw_news.md"]
-    # hardware 不套 finance/政策类口径：A 类来源在硬件消费品领域**不存在**
-    # （NVIDIA/AMD/Intel 官方不是新闻源，B 级主流媒体 Tom's Hardware/AnandTech
-    # /Reuters Tech 才是）。改用专门的 acceptance_hardware_t2.yaml，去掉
-    # source_quality（仍留 traceable + freshness + 正文够长够图）。
-    # freshness 60 天（不是默认 180）：硬件"产品发布→半年后"会跨过窗口。
-    acceptance_ref: schemas/acceptance_hardware_t2.yaml
-    needs_web: true
-    freshness: recent
-    max_attempts: 3
-    budget: {max_steps: 10, timeout_s: 600}
+  # t2_hw_news 已注销（2026-10-12，用户裁决：「这种报告形式就不需要了…
+  # 都是一些旧内容」「没有必要的话都可以砍掉了。我们是用新的这种去抓
+  # 每一个 SKU，用 DB 去存储，用 Web 去展示」）。
+  # 新闻线的两个历史职能均已消失或转移：
+  # - 给 t3 日报当素材 → t3 已注销（10-11）
+  # - 给 L2 信号当原料 → L2 落地时按需采集（不日常跑），见需求 R11
+  # 链条定稿：t1（采集）→ t1b（入库+快照）→ t4（趋势+推荐）。
+  # 完成时 Windows 通知照常推送（用户确认执行时刻 OK）。
 
   # t3_hw_report 已注销（2026-10-11，用户裁决：「我不想看这个东西，
   # 没有价值。我也不知道昨天的价格是多少，也看不出来趋势」）。
