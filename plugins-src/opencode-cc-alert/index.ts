@@ -44,6 +44,55 @@ function dirnameSafe(p: string): string {
   return i > 0 ? p.slice(0, i) : p
 }
 
+const flog = (line: string) => {
+  try {
+    appendFileSync(join(tmpdir(), "opencode-cc-alert.log"), `${new Date().toISOString()} ${line}\n`)
+  } catch {}
+}
+
+// Presence gate: same convention as android-phone SKILL.md - if the user's
+// keyboard/mouse idle time is below the threshold they are at the computer
+// and will see the error in the TUI, so a Feishu push is noise.
+function getIdleSeconds(cfg: any): Promise<number | null> {
+  return new Promise((resolve) => {
+    try {
+      const script = cfg.userIdlePath || join(homedir(), ".local", "bin", "user-idle.ps1")
+      if (!existsSync(script)) return resolve(null)
+      const child = spawn(
+        "powershell.exe",
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script],
+        { windowsHide: true },
+      )
+      let out = ""
+      child.stdout?.on("data", (d: Buffer) => (out += String(d)))
+      child.on("error", () => resolve(null))
+      child.on("exit", () => {
+        const n = parseInt(String(out).trim(), 10)
+        resolve(Number.isFinite(n) ? n : null)
+      })
+      const t = setTimeout(() => {
+        try { child.kill() } catch {}
+        resolve(null)
+      }, 5000)
+      child.on("exit", () => clearTimeout(t))
+    } catch {
+      resolve(null)
+    }
+  })
+}
+
+async function pushIfAway(message: string, cfg: any, src: string) {
+  if (cfg.idleCheck === false) return push(message, cfg)
+  const threshold = Number(cfg.idleThresholdSec ?? 180)
+  const idle = await getIdleSeconds(cfg)
+  if (idle !== null && idle < threshold) {
+    flog(`skip push (${src}): user at computer (idle ${idle}s < ${threshold}s)`)
+    return
+  }
+  flog(`push (${src}): user away (idle=${idle ?? "n/a"}s >= ${threshold}s)`)
+  push(message, cfg)
+}
+
 function push(message: string, cfg: any) {
   try {
     if (!cfg.sessionKey) {
@@ -108,12 +157,7 @@ const plugin: any = {
     }
 
     const controllers: Array<AbortController> = []
-    const flog = (line: string) => {
-      try {
-        appendFileSync(join(tmpdir(), "opencode-cc-alert.log"), `${new Date().toISOString()} ${line}\n`)
-      } catch {}
-    }
-    flog(`plugin setup; hooks=` + [typeof ctx?.session?.hook === "function" ? "session.hook" : "", typeof ctx?.event?.subscribe === "function" ? "event.subscribe" : ""].filter(Boolean).join("+"))
+    flog(`plugin setup; hooks=` + [typeof ctx?.session?.hook === "function" ? "session.hook" : "", typeof ctx?.event?.subscribe === "function" ? "event.subscribe" : ""].filter(Boolean).join("+") + `; idleCheck=${cfg.idleCheck !== false} threshold=${cfg.idleThresholdSec ?? 180}s`)
 
     // 1) http.response hook - THE primary detector.
     // Sees every provider HTTP response. Catches terminal errors that never
@@ -134,14 +178,14 @@ const plugin: any = {
             if (!hit) return
             const sig = `http:${hit.id}:${status}:${body.slice(0, 60)}`
             if (!shouldNotify(sig)) return
-            flog(`push http.response status=${status} pattern=${hit.id}`)
-            push(
+            void pushIfAway(
               format(hit, `HTTP ${status}`, {
                 sessionID: event?.sessionID,
                 model: event?.model,
                 text: body || "(no body)",
               }),
               cfg,
+              `http ${status}`,
             )
           } catch (e) {
             flog("http.response hook error: " + String(e))
@@ -158,8 +202,7 @@ const plugin: any = {
             if (!hit) return
             const sig = `retry:${hit.id}:${err.status ?? ""}:${msg.slice(0, 80)}`
             if (!shouldNotify(sig)) return
-            flog(`push retry pattern=${hit.id}`)
-            push(
+            void pushIfAway(
               format(hit, "provider.retry", {
                 sessionID: event?.sessionID,
                 model: event?.model,
@@ -167,6 +210,7 @@ const plugin: any = {
                 text: msg,
               }),
               cfg,
+              "retry",
             )
           } catch (e) {
             flog("retry hook error: " + String(e))
@@ -196,8 +240,7 @@ const plugin: any = {
               if (!hit) continue
               const sig = `ev:${hit.id}:${t}:${text.slice(0, 60)}`
               if (!shouldNotify(sig)) continue
-              flog(`push event ${t} pattern=${hit.id}`)
-              push(format(hit, t, { sessionID: (props as any)?.sessionID, text }), cfg)
+              void pushIfAway(format(hit, t, { sessionID: (props as any)?.sessionID, text }), cfg, t)
             }
           } catch (e) {
             flog("event stream ended: " + String(e))
