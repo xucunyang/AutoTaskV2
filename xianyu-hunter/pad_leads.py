@@ -98,9 +98,11 @@ def classify(desc):
             mdm = True
     if mdm:
         flags.append('MDM!')
+    # 企业机 = 大概率 MDM/配置锁（公司批量配发机），需要问卖家确认
+    if u'\u4f01\u4e1a\u673a' in desc or u'\u4f01\u4e1a\u7248' in desc:
+        flags.append('CORP?')
     if u'\u65e0\u5934' in desc:
         flags.append('HEADLESS!')
-    # Hard-redline: 引流款（极速发/特价几台/限量/抢购）无论贩子个人都出局。
     teaser = any(k in desc for k in (
         u'\u6781\u901f\u53d1', u'\u7279\u4ef7\u51e0\u53f0', u'\u7279\u4ef7\u53d1\u8d27',
         u'\u9650\u91cf', u'\u62a2\u62cd', u'\u62a2\u8d2d', u'\u8d85\u4f4e\u4ef7',
@@ -110,7 +112,7 @@ def classify(desc):
     if teaser:
         flags.append('TEASER!')
     if bulk:
-        flags.append('BULK?')   # soft -- per 10-12 user auth, ask first
+        flags.append('BULK?')
     if shop:
         flags.append('SHOP?')
     if '64g' in low:
