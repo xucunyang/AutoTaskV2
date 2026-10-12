@@ -96,3 +96,98 @@
 - 10-11 13:48:05 PAD R7: tapped search input (946,119)
 - 10-11 13:48:24 PAD R7: filter personal-idle tapped
 - 10-11 13:49:00 PAD R7: DONE pad7_1011_1343
+- 10-11 14:32:29 R13: LEASE_OK
+- 10-11 14:33:38 R13: DONE round13_1011_1432
+- 10-11 14:34:05 PAD R8: LEASE_OK
+- 10-11 14:35:01 PAD R8: KEYWORD 1/4: m1max 64g
+- 10-11 14:35:07 PAD R8: tapped home search bar (1000,229)
+- 10-11 14:35:14 PAD R8: tapped search input (946,119)
+- 10-11 14:35:34 PAD R8: filter personal-idle tapped
+- 10-11 14:36:09 PAD R8: KEYWORD 2/4: m2max
+- 10-11 14:36:13 PAD R8: tapped home search bar (1000,229)
+- 10-11 14:36:20 PAD R8: tapped search input (946,119)
+- 10-11 14:36:40 PAD R8: filter personal-idle tapped
+- 10-11 14:37:17 PAD R8: KEYWORD 3/4: macbook pro 64g
+- 10-11 14:37:22 PAD R8: tapped home search bar (1000,229)
+- 10-11 14:37:30 PAD R8: tapped search input (946,119)
+- 10-11 14:37:49 PAD R8: filter personal-idle tapped
+- 10-11 14:38:24 PAD R8: KEYWORD 4/4: m3pro 36
+- 10-11 14:38:28 PAD R8: tapped home search bar (1000,229)
+- 10-11 14:38:36 PAD R8: tapped search input (946,119)
+- 10-11 14:38:55 PAD R8: filter personal-idle tapped
+- 10-11 14:39:31 PAD R8: DONE pad8_1011_1434
+- 10-11 17:18:02 PAD R9: LEASE_OK
+- 10-11 17:18:53 PAD R9: KEYWORD 1/4: m1max 64g
+- 10-11 17:18:57 PAD R9: tapped home search bar (1000,229)
+- 10-11 17:19:04 PAD R9: tapped search input (946,119)
+- 10-11 17:19:23 PAD R9: filter personal-idle tapped
+- 10-11 17:19:57 PAD R9: KEYWORD 2/4: m2max 64g
+- 10-11 17:20:01 PAD R9: tapped home search bar (1000,229)
+- 10-11 17:20:09 PAD R9: tapped search input (946,119)
+- 10-11 17:20:27 PAD R9: filter personal-idle tapped
+- 10-11 17:21:03 PAD R9: KEYWORD 3/4: 64g m1
+- 10-11 17:21:06 PAD R9: tapped home search bar (1000,229)
+- 10-11 17:21:13 PAD R9: tapped search input (946,119)
+- 10-11 17:21:32 PAD R9: filter personal-idle tapped
+- 10-11 17:22:06 PAD R9: KEYWORD 4/4: macbook pro 64g
+- 10-11 17:22:10 PAD R9: tapped home search bar (1000,229)
+- 10-11 17:22:17 PAD R9: tapped search input (946,119)
+- 10-11 17:22:36 PAD R9: filter personal-idle tapped
+- 10-11 17:23:11 PAD R9: DONE pad9_1011_1718
+- 10-11 17:25:14 PAD R10: LEASE_OK
+- 10-11 17:26:02 PAD R10: KEYWORD 1/2: m1max 64g
+- 10-11 17:26:06 PAD R10: tapped home search bar (1000,229)
+- 10-11 17:26:13 PAD R10: tapped search input (946,119)
+- 10-11 17:26:33 PAD R10: filter personal-idle tapped
+- 10-11 17:27:06 PAD R10: KEYWORD 2/2: macbook pro 64g
+- 10-11 17:27:10 PAD R10: tapped home search bar (1000,229)
+- 10-11 17:27:17 PAD R10: tapped search input (946,119)
+- 10-11 17:27:36 PAD R10: filter personal-idle tapped
+- 10-11 17:28:11 PAD R10: DONE pad10_1011_1725
+- 10-11 17:44:00 PAD R11: LEASE_OK
+- 10-11 17:44:47 PAD R11: KEYWORD 1/2: m1max 64g
+- 10-11 17:44:51 PAD R11: tapped home search bar (1000,229)
+- 10-11 17:44:58 PAD R11: tapped search input (946,119)
+- 10-11 17:45:17 PAD R11: filter personal-idle tapped
+- 10-11 17:45:51 PAD R11: KEYWORD 2/2: macbook pro 64g
+- 10-11 17:45:55 PAD R11: tapped home search bar (1000,229)
+- 10-11 17:46:02 PAD R11: tapped search input (946,119)
+- 10-11 17:46:20 PAD R11: filter personal-idle tapped
+- 10-11 17:46:54 PAD R11: DONE pad11_1011_1744
+- 10-11 18:17:20 R14: LEASE_OK
+- 10-11 18:18:30 R14: DONE round14_1011_1817
+- 10-11 18:27:54 PAD R12: LEASE_OK
+- 10-11 18:28:44 PAD R12: KEYWORD 1/4: mac studio 64
+- 10-11 18:28:48 PAD R12: tapped home search bar (1000,229)
+- 10-11 18:28:56 PAD R12: tapped search input (946,119)
+- 10-11 18:29:15 PAD R12: filter personal-idle tapped
+- 10-11 18:29:37 PAD R13: LEASE_OK
+- 10-11 18:29:51 PAD R12: KEYWORD 2/4: mac mini m2 pro
+- 10-11 18:29:55 PAD R12: tapped home search bar (1000,229)
+- 10-11 18:30:03 PAD R12: WARN: search input not found for mac mini m2 pro
+- 10-11 18:30:18 PAD R12: filter personal-idle tapped
+- 10-11 18:30:23 PAD R13: KEYWORD 1/4: mac studio
+- 10-11 18:30:27 PAD R13: tapped home search bar (1000,229)
+- 10-11 18:30:36 PAD R13: tapped search input (946,119)
+- 10-11 18:30:52 PAD R12: KEYWORD 3/4: mac mini 64g
+- 10-11 18:30:53 PAD R13: filter personal-idle tapped
+- 10-11 18:30:57 PAD R12: tapped home search bar (1000,229)
+- 10-11 18:31:06 PAD R12: tapped search input (946,119)
+- 10-11 18:31:30 PAD R12: filter personal-idle tapped
+- 10-11 18:31:33 PAD R13: KEYWORD 2/4: mac studio m1 max
+- 10-11 18:31:36 PAD R13: tapped home search bar (1000,229)
+- 10-11 18:31:45 PAD R13: tapped search input (946,119)
+- 10-11 18:32:01 PAD R12: KEYWORD 4/4: m2max 32
+- 10-11 18:32:06 PAD R13: filter personal-idle tapped
+- 10-11 18:32:06 PAD R12: tapped home search bar (1000,229)
+- 10-11 18:32:15 PAD R12: tapped search input (946,119)
+- 10-11 18:32:31 PAD R12: filter personal-idle tapped
+- 10-11 18:34:56 PAD R13: DONE pad13_1011_1829
+- 10-12 用户策略放宽：贩子批量货源可入池，但需排除"导流款"（极速发/特价几台/限量/抢购），询「现货/价格是否固定」
+- 10-12 pad_leads.py 升级：TEASER! 硬出局（引流款），BULK?/SHOP? 软标记（贩子批量，可询后判断）
+- 10-12 用户反馈：token 紧，OCR 优先读图（ASCII/数字 90% 准），视觉兜底 CJK。SKILL.md 已同步
+- 10-12 OCR 修复尝试：PowerShell 5.1 GBK 控制台 + System.IO.File.WriteAllText 异常链，已回滚到 backup（OCR 仍能跑，ASCII 输出正常）
+- 10-12 R13 重现 16寸 M1 Max 64+1TB 贩子批量货源 ¥10,088/10,238/10,388（描述含"诚招零售代理"）→ R14 排程前实时复搜已下架
+- 10-12 R15 排程（荣耀 m1max64 轮询，间隔 20 分钟，~12:25 采集）
+- 10-12 🚩 红旗：其他会话（sku-multichannel）短暂占用 K60（红米私人机）17 分钟用于"测试 App"，已超时释放；未发现数据破坏，但触发了 SKILL 红线
+- 10-11 18:46:59 PAD R14: LEASE_BUSY: BUSY 192.168.31.208:5555 held by [sku-multichannel] task=京东App批量实采显卡（50系核心型号） remain=1296s (skip)
