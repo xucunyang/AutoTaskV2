@@ -482,7 +482,18 @@ class FallbackProvider(BaseProvider):
             except Exception as e:      # noqa: BLE001
                 last = e
                 is_last = i == len(self.chain) - 1
-                if is_last or not is_limit_error(e):
+                limit = is_limit_error(e)
+                # 留痕到 stderr：fallback 是不是真触发、降级到哪一跳，
+                # 死信复盘时不用猜。
+                try:
+                    import sys as _sys
+                    print(f"[fallback] try={getattr(p,'name','?')} "
+                          f"status={getattr(e,'status',None)} "
+                          f"limit={limit} err={type(e).__name__}:{str(e)[:140]}",
+                          file=_sys.stderr)
+                except Exception:
+                    pass
+                if is_last or not limit:
                     # 最后一跳或不可降级的错误：原样抛出，让上层按
                     # 既有语义处理（RETRY/FAILED/死信），不做额外包装。
                     self.attempts.append({"chain": self._names(),
@@ -498,6 +509,15 @@ class FallbackProvider(BaseProvider):
             self.attempts.append({"chain": self._names(), "tried": tried,
                                   "served_by": getattr(p, "name", "?"),
                                   "reason": "fallback" if i else "primary"})
+            # 成功也留痕：用了哪一跳（特别是降级时——产物是低档模型写的）
+            try:
+                import sys as _sys
+                print(f"[fallback] served_by={getattr(p,'name','?')} "
+                      f"hop={i+1}/{len(self.chain)} reason="
+                      f"{'fallback' if i else 'primary'}",
+                      file=_sys.stderr)
+            except Exception:
+                pass
             out["served_by"] = getattr(p, "name", "?")
             if i:
                 # 记清降级事实：产物是低档模型写的
