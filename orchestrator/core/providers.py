@@ -93,6 +93,36 @@ def is_limit_error(err: Exception) -> bool:
     return False
 
 
+def _try_log_attempt(chain: list, provider_name: str, hop: int,
+                      event: str, **fields) -> None:
+    """FallbackProvider 的每跳（try / served）双写：stderr + JSONL。
+
+    2026-10-13 死信复盘：b01bc20 只写 stderr，但 run_daily 的 log 文件
+    不接 executor 的 stderr，审计时 0 命中——兑现不了"看 log 就知
+    fallback 行为"的承诺。这里双写，stderr 给现场 tail，state/
+    provider_attempts.jsonl 给事后 grep/查表（不依赖 run_daily 的
+    捕获配置）。
+    """
+    import json as _json
+    import sys as _sys
+    rec = {"ts": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+           "event": event, "chain": list(chain), "hop": hop,
+           "provider": provider_name, **fields}
+    line = _json.dumps(rec, ensure_ascii=False)
+    try:
+        print(f"[fallback] {line}", file=_sys.stderr)
+    except Exception:
+        pass
+    try:
+        # 相对 core/providers.py → orchestrator/state/...
+        p = Path(__file__).resolve().parent.parent / "state" / "provider_attempts.jsonl"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass  # 日志失败不影响主流程
+
+
 def _is_cold_start(data: dict) -> bool:
     """ollama 冷启动特征：done_reason="load" 且没算过 prompt。
 
@@ -483,16 +513,15 @@ class FallbackProvider(BaseProvider):
                 last = e
                 is_last = i == len(self.chain) - 1
                 limit = is_limit_error(e)
-                # 留痕到 stderr：fallback 是不是真触发、降级到哪一跳，
-                # 死信复盘时不用猜。
-                try:
-                    import sys as _sys
-                    print(f"[fallback] try={getattr(p,'name','?')} "
-                          f"status={getattr(e,'status',None)} "
-                          f"limit={limit} err={type(e).__name__}:{str(e)[:140]}",
-                          file=_sys.stderr)
-                except Exception:
-                    pass
+                # 留痕到 stderr（live tail）**和** state/provider_attempts.jsonl
+                # （持久化，供死信复盘）。run_daily 的 log 不接 executor
+                # stderr，b01bc20 只写 stderr 兑现不了承诺——10-13 死信时
+                # 审计发现 stderr 0 命中。这次双写：stderr 给现场，
+                # JSONL 给事后 grep/查表。
+                _try_log_attempt(self._names(), getattr(p, "name", "?"), i,
+                                 "try", status=getattr(e, "status", None),
+                                 limit=limit, err=type(e).__name__,
+                                 msg=str(e)[:200])
                 if is_last or not limit:
                     # 最后一跳或不可降级的错误：原样抛出，让上层按
                     # 既有语义处理（RETRY/FAILED/死信），不做额外包装。
@@ -510,14 +539,9 @@ class FallbackProvider(BaseProvider):
                                   "served_by": getattr(p, "name", "?"),
                                   "reason": "fallback" if i else "primary"})
             # 成功也留痕：用了哪一跳（特别是降级时——产物是低档模型写的）
-            try:
-                import sys as _sys
-                print(f"[fallback] served_by={getattr(p,'name','?')} "
-                      f"hop={i+1}/{len(self.chain)} reason="
-                      f"{'fallback' if i else 'primary'}",
-                      file=_sys.stderr)
-            except Exception:
-                pass
+            _try_log_attempt(self._names(), getattr(p, "name", "?"), i + 1,
+                             "served", served_by=getattr(p, "name", "?"),
+                             reason="fallback" if i else "primary")
             out["served_by"] = getattr(p, "name", "?")
             if i:
                 # 记清降级事实：产物是低档模型写的
