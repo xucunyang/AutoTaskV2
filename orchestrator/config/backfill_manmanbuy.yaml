@@ -1,14 +1,24 @@
 # 慢慢买回填 listing 注册表（R27）。
 #
-# 定位：**人工甄别一次，程序永久复用**——URL 发现（DDG 搜索）与
-# spName 规格甄别是唯一需要人的环节（AI 只辅助生成候选，拍板在人），
-# 之后 fetch→转换→入库全程零模型参与。
+# 品类采集规则 v1（2026-10-14 用户定稿：searchbox + 双锚）：
+# * 每实体挂两个锚——**销量锚**（search_top 规格匹配里销量第一：
+#   市场主流成交价）+ **价格锚**（compare_price 价格升序第一个正规
+#   链接：R29 最低价地板）；双锚必须 siteid∈{1京东,10天猫}、URL 可
+#   解析成 item.jd.com 详情页、trend 试采有点数；
+# * 发现入口两个：①看板顶部 searchbox（/api/mmb/search，勾选即写
+#   data/manmanbuy_proposals.yaml 提案，人工核定 channel 后誊入本
+#   文件）；②`python -m tools.manmanbuy_backfill discover --series X
+#   --spec Y`（候选表落 artifacts/）；
+# * 防单 listing 接盘溢价：同实体多 listing 时 trend_calc 的
+#   manmanmai 轨 aggregate_rule=min 自动取当日最低（16G 魔鹰 6941 vs
+#   小雕 4999 的教训）；建议销量锚之外再留一个入门款对照；
+# * listing 失效（下架/改规格）在行上补 retired: 日期，不要删行。
 #
 # 甄别纪律（2026-10-14 首批实测教训）：
-# * spName 必须含完整规格（8G/16G），DDG 候选会混入错误规格
+# * spName 必须含完整规格（8G/16G），搜索候选会混入错误规格
 #   （RTX 5060 混进 5060 Ti 桶、16G 混进 8G 桶）——对不上就丢；
 # * channel 是**这个 listing 的渠道档位**（京东 POP 三方店填 第三方，
-#   自营/官旗填 自营），人工核定一次；
+#   自营/官旗填 自营），人工核定一次。
 # * 每实体建议 2-3 个 listing（走量款+入门款）：trend_calc 的
 #   manmanmai 轨 aggregate_rule=min 自动取多 listing 当日最低，
 #   单 listing 被第三方接盘抬价时天然对冲（16G 魔鹰 6941 vs

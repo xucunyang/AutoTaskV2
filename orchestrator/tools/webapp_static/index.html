@@ -111,6 +111,41 @@
                  border-radius: 6px; }
   .pt .img a { font-size: 12px; color: var(--accent); margin-left: 8px;
                text-decoration: none; }
+  /* 慢慢买 searchbox（品类采集规则 v1：可查询、即时可调） */
+  .mmb-box { display: flex; gap: 6px; align-items: center; }
+  .mmb-box input { width: 240px; padding: 6px 10px; border: 1px solid var(--line);
+                   border-radius: 8px; font-size: 13px; }
+  .mmb-box input:focus { outline: none; border-color: var(--accent); }
+  .mmb-box button { padding: 6px 12px; border: 1px solid var(--accent);
+                    background: var(--accent); color: #fff; border-radius: 8px;
+                    cursor: pointer; font-size: 13px; }
+  .mmb-panel { position: fixed; top: 92px; right: 16px; z-index: 40;
+               width: min(780px, 94vw); max-height: 70vh; overflow-y: auto;
+               background: var(--card); border: 1px solid var(--line);
+               border-radius: 12px; box-shadow: 0 14px 40px rgba(0,0,0,.16);
+               padding: 10px 14px; display: none; }
+  .mmb-panel.show { display: block; }
+  .mmb-panel .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+                    border-bottom: 1px solid var(--line); padding-bottom: 8px;
+                    margin-bottom: 6px; font-size: 12px; color: var(--sub); }
+  .mmb-panel select { padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; }
+  .mmb-panel .close { margin-left: auto; border: 1px solid var(--line); background: #fff;
+                      border-radius: 6px; padding: 2px 10px; cursor: pointer; }
+  .mmb-row { display: flex; align-items: baseline; gap: 10px; padding: 7px 2px;
+             border-bottom: 1px dashed var(--line); font-size: 13px; }
+  .mmb-row .p { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 76px; }
+  .mmb-row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                white-space: nowrap; }
+  .mmb-row .m { color: var(--sub); font-size: 12px; flex: none; }
+  .mmb-row .jd { color: var(--fast-drop); font-size: 11px;
+                 border: 1px solid var(--fast-drop); border-radius: 4px;
+                 padding: 0 4px; flex: none; }
+  .mmb-row button { border: 1px solid var(--line); background: #fff; border-radius: 6px;
+                    padding: 2px 8px; font-size: 12px; cursor: pointer; flex: none; }
+  .mmb-row button:hover { border-color: var(--accent); color: var(--accent); }
+  .mmb-row button.anchor-sales { border-color: #b0541f; color: #b0541f; }
+  .mmb-row button.anchor-price { border-color: var(--fast-drop); color: var(--fast-drop); }
+  .mmb-empty { color: var(--sub); padding: 14px 4px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -119,11 +154,37 @@
     <h1>SKU 趋势看板</h1>
     <div class="tabs" id="dom-tabs"></div>
     <span class="spacer"></span>
+    <div class="mmb-box">
+      <input id="mmb-q" placeholder="慢慢买搜全网：显卡 RTX 5070 12G">
+      <button id="mmb-go">搜</button>
+    </div>
     <span class="meta" id="meta"></span>
     <label><input type="checkbox" id="vtoggle"> vendor 对比轨</label>
   </div>
   <div class="chips" id="chips"></div>
 </header>
+<div class="mmb-panel" id="mmb-panel">
+  <div class="bar">
+    <b id="mmb-title" style="font-size:13.5px;color:var(--txt)">搜索结果</b>
+    <span>锚实体 →</span>
+    <select id="mmb-entity"></select>
+    <span>销量锚=市场主流成交价 · 价格锚=全网最低地板（仅京东/天猫正规链接）。提案进 data/manmanbuy_proposals.yaml，人工核定 channel 后誊入注册表</span>
+    <button class="close" onclick="mmbClose()">收起</button>
+  </div>
+  <div id="mmb-rows"></div>
+</div>
+<div class="modal hidden" id="mmb-modal">
+  <div class="modal-box" style="width:min(880px,96vw)">
+    <div class="modal-hd">
+      <span class="t" id="mmb-trend-title">历史曲线预览</span>
+      <button class="modal-x" onclick="mmbModalClose()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="mmb-trend-meta" style="color:var(--sub);font-size:12.5px;margin-bottom:4px"></div>
+      <div id="mmb-trend-chart" style="width:100%;height:420px"></div>
+    </div>
+  </div>
+</div>
 <div class="wrap">
   <nav id="nav"></nav>
   <main id="wall"></main>
@@ -491,6 +552,105 @@ function focusCard(id) {
 }
 
 window.addEventListener('resize', () => charts.forEach(x => x.inst.resize()));
+
+// ---------- 慢慢买 searchbox（品类采集规则 v1：可查询、即时可调） ----------
+let mmbEntities = [];
+let mmbChart = null;
+
+(function initMmb() {
+  const sel = document.getElementById('mmb-entity');
+  fetch('/api/entities').then(r => r.json()).then(d => {
+    mmbEntities = (d.entities || []).filter(e => e.domain === 'hardware');
+    sel.innerHTML = '<option value="">— 选实体 —</option>' +
+      mmbEntities.map(e => `<option value="${e.entity_id}">${e.display_name}</option>`).join('');
+  }).catch(() => {});
+  document.getElementById('mmb-q').addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') mmbSearch();
+  });
+  document.getElementById('mmb-go').addEventListener('click', mmbSearch);
+})();
+
+function mmbClose() { document.getElementById('mmb-panel').classList.remove('show'); }
+
+async function mmbSearch() {
+  const q = document.getElementById('mmb-q').value.trim();
+  if (!q) return;
+  const rows = document.getElementById('mmb-rows');
+  document.getElementById('mmb-panel').classList.add('show');
+  rows.innerHTML = '<div class="mmb-empty">搜索中…</div>';
+  try {
+    const d = await fetch(`/api/mmb/search?q=${encodeURIComponent(q)}`).then(r => r.json());
+    if (d.detail) { rows.innerHTML = `<div class="mmb-empty">${d.detail}</div>`; return; }
+    window._mmbLast = d.results || [];
+    document.getElementById('mmb-title').textContent = `「${q}」${window._mmbLast.length} 条`;
+    rows.innerHTML = window._mmbLast.length ? window._mmbLast.map((r, i) => `
+      <div class="mmb-row">
+        <span class="p">¥${r.price || '-'}</span>
+        <span class="t"><a href="${r.url}" target="_blank"
+            style="color:inherit;text-decoration:none">${r.title || ''}</a></span>
+        <span class="m">${r.mall || ''}</span>
+        ${r.is_jd ? '<span class="jd">京东</span>' : ''}
+        <span class="m">销:${r.sales || '-'}</span>
+        <button onclick="mmbTrend(${i})">曲线</button>
+        ${r.is_jd ? `
+          <button class="anchor-sales" onclick="mmbPropose('sales',${i})">销量锚</button>
+          <button class="anchor-price" onclick="mmbPropose('price',${i})">价格锚</button>` : ''}
+      </div>`).join('') : '<div class="mmb-empty">无结果</div>';
+  } catch (e) {
+    rows.innerHTML = `<div class="mmb-empty">搜索失败：${e}</div>`;
+  }
+}
+
+async function mmbTrend(idx) {
+  const r = (window._mmbLast || [])[idx];
+  if (!r) return;
+  document.getElementById('mmb-modal').classList.remove('hidden');
+  document.getElementById('mmb-trend-title').textContent = (r.title || '').slice(0, 44);
+  document.getElementById('mmb-trend-meta').textContent = '加载中…';
+  const d = await fetch(`/api/mmb/trend?url=${encodeURIComponent(r.url)}`).then(x => x.json());
+  if (d.detail) { document.getElementById('mmb-trend-meta').textContent = d.detail; return; }
+  document.getElementById('mmb-trend-meta').textContent =
+    `现价 ${d.currentPrice} · 历史最低 ${d.lowerPrice}（${(d.lowerDate || '').slice(0, 10)}）` +
+    ` · 60日均价 ${d.avgPrice60} · ${d.points.length} 点`;
+  mmbChart = mmbChart || echarts.init(document.getElementById('mmb-trend-chart'));
+  mmbChart.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { left: 60, right: 20, top: 20, bottom: 48 },
+    dataZoom: [{ type: 'slider', height: 16, bottom: 6 }, { type: 'inside' }],
+    xAxis: { type: 'time' },
+    yAxis: { type: 'value', scale: true },
+    series: [{ type: 'line', showSymbol: false, data: d.points }]
+  }, true);
+  mmbChart.resize();
+}
+
+function mmbModalClose() {
+  document.getElementById('mmb-modal').classList.add('hidden');
+  if (mmbChart) mmbChart.clear();
+}
+
+async function mmbPropose(anchor, idx) {
+  const eid = document.getElementById('mmb-entity').value;
+  if (!eid) { alert('先在面板顶部选实体'); return; }
+  const e = mmbEntities.find(x => String(x.entity_id) === String(eid));
+  const r = (window._mmbLast || [])[idx];
+  if (!e || !r) return;
+  const resp = await fetch('/api/mmb/propose', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      identity: e.identity || { category: e.group, series: e.display_name, spec: '' },
+      anchor, url: r.url, sp_name: (r.title || '').slice(0, 40),
+      channel: '', price: r.price, sales: r.sales, source: 'searchbox'
+    })
+  });
+  const d = await resp.json();
+  if (d.ok) {
+    alert(`已入提案（${anchor === 'sales' ? '销量锚' : '价格锚'}）\n` +
+          '人工核定 channel 后誊入 config/backfill_manmanbuy.yaml');
+  } else {
+    alert('提案失败：' + (d.detail || '?'));
+  }
+}
 </script>
 </body>
 </html>

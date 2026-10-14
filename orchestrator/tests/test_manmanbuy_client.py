@@ -58,3 +58,54 @@ def test_sign_tool_skips_empty_values():
 def test_session_file_lives_under_data():
     """Cookie 是运行时态：必须在 data/（gitignore 内），不得进版本库。"""
     assert mc.SESSION_FILE.parent.name == "data"
+
+
+# ---------- 2026-10-14 晚合并的搜索系（另一会话逆向成果） ----------
+
+def test_num_strips_currency_and_commas():
+    assert mc.Mmb._num("¥8,999.00") == 8999.0
+    assert mc.Mmb._num("3000000") == 3000000.0
+    assert mc.Mmb._num("") == 0.0
+    assert mc.Mmb._num(None) == 0.0
+
+
+def test_search_unwraps_parenthesized_json(monkeypatch):
+    """老协议返回被 ( ) 包裹——unwrap 后取 searchData。"""
+    captured = {}
+
+    def fake_post(self, url, data, headers=None, timeout=30):
+        captured["url"] = url
+        captured["data"] = data
+        return '( {"searchData": [{"title": "技嘉5060Ti 8G", "price": "¥3,599.00", "siteid": "1"}]} )'
+
+    monkeypatch.setattr(mc.Mmb, "post", fake_post)
+    rows = mc.Mmb().search("显卡 RTX 5060 Ti 8G", page=1)
+    assert len(rows) == 1
+    assert rows[0]["title"] == "技嘉5060Ti 8G"
+    assert captured["data"]["methodName"] == "getsearchkeylist"
+    assert "apapia-search.manmanbuy.com/index_json.ashx" in captured["url"]
+
+
+def test_search_top_dedupes_and_sorts_by_sales(monkeypatch):
+    pages = {
+        1: [{"title": "A", "sales": "100", "prourl": "u1"},
+            {"title": "B", "sales": "500", "prourl": "u2"}],
+        2: [{"title": "B2", "sales": "500", "prourl": "u2"},   # 同 prourl 去重
+            {"title": "C", "sales": "300", "prourl": "u3"}],
+    }
+    monkeypatch.setattr(mc.Mmb, "search", lambda self, kw, page=1: pages[page])
+    top = mc.Mmb().search_top("kw", n=3)
+    assert [x["title"] for x in top] == ["B", "C", "A"]   # sales 降序、去重
+
+
+def test_compare_price_sorts_asc_and_drops_bad_price(monkeypatch):
+    items = [{"title": "贵", "price": "¥500", "mall": "京东", "siteid": "1",
+              "prourl": "u1", "sales": "1"},
+             {"title": "无价", "price": "", "mall": "天猫", "siteid": "10",
+              "prourl": "u2"},
+             {"title": "便宜", "price": "¥300.50", "mall": "京东", "siteid": "1",
+              "prourl": "u3", "sales": "9"}]
+    monkeypatch.setattr(mc.Mmb, "search", lambda self, kw, page=1: items)
+    rows = mc.Mmb().compare_price("kw", top=5)
+    assert [r["title"] for r in rows] == ["便宜", "贵"]
+    assert rows[0]["price"] == 300.5

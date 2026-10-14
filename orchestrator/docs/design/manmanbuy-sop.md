@@ -25,24 +25,44 @@ python -m tools.manmanbuy_backfill run --from-cache artifacts\2026-10-14\backfil
 python -m tools.manmanbuy_client https://item.jd.com/100211023968.html
 ```
 
-新 listing 上架流程（唯一需要人的环节）：DDG 搜候选 → trend 验证规格 →
-人工核定 channel → 写进 `config/backfill_manmanbuy.yaml`（含 verified 时刻）。
+新 listing 上架流程（唯一需要人的环节）：searchbox 搜索 → 勾选双锚写
+提案 → 人工核定 channel → 誊入 `config/backfill_manmanbuy.yaml`（含
+verified 时刻）。详见 §1.1 品类采集规则 v1。
 
 期望输出：`名称 / 现价 / 最低 / 60日均价 / 价格点`。若提示 402 或"未登录"，见 §3 重新登录。
 
 ---
 
-## 1. 能力现状（2026-10-14 实测结论）
+## 1. 能力现状（2026-10-14 晚更新：四大能力全通）
 
 | 数据 | 状态 | 接口 | 说明 |
 |---|---|---|---|
-| 商品历史价格走势 | ✅ 可用 | tool.manmanbuy.com `/api.ashx` `getHistoryTrend` | 全量曲线。样例：iPhone 17 Pro Max 401 个价格点（2025-09-10 至今） |
-| 折扣/爆料流 | ✅ 可用 | apapia-sqk `/index_json.ashx` `getcuxiaolist3340` | **免登录**；含标题/价格/链接/spbh |
-| 单品促销enrichment | ✅ 可用 | apapia-search-weblogic `/japi/appsearching/prom2Extra` | code 1000；真实价格数据需传 `productInfos` |
-| 同款比价 | ⚠️ 半可用 | tool `/api.ashx` `getSearchItems` | 接口通；部分商品返回 0 条 |
-| 关键词搜索列表 | ❌ 未通 | `combineSearch` 等 | 返回 7700 需 **App 端**登录态，Web 会话不够（见 §6 待办） |
+| **商品历史价格走势** | ✅ 可用 | tool `/api.ashx` `getHistoryTrend` | 全量曲线（5060Ti 410 点/13.5 个月）；`datePrice` 无外括号须补 `[ ]` 再 loads |
+| **关键词搜索全网** | ✅ 可用 | apapia-search `/index_json.ashx` `getsearchkeylist` | **免登录**！34 条/页，含 sales 销量/monthComment 月评/prourl 直达链接 |
+| **销量 Top+商品地址** | ✅ 可用 | 同上 + 客户端 sales 排序 | `search_top()` page1+2 去重按销量降序 |
+| **同款各店比价** | ✅ 可用 | 精确标题搜索 → 价格升序 | `compare_price()`；批量富化 `japi/searchpriceBySpbh3` 免 token |
+| **单品到手价/促销** | ✅ 可用 | `/japi/appsearching/prom2Extra` `sku_compare_price` | 免 token；返回原价/预计到手价 |
+| 折扣/爆料流 | ✅ 可用 | apapia-sqk `getcuxiaolist3340` | 免登录 |
+| 同款比价(旧) | ⚠️ 弃用 | tool `getSearchItems` | GPU 常返 0 条，已被 compare_price 取代 |
+| combineSearch/v3 | ❌ 放弃 | `/japi/multipleSearch/combineSearch` | token 在爱加密原生拦截器，Web 侧无解；功能已被 getsearchkeylist 老协议绕过 |
 
-**结论：以"历史价格"为主力采集目标，商品 URL → 价格曲线已完全打通。**
+**「全网最低价」三层结论**：① 单商品历史最低 ✅（trend 的 lowerPrice/lowerDate）；
+② 同款全网各店比价 ✅（compare_price 价格升序）；③ 关键词级搜索 ✅（search）。
+
+## 1.1 品类采集规则 v1（2026-10-14 用户定稿）
+
+每实体挂**双锚**，发现→打勾→回填全链程序化：
+
+1. **销量锚**：`search_top` 规格匹配里销量第一——市场主流成交价；
+2. **价格锚**：`compare_price` 价格升序第一个正规链接——R29 最低价地板；
+3. 双锚硬门槛：siteid∈{1 京东, 10 天猫}、URL 可解析为 item.jd.com 详情页、
+   trend 试采有点数、规格子串匹配带**后缀串台防线**（5070Ti 混不进 5070 桶）；
+4. 发现入口：看板顶部 searchbox（勾选写 data/manmanbuy_proposals.yaml 提案）
+   或 `python -m tools.manmanbuy_backfill discover`（候选表落 artifacts/）；
+5. 人工只做一件事：核定 channel（自营/第三方）后誊入
+   `config/backfill_manmanbuy.yaml`——注册表仍是唯一采集依据；
+6. 节流 **2~7 秒随机**（`--sleep-min/--sleep-max` 可调）：固定间隔是可被
+   识别的机器指纹；并发采集已评估并否决（省 3 分钟 vs 账号封禁风险）。
 
 ---
 

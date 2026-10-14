@@ -206,3 +206,48 @@ def test_trend_to_series_rejects_empty():
                             {"url": "https://item.jd.com/1.html",
                              "sp_name": "x", "channel": "自营"}, "manmanmai")
 
+
+# ---------- 节流与双锚发现（品类采集规则 v1） ----------
+
+def test_fetch_sleep_uses_random_range(monkeypatch):
+    """节流=区间随机（默认 2~7s）：固定间隔是机器指纹（用户定稿）。"""
+    calls = []
+
+    monkeypatch.setattr(mbf.random, "uniform",
+                        lambda lo, hi: calls.append((lo, hi)) or 0.0)
+    monkeypatch.setattr(mbf.time, "sleep", lambda s: None)
+
+    class FakeMmb:
+        def trend(self, url):
+            return {"datePrice": []}
+
+    reg = {"listings": [{"identity": {}, "url": f"u{i}", "sp_name": f"s{i}",
+                         "channel": "自营", "vendor": ""} for i in range(3)]}
+    mbf._fetch_dumps(FakeMmb(), reg, (2.0, 7.0))
+    assert calls == [(2.0, 7.0), (2.0, 7.0)]   # 3 个 listing 只有间隔处 sleep
+
+
+def test_match_spec_guards_wrong_series():
+    """规格甄别：5060 混不进 5060 Ti 桶（DDG 教训的程序化防线）。"""
+    assert mbf._match_spec("技嘉 RTX 5060 Ti 8G 显卡", "RTX 5060 Ti", "8GB")
+    assert not mbf._match_spec("英伟达 RTX 5060 8G 涡轮", "RTX 5060 Ti", "8GB")
+    assert not mbf._match_spec("华硕 RTX 5060 Ti O16G", "RTX 5060 Ti", "8GB")
+
+
+def test_match_spec_blocks_suffix_bleed():
+    """后缀串台防线：5070Ti 混进 RTX 5070 桶（search 冒烟实测抓到）。"""
+    # 5070Ti 标题混不进 RTX 5070 桶
+    assert not mbf._match_spec(
+        "七彩虹RTX5070Ti 16G火神AD5070 12G战斧", "RTX 5070", "12GB")
+    # 真 5070 12G 通过（品牌词直接贴在型号后：5070SHADOW）
+    assert mbf._match_spec(
+        "微星(MSI)幻影师 GeForce RTX 5070 12G SHADOW", "RTX 5070", "12GB")
+    # 5090D 是独立实体：不混进 RTX 5090 桶，但归属自己的桶
+    assert not mbf._match_spec("影驰 RTX 5090D 32G", "RTX 5090", "32GB")
+    assert mbf._match_spec("影驰 RTX 5090D 32G", "RTX 5090 D", "32GB")
+
+
+def test_resolve_item_url_passthrough():
+    assert mbf._resolve_item_url("https://item.jd.com/100.html") == \
+        "https://item.jd.com/100.html"
+

@@ -8,7 +8,18 @@
   * ticket:   HistoryLowest.aspx 页 <input id=ticket> 值右旋 4 位，缓存 20 分钟
   * datePrice: 无外层括号的字符串 "[ts,价,备注],[ts,价,备注],…"，
               必须 json.loads("[" + s + "]")（2026-10-14 踩坑：直接 loads
-              必败落空列表，401 个点变 0 个）。
+              必败落空列表，401 个点变 0 个）
+
+能力（2026-10-14 晚四大能力全通）：
+  trend()          历史价格曲线（需登录态）
+  search()         关键词搜全网商品（免登录，getsearchkeylist 老协议）
+  search_top()     销量 Top N + 直达地址（免登录）
+  compare_price()  精确关键词同款各店比价，价格升序（免登录）
+  same_by_spbh()   按 spbh 批量富化（免登录，searchpriceBySpbh3）
+  prom2()          单品到手价/促销（SPA 签名，免登录）
+  feed()           折扣/爆料流（免登录）
+  combineSearch/v3 —— App 原生层 token（爱加密拦截器），Web 侧无解，
+                      功能已被 search() 老协议绕过，别再硬啃。
 
 本模块只做 HTTP 与解析——不懂实体、不懂契约；业务编排见
 tools/manmanbuy_backfill.py（渠道适配器）。全链无模型参与。
@@ -206,6 +217,105 @@ class Mmb:
         if s.startswith("(") and s.endswith(")"):
             s = s[1:-1]
         return json.loads(s)
+
+    def prom2(self, search_key: str, product_infos: str = "[]",
+              source_from: str = "pc_search_list") -> dict:
+        """单品价格/促销 enrichment（s.manmanbuy.com SPA 接口，免登录）。
+
+        source_from="sku_compare_price"：单品到手价场景，返回原价/预计
+        到手价（2026-10-14 晚实测）；默认 pc_search_list。
+        """
+        p = {"priceHtml": "", "discountHtml": "", "searchKey": search_key, "searchId": "",
+             "isNeedUserName": "0", "hasPullPromotion": "false", "sourceFrom": source_from,
+             "callScene": "search_price_list",
+             "allowanceFormulaTestGroup": "b",
+             "govPriceTestGroup": "true", "c_app": "pc",
+             "t": str(int(time.time() * 1000)), "productInfos": product_infos}
+        p["token"] = self._sign_spa(p)
+        raw = self.post("https://apapia-search-weblogic.manmanbuy.com/japi/appsearching/prom2Extra",
+                        p, [("Origin", "https://s.manmanbuy.com"),
+                            ("Referer", "https://s.manmanbuy.com/")], 40)
+        return json.loads(raw)
+
+    # ---------- 关键词搜索 / 销量 / 同款比价（2026-10-14 晚打通，免登录） ----------
+
+    def _app_json(self, url: str, extra: dict, timeout: int = 30) -> dict:
+        """App 老协议 POST（index_json.ashx 系），返回被括号包裹的 JSON。"""
+        p = {"t": str(int(time.time() * 1000)), "jsoncallback": "?",
+             "mmbyhm": "", "username": "", "u_name": "", "u_avatar": "", "sign": "",
+             "c_individ": "", "c_appver": "5.2.40", "c_ostype": "android", "c_osver": "14",
+             "c_devid": self.devid, "c_mmbDevId": "", "c_systemDevId": ""}
+        p.update(extra)
+        raw = self.post(url, p, [], timeout)
+        s = raw.strip()
+        if s.startswith("(") and s.endswith(")"):
+            s = s[1:-1]
+        return json.loads(s)
+
+    def search(self, keyword: str, page: int = 1) -> list:
+        """关键词搜索全网商品（免登录！apapia-search 老协议 getsearchkeylist）。
+
+        返回 searchData 列表，每条含: title/price("¥xx.xx" 字符串)/mall/
+        siteid(1京东 10天猫 36唯品会 307拼多多 379抖音)/sales(总销量)/
+        monthComment(月评)/prourl(直达链接)/skuid/gourl/promInfo…
+        """
+        r = self._app_json("https://apapia-search.manmanbuy.com/index_json.ashx",
+                           {"methodName": "getsearchkeylist",
+                            "key": keyword, "page": page})
+        return r.get("searchData") or []
+
+    @staticmethod
+    def _num(v) -> float:
+        """'¥8,999.00'/'3000000' → float，失败返回 0。"""
+        try:
+            return float(re.sub(r"[^0-9.]", "", str(v)) or 0)
+        except Exception:
+            return 0.0
+
+    def search_top(self, keyword: str, n: int = 5) -> list:
+        """关键词销量 Top N（sales 降序，page1+2 去重合并），含直达地址。"""
+        seen, merged = set(), []
+        for page in (1, 2):
+            for it in self.search(keyword, page):
+                key = it.get("prourl") or it.get("title")
+                if key and key not in seen:
+                    seen.add(key)
+                    merged.append(it)
+        merged.sort(key=lambda x: self._num(x.get("sales")), reverse=True)
+        return merged[:n]
+
+    def same_by_spbh(self, spbhs) -> list:
+        """按 spbh 批量查标准商品信息（免登录，逗号分隔多值）。
+
+        spbh 形如 "1|3sdbABCshoUpNCthoY!!00011100010110001"；返回富化条目：
+        shopName/totalSales/specifications/mmbSpuId/promInfo…
+        """
+        if isinstance(spbhs, (list, tuple)):
+            spbhs = ",".join(spbhs)
+        raw = self.post("https://apapia-search-weblogic.manmanbuy.com/japi/searchpriceBySpbh3",
+                        {"spbhs": spbhs, "t": str(int(time.time() * 1000))},
+                        [("Origin", "https://s.manmanbuy.com"),
+                         ("Referer", "https://s.manmanbuy.com/")], 30)
+        try:
+            return json.loads(raw).get("resultObj") or []
+        except Exception:
+            return []
+
+    def compare_price(self, keyword: str, top: int = 12) -> list:
+        """同款商品全网各店比价：精确关键词（品牌+型号+规格）→ 价格升序。"""
+        rows = []
+        for it in self.search(keyword):
+            price = self._num(it.get("price"))
+            if price <= 0:
+                continue
+            rows.append({"price": price, "mall": it.get("mall"),
+                         "siteid": it.get("siteid"),
+                         "title": it.get("title"),
+                         "url": it.get("prourl") or it.get("gourl"),
+                         "sales": it.get("sales"),
+                         "monthComment": it.get("monthComment")})
+        rows.sort(key=lambda x: x["price"])
+        return rows[:top]
 
 
 if __name__ == "__main__":   # 调试入口：python -m tools.manmanbuy_client <商品URL>

@@ -23,9 +23,11 @@ aggregate_scope.default_filter 只认 source=自采——回填数据自动隔�
 from __future__ import annotations
 
 import json
+import random
 import re
 import sys
 import time
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -134,12 +136,14 @@ def dedupe_rows(new_rows: list[dict], existing_rows: list[dict]) -> list[dict]:
     return [r for r in new_rows if key(r) not in seen]
 
 
-def _fetch_dumps(mmb: Mmb, registry: dict, sleep_s: float) -> dict:
+def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float]) -> dict:
     dumps = {"fetched_at": datetime.now(timezone.utc).isoformat(),
              "listings": []}
     for i, it in enumerate(registry["listings"]):
         if i:
-            time.sleep(sleep_s)   # 交接文档：1 请求/2 秒，未见过封锁
+            # 节流=区间内随机（默认 2~7s）：固定间隔是可被识别的机器指纹，
+            # 随机化更像人；区间上限可按需放宽（--sleep-max）
+            time.sleep(random.uniform(*sleep_range))
         trend = mmb.trend(it["url"])
         dumps["listings"].append({
             "identity": it["identity"], "url": it["url"],
@@ -151,7 +155,8 @@ def _fetch_dumps(mmb: Mmb, registry: dict, sleep_s: float) -> dict:
 
 def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
         dry_run: bool = False, skip_ingest: bool = False,
-        sleep_s: float = 2.0, only: str | None = None) -> int:
+        sleep_min: float = 2.0, sleep_max: float = 7.0,
+        only: str | None = None) -> int:
     # 契约/注册表属代码资产，固定从模块 ROOT 读；root 只重定向产物
     contract = Contract.load(ROOT, "hardware")
     registry = load_registry(contract)
@@ -171,7 +176,7 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
             print("未登录：先执行 python -m tools.manmanbuy_backfill login")
             return 2
         print(f"[fetch] {len(registry['listings'])} listing…")
-        dumps = _fetch_dumps(mmb, registry, sleep_s)
+        dumps = _fetch_dumps(mmb, registry, (sleep_min, sleep_max))
         cache_path = root / "artifacts" / date_dir / "backfill_manmanbuy_raw.json"
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(json.dumps(dumps, ensure_ascii=False, indent=1),
@@ -234,6 +239,115 @@ def login(user: str | None = None) -> int:
     return 0 if ok else 2
 
 
+# ---------- discover：search 驱动的双锚候选发现（品类采集规则 v1） ----------
+#
+# 规则（2026-10-14 用户定稿）：每实体挂两个锚——
+#   销量锚 = search_top 规格匹配里的销量第一（市场主流成交价，走量款）
+#   价格锚 = compare_price 价格升序里的第一个正规链接（R29 最低价准则地板）
+# 双锚都要求：正规渠道站内（siteid 1京东/10天猫，拼多多/抖音低价链不进锚）
+# + 规格子串匹配（防「RTX 5060 混进 5060 Ti 桶」的 DDG 教训）。
+# 人工只剩一件事：给候选定渠道档位（自营/第三方）后打勾入注册表。
+
+GOOD_SITEIDS = {"1", "10"}          # 1=京东 10=天猫
+_ANCHOR_SLEEP = (2.0, 7.0)
+
+
+def _norm_token(s: str) -> str:
+    """标题/规格归一：小写、去空格、8GB→8G，供子串匹配。"""
+    return (s or "").lower().replace(" ", "").replace("gb", "g")
+
+
+def _match_spec(title: str, series: str, spec: str) -> bool:
+    t = _norm_token(title)
+    s = _norm_token(series)
+    if s not in t or _norm_token(spec) not in t:
+        return False
+    # 后缀串台防线（2026-10-14 冒烟实测抓到：5070Ti 混进 RTX 5070 桶——
+    # 归一化后 rtx5070ti 包含 rtx5070 子串）。系列名紧跟 ti/super/pro/
+    # v2/d 的判定为异款；系列名自身带该后缀（如 RTX 5090 D）不拦。
+    i = t.find(s)
+    if i != -1:
+        rest = t[i + len(s):]
+        for suf in ("ti", "super", "pro", "v2", "d"):
+            if not s.endswith(suf) and rest.startswith(suf):
+                return False
+    return True
+
+
+def _resolve_item_url(url: str) -> str:
+    """jingfen.jd.com 推广短链 → 最终 item.jd.com/数字.html（跟随跳转）。
+
+    解析不出就原样返回（trend 也吃短链，但注册表只收稳定详情页 URL）。
+    """
+    if "item.jd.com" in (url or ""):
+        return url
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            final = r.geturl()
+        return final if "item.jd.com" in final else url
+    except Exception:
+        return url
+
+
+def discover(series: str, spec: str, keyword: str | None = None,
+             category: str = "显卡", top_n: int = 5) -> dict:
+    """双锚候选发现：search 驱动，输出候选表（含试采点数）。
+
+    keyword 默认按 R28 搜索规范拼（大类前缀+系列+规格）；人工复核后
+    把打勾的行誊进 config/backfill_manmanbuy.yaml。
+    """
+    if not spec:
+        raise ValueError("spec 不能为空（--spec，如 8GB/16GB）")
+    kw = keyword or f"{category} {series} {spec}"
+    mmb = Mmb()
+    if not mmb.load_session():
+        raise SessionExpired("未登录：先执行 python -m tools.manmanbuy_backfill login")
+
+    def _ok(it):
+        return (str(it.get("siteid")) in GOOD_SITEIDS
+                and _match_spec(it.get("title") or "", series, spec))
+
+    tops = mmb.search_top(kw, top_n)
+    time.sleep(random.uniform(*_ANCHOR_SLEEP))
+    lows = mmb.compare_price(kw, 12)
+    sales_anchor = next(filter(_ok, tops), None)
+    price_anchor = next(filter(_ok, lows), None)
+
+    out = {"keyword": kw, "series": series, "spec": spec,
+           "generated_at": datetime.now(timezone.utc).isoformat(),
+           "candidates": {}}
+    for tag, it in (("sales", sales_anchor), ("price", price_anchor)):
+        if not it:
+            out["candidates"][tag] = None
+            continue
+        raw_url = it.get("prourl") or it.get("gourl") or ""
+        url = _resolve_item_url(raw_url)
+        time.sleep(random.uniform(*_ANCHOR_SLEEP))
+        try:
+            trend = mmb.trend(url)
+            pts = len(trend.get("datePrice") or [])
+            sp_name = (trend.get("spName") or it.get("title") or "")[:40]
+            cur = trend.get("currentPrice")
+        except SessionExpired:
+            raise
+        except Exception as e:
+            pts, sp_name, cur = 0, (it.get("title") or "")[:40], None
+            print(f"  ! {tag} 锚试采失败: {e}")
+        out["candidates"][tag] = {
+            "anchor": tag, "title": (it.get("title") or "")[:60],
+            "sp_name": sp_name, "mall": it.get("mall"),
+            "siteid": str(it.get("siteid") or ""),
+            "price": it.get("price"), "sales": it.get("sales"),
+            "monthComment": it.get("monthComment"),
+            "prourl": raw_url, "resolved_url": url, "trend_points": pts,
+            "current_price": cur}
+        c = out["candidates"][tag]
+        print(f"[{tag}] {c['sp_name']} | ¥{c['price']} 销量:{c['sales']}"
+              f" | {c['resolved_url'][:48]} | 曲线 {pts} 点")
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
     ap = argparse.ArgumentParser(prog="manmanbuy_backfill")
@@ -248,15 +362,40 @@ def main(argv: list[str] | None = None) -> int:
     rn.add_argument("--dry-run", action="store_true")
     rn.add_argument("--skip-ingest", action="store_true")
     rn.add_argument("--only", default=None, help="URL/名称子串过滤")
-    rn.add_argument("--sleep", type=float, default=2.0)
+    rn.add_argument("--sleep-min", type=float, default=2.0,
+                    help="节流随机下限秒（默认 2）")
+    rn.add_argument("--sleep-max", type=float, default=7.0,
+                    help="节流随机上限秒（默认 7；固定间隔是机器指纹，随机化更像人）")
+    dv = sub.add_parser("discover", help="双锚候选发现（search 驱动，产出候选表）")
+    dv.add_argument("--series", required=True, help="如 'RTX 5070'")
+    dv.add_argument("--spec", required=True, help="如 12GB")
+    dv.add_argument("--category", default="显卡")
+    dv.add_argument("--keyword", default=None, help="覆盖默认搜索词（默认 R28 规范拼接）")
+    dv.add_argument("--top-n", type=int, default=5)
+    dv.add_argument("--out", default=None, help="候选表落盘路径（默认 artifacts/今日/backfill_discover_*.json）")
     args = ap.parse_args(argv)
     if args.cmd == "login":
         return login(args.user)
+    if args.cmd == "discover":
+        try:
+            result = discover(args.series, args.spec, keyword=args.keyword,
+                              category=args.category, top_n=args.top_n)
+        except SessionExpired as e:
+            print(f"会话失效：{e}")
+            return 2
+        out = args.out or str(ROOT / "artifacts" / time.strftime("%Y-%m-%d")
+                              / f"backfill_discover_{args.series}_{args.spec}.json".replace(" ", ""))
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        Path(out).write_text(json.dumps(result, ensure_ascii=False, indent=1),
+                             encoding="utf-8")
+        print(f"候选表 -> {out}（人工核定 channel 后誊入 config/backfill_manmanbuy.yaml）")
+        return 0
     root = Path(args.root) if args.root else ROOT
     try:
         return run(args.date_dir, root=root, from_cache=args.from_cache,
                    dry_run=args.dry_run, skip_ingest=args.skip_ingest,
-                   sleep_s=args.sleep, only=args.only)
+                   sleep_min=args.sleep_min, sleep_max=args.sleep_max,
+                   only=args.only)
     except SessionExpired as e:
         print(f"会话失效：{e}")
         return 2

@@ -24,13 +24,14 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+import time
 from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi import Body, FastAPI, HTTPException  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
@@ -292,6 +293,112 @@ def api_recommend() -> dict:
     if rec is None:
         raise HTTPException(404, "尚无 hw_recommend.json（t4 首跑后生成）")
     return rec
+
+
+# ---------- 慢慢买 searchbox（品类采集规则 v1，2026-10-14 用户定稿） ----------
+#
+# searchbox 是规则的入口：搜关键词 → 全网价格/销量一览 → 点开历史曲线 →
+# 一键把「销量锚 / 价格锚」候选写进提案文件 data/manmanbuy_proposals.yaml
+# （gitignore 内）。提案**不直接进注册表**——人工核定 channel 后誊入
+# config/backfill_manmanbuy.yaml，注册表仍是唯一采集依据（Web 依旧
+# 不写库、不写 config）。
+# 本节只有出站 HTTP（慢慢买）与提案文件写入；trend 结果缓存 10 分钟，
+# 对慢慢买保持 1 req/多秒 的温柔节奏。
+
+_mmb_client = None
+_mmb_trend_cache: dict[str, tuple[float, dict]] = {}
+MMB_TREND_TTL = 600
+
+
+def _mmb():
+    global _mmb_client
+    if _mmb_client is None:
+        from tools.manmanbuy_client import Mmb
+        _mmb_client = Mmb()
+        _mmb_client.load_session()   # trend 需要；search 系免登录
+    return _mmb_client
+
+
+@app.get("/api/mmb/search")
+def api_mmb_search(q: str, page: int = 1) -> dict:
+    """关键词搜全网商品（慢慢买 getsearchkeylist，免登录）。"""
+    q = (q or "").strip()
+    if not q:
+        raise HTTPException(422, "q 为空")
+    try:
+        rows = _mmb().search(q, page)
+    except Exception as e:
+        raise HTTPException(502, f"慢慢买搜索失败: {e}")
+    from tools.manmanbuy_client import Mmb as _M
+    results = [{
+        "title": r.get("title"),
+        "price": _M._num(r.get("price")),
+        "mall": r.get("mall"),
+        "siteid": str(r.get("siteid") or ""),
+        "sales": r.get("sales"),
+        "monthComment": r.get("monthComment"),
+        "url": r.get("prourl") or r.get("gourl") or "",
+        "is_jd": str(r.get("siteid")) == "1",
+    } for r in rows]
+    results.sort(key=lambda x: x["price"] or 9e9)   # 价格升序展示
+    return {"q": q, "page": page, "results": results}
+
+
+@app.get("/api/mmb/trend")
+def api_mmb_trend(url: str) -> dict:
+    """单商品历史曲线预览（需登录态；结果缓存 10 分钟）。"""
+    hit = _mmb_trend_cache.get(url)
+    if hit and time.time() - hit[0] < MMB_TREND_TTL:
+        return hit[1]
+    try:
+        d = _mmb().trend(url)
+    except Exception as e:
+        raise HTTPException(502, f"慢慢买趋势失败（会话过期请命令行 login）: {e}")
+    pts = d.get("datePrice") or []
+    out = {
+        "url": url, "spName": d.get("spName"), "siteName": d.get("siteName"),
+        "currentPrice": d.get("currentPrice"), "lowerPrice": d.get("lowerPrice"),
+        "lowerDate": d.get("lowerDate"), "avgPrice60": d.get("avgPrice60"),
+        "points": [[time.strftime("%Y-%m-%d", time.localtime(p[0] / 1000)), p[1]]
+                   for p in pts],
+    }
+    _mmb_trend_cache[url] = (time.time(), out)
+    return out
+
+
+@app.post("/api/mmb/propose")
+def api_mmb_propose(payload: dict = Body(...)) -> dict:
+    """把 searchbox 里勾选的候选追加进提案文件（同实体同锚覆盖旧提案）。"""
+    ident = payload.get("identity") or {}
+    if not ident.get("series") or not ident.get("spec"):
+        raise HTTPException(422, "identity.series / identity.spec 必填（先选实体）")
+    if not str(payload.get("url") or "").startswith("http"):
+        raise HTTPException(422, "url 缺失")
+    if payload.get("anchor") not in ("sales", "price"):
+        raise HTTPException(422, "anchor 必须是 sales|price")
+    import yaml
+    rec = {"proposed_at": datetime.now().isoformat(timespec="seconds"), **payload}
+    path = ROOT / "data" / "manmanbuy_proposals.yaml"
+    cur = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else None
+    items = cur if isinstance(cur, list) else []
+    items = [x for x in items
+             if not (x.get("identity") == ident
+                     and x.get("anchor") == payload.get("anchor"))]
+    items.append(rec)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(items, allow_unicode=True, sort_keys=False),
+                    encoding="utf-8")
+    return {"ok": True, "total": len(items)}
+
+
+@app.get("/api/mmb/proposals")
+def api_mmb_proposals() -> dict:
+    import yaml
+    path = ROOT / "data" / "manmanbuy_proposals.yaml"
+    if not path.exists():
+        return {"items": []}
+    cur = yaml.safe_load(path.read_text(encoding="utf-8")) or []
+    return {"items": cur if isinstance(cur, list) else []}
 
 
 def main(argv: list[str] | None = None) -> int:
