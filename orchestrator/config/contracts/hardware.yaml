@@ -17,6 +17,7 @@ attrs:
   accessories: {values: [全套, 缺配件], level: optional}
   source:    {values: [自采, manmanmai, smzdm, gwdang, xianyi_app, beike_app, jd_app],
               level: required}            # 数据来源轨（v3.3 M2：aggregate_scope 分组维度）
+  anchor:    {values: [销量, 价格], level: optional}   # 品类采集规则 v1 双锚（2026-10-14）：销量锚=市场主流成交价，价格锚=全网最低地板
 # 枚举别名映射（v3.3 实测：模型会发明「京东自营/渠道参考价/电商自营」
 # 等自然变体——逐词扩充枚举不可持续，映射才是正解。入库器在枚举
 # 校验前应用映射，映射后仍不合法才隔离）

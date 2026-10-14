@@ -427,9 +427,19 @@ function initChart(e) {
   inst.getZr().on('click', ev => {
     const pt = inst.convertFromPixel('grid', [ev.offsetX, ev.offsetY]);
     if (!pt || pt[0] == null || isNaN(pt[0])) return;
-    const idx = Math.round(pt[0]);
-    const dates = e.series.map(p => p[0]);
-    if (idx >= 0 && idx < dates.length) showPoints(e, dates[idx]);
+    /* time 轴：pt[0] 是毫秒时间戳，在全序列（自采+回填双曲线）里找
+       最近日期——回填日子的报价同样可溯源（R21） */
+    const ts = pt[0];
+    let best = null;
+    for (const s of [e.series,
+                     (e.mmb && e.mmb.sales_main) || [],
+                     (e.mmb && e.mmb.lowest) || []]) {
+      for (const p of s) {
+        const d = Math.abs(new Date(p[0]).getTime() - ts);
+        if (!best || d < best.d) best = { d, date: p[0] };
+      }
+    }
+    if (best) showPoints(e, best.date);
   });
   const entry = { div: chartDiv, inst, e, card };
   entry.draw = () => drawChart(chartDiv, entry.e,
@@ -442,11 +452,29 @@ function initChart(e) {
 function drawChart(div, e, withTracks) {
   const inst = charts.find(x => x.div === div).inst;
   const m = e.metrics;
-  const dates = e.series.map(p => p[0]);
-  /* BUG-16：hover 触发 emphasis 重绘导致曲线/点闪没——直接禁掉
-     emphasis（悬停只留 tooltip 与 axisPointer，图形不再变样） */
+  /* 品类采集规则 v1 双曲线：主线=销量锚（市场主流成交价，金色实线）、
+     最低价线=manmanmai 轨全体 min（绿色虚线）。x 轴是 time 类型——
+     回填曲线 400+ 天，与自采序列（个位数天）日期完全不同，category
+     轴对不齐（2026-10-14 重构）。 */
+  const mmbLines = [];
+  if (e.mmb && e.mmb.sales_main && e.mmb.sales_main.length >= 2) {
+    mmbLines.push({
+      name: '主线·销量锚', type: 'line', data: e.mmb.sales_main,
+      symbol: 'none', lineStyle: { width: 1.6, color: '#d89b3a' },
+      itemStyle: { color: '#d89b3a' }, emphasis: { disabled: true },
+      z: 3,
+    });
+  }
+  if (e.mmb && e.mmb.lowest && e.mmb.lowest.length >= 2) {
+    mmbLines.push({
+      name: '最低价线', type: 'line', data: e.mmb.lowest,
+      symbol: 'none', lineStyle: { width: 1.3, type: 'dashed', color: '#1e9e5a' },
+      itemStyle: { color: '#1e9e5a' }, emphasis: { disabled: true },
+      z: 2,
+    });
+  }
   const lines = [{
-    name: '每日最低', type: 'line', data: e.series.map(p => p[1]),
+    name: '每日最低', type: 'line', data: e.series,
     symbol: 'circle', symbolSize: 7,
     lineStyle: { width: 2, color: m ? LABELS[m.label][1] : '#7a8499' },
     itemStyle: { color: m ? LABELS[m.label][1] : '#7a8499' },
@@ -461,21 +489,27 @@ function drawChart(div, e, withTracks) {
   const colors = ['#8e6fd8', '#d8a13a', '#3aa0c9', '#c96f9a'];
   if (withTracks) Object.entries(e.tracks).forEach(([v, s], i) => {
     if (s.length < 2) return;
-    lines.push({ name: v, type: 'line', data: s.map(p => p[1]),
+    lines.push({ name: v, type: 'line', data: s,
       symbol: 'none', lineStyle: { width: 1.4, type: 'dashed', color: colors[i % 4] },
       itemStyle: { color: colors[i % 4] }, emphasis: { disabled: true } });
   });
+  lines.push(...mmbLines);
+  const hasOverlay = withTracks && lines.length > 2 || mmbLines.length > 0;
   inst.setOption({
     animation: false,
-    grid: { left: 62, right: 16, top: withTracks && lines.length > 1 ? 30 : 14, bottom: 26 },
-    legend: withTracks && lines.length > 1
+    grid: { left: 62, right: 16, top: hasOverlay ? 30 : 14, bottom: 26 },
+    legend: hasOverlay
       ? { top: 2, textStyle: { fontSize: 11, color: '#7a8499' }, selectedMode: false } : null,
     tooltip: { trigger: 'axis', valueFormatter: v => money(v),
                axisPointer: { type: 'line', lineStyle: { color: '#c3cbd8' } },
-               formatter: ps => esc(ps[0].name) + '<br>' +
-                 ps.map(p => `${p.marker}${esc(p.seriesName)} ${money(p.value)}`).join('<br>') +
-                 '<br><span style="color:#7a8499">点击查看当天原始报价</span>' },
-    xAxis: { type: 'category', data: dates, axisLabel: { fontSize: 11, color: '#7a8499' } },
+               formatter: ps => {
+                 const d = new Date(ps[0].value[0]);
+                 const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                 return esc(day) + '<br>' +
+                   ps.map(p => `${p.marker}${esc(p.seriesName)} ${money(p.value)}`).join('<br>') +
+                   '<br><span style="color:#7a8499">点击查看当天原始报价</span>';
+               } },
+    xAxis: { type: 'time', axisLabel: { fontSize: 11, color: '#7a8499' } },
     yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 11, color: '#7a8499' },
              splitLine: { lineStyle: { color: '#eef0f4' } } },
     series: lines,

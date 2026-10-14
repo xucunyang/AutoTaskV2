@@ -104,6 +104,23 @@ def _entity_tracks(con: sqlite3.Connection, entity_id: int,
     return tracks
 
 
+def _mmb_lines(con: sqlite3.Connection, entity_id: int,
+               as_of: str) -> dict | None:
+    """回填双曲线（品类采集规则 v1，2026-10-14 用户定稿）：
+    主线 = 销量锚 listing 曲线（市场主流成交价）
+    最低价线 = manmanmai 轨全体 min（全网最低地板，≥2 listing 时天然
+    对冲单 listing 接盘溢价）。无回填数据返回 None。"""
+    base = {"condition": "全新", "source": "manmanmai"}
+    lowest = series_with_attrs(con, entity_id, as_of, base)
+    if not lowest:
+        return None
+    sales = series_with_attrs(con, entity_id, as_of, {**base, "anchor": "销量"})
+    return {
+        "lowest": [[d, p] for d, p in lowest],
+        "sales_main": [[d, p] for d, p in sales],
+    }
+
+
 def entity_points(con: sqlite3.Connection, entity_id: int,
                   obs_date: str) -> dict:
     """某实体某日的**全部原始观测**（数据点溯源，R21）。
@@ -185,6 +202,7 @@ def build_board(con: sqlite3.Connection, root: Path | None = None,
             "n_periods": len(series),
             "series": [[d, p] for d, p in series],
             "tracks": _entity_tracks(con, eid, as_of),
+            "mmb": _mmb_lines(con, eid, as_of),
             "metrics": metrics,
         })
     with_data = [e for e in entities if e["n_periods"] > 0]
@@ -220,7 +238,8 @@ def api_entities() -> dict:
     con = ro_connect()
     try:
         board = build_board(con)
-        slim = [{k: v for k, v in e.items() if k not in ("series", "tracks")}
+        slim = [{k: v for k, v in e.items()
+                 if k not in ("series", "tracks", "mmb")}
                 for e in board["entities"]]
         return {"counts": board["counts"], "entities": slim}
     finally:
@@ -245,6 +264,7 @@ def api_series(entity_id: int, all_tracks: bool = False) -> dict:
                    aggregate_series(con, entity_id, as_of))}
         if all_tracks:
             out["tracks"] = _entity_tracks(con, entity_id, as_of)
+        out["mmb"] = _mmb_lines(con, entity_id, as_of)
         return out
     finally:
         con.close()

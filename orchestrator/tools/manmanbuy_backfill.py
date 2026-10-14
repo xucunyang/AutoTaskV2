@@ -86,6 +86,9 @@ def load_registry(contract: Contract | None = None) -> dict:
         vendor = it.get("vendor")
         if vendor and vendor not in contract.attrs["vendor"]["values"]:
             raise ValueError(f"listings[{i}] vendor={vendor!r} 不合法")
+        anchor = it.get("anchor")
+        if anchor and anchor not in contract.attrs.get("anchor", {}).get("values", []):
+            raise ValueError(f"listings[{i}] anchor={anchor!r} 不合法")
         out.append(it)
     if not out:
         raise ValueError("注册表没有可用 listing")
@@ -185,17 +188,22 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
 
     obs_path = root / "artifacts" / date_dir / "t1_sku_observations.json"
     existing = json.loads(obs_path.read_text(encoding="utf-8")) if obs_path.exists() else []
+    # 注册表是真源：缓存/留档里缺的 channel/vendor/anchor 按 URL 从注册表补齐
+    reg_by_url = {it["url"]: it for it in registry["listings"]}
     total_added = 0
     for it in dumps["listings"]:
+        reg = reg_by_url.get(it["url"]) or {}
+        it = {**it, **{k: v for k, v in reg.items() if v and not it.get(k)}}
         try:
             series = trend_to_series(it["trend"], it, registry["source"])
         except ValueError as e:
             print(f"  ! 跳过 {it['sp_name'][:28]}: {e}")
             continue
+        extra = ({"vendor": it["vendor"]} if it.get("vendor") else {}) \
+            | ({"anchor": it["anchor"]} if it.get("anchor") else {})
         rows = convert(series, entity_hint=it["identity"],
                        source=registry["source"], channel=it["channel"],
-                       extra_attrs=({"vendor": it["vendor"]}
-                                    if it.get("vendor") else {}))
+                       extra_attrs=extra)
         # 促销事件逐日判定（convert 是批量口径，逐行覆写 optional 维度）
         for row, remark in zip(rows, series["remarks"]):
             row["attrs_hint"]["promo_event"] = promo_from(remark)
@@ -248,7 +256,7 @@ def login(user: str | None = None) -> int:
 # + 规格子串匹配（防「RTX 5060 混进 5060 Ti 桶」的 DDG 教训）。
 # 人工只剩一件事：给候选定渠道档位（自营/第三方）后打勾入注册表。
 
-GOOD_SITEIDS = {"1", "10"}          # 1=京东 10=天猫
+GOOD_SITEIDS = {"1", "10"}          # 1=京东 10=天猫（discover 只取京东；天猫 uland 转链 v2 再议）
 _ANCHOR_SLEEP = (2.0, 7.0)
 
 
@@ -263,15 +271,26 @@ def _match_spec(title: str, series: str, spec: str) -> bool:
     if s not in t or _norm_token(spec) not in t:
         return False
     # 后缀串台防线（2026-10-14 冒烟实测抓到：5070Ti 混进 RTX 5070 桶——
-    # 归一化后 rtx5070ti 包含 rtx5070 子串）。系列名紧跟 ti/super/pro/
-    # v2/d 的判定为异款；系列名自身带该后缀（如 RTX 5090 D）不拦。
+    # 归一化后 rtx5070ti 包含 rtx5070 子串）。系列名紧跟下列后缀判定为
+    # 异款；系列名自身带该后缀（如 RTX 5090 D、RX 9070 XT/GRE）不拦。
     i = t.find(s)
     if i != -1:
         rest = t[i + len(s):]
-        for suf in ("ti", "super", "pro", "v2", "d"):
+        for suf in ("ti", "super", "pro", "v2", "d", "xt", "gre"):
             if not s.endswith(suf) and rest.startswith(suf):
                 return False
     return True
+
+
+# 整机词黑名单（R28 教训的采集侧防线）：标题含这些词 = 整机/工作站/
+# 关键词堆砌页，不是单卡 listing——RTX 5090 桶曾搜出联想工作站。
+_HOSTWORDS = ("主机", "整机", "工作站", "笔记本", "台式机", "电脑",
+              "水冷", "显示器", "电源")
+
+
+def _is_host(title: str) -> bool:
+    t = title or ""
+    return any(w in t for w in _HOSTWORDS)
 
 
 def _resolve_item_url(url: str) -> str:
@@ -296,6 +315,14 @@ def discover(series: str, spec: str, keyword: str | None = None,
 
     keyword 默认按 R28 搜索规范拼（大类前缀+系列+规格）；人工复核后
     把打勾的行誊进 config/backfill_manmanbuy.yaml。
+
+    锚的硬门槛（2026-10-14 批量实测教训的防线）：
+    * 仅京东站（siteid=1）——天猫 uland 转链页溯源不达标，v2 再议；
+    * 标题不含整机词（联想工作站曾混进 RTX 5090 桶）；
+    * 销量锚取 sales 第一、价格锚要求 sales>0（¥2121 的 0 销量关键词
+      堆砌页曾混进 5060 Ti 16GB 最低价）；
+    * URL 由 skuid 直接构造 item.jd.com/{skuid}.html——不走短链重定向
+      解析（京东风控中间页截住，且 GET 风控页徒增 bot 信号）。
     """
     if not spec:
         raise ValueError("spec 不能为空（--spec，如 8GB/16GB）")
@@ -304,15 +331,26 @@ def discover(series: str, spec: str, keyword: str | None = None,
     if not mmb.load_session():
         raise SessionExpired("未登录：先执行 python -m tools.manmanbuy_backfill login")
 
-    def _ok(it):
-        return (str(it.get("siteid")) in GOOD_SITEIDS
-                and _match_spec(it.get("title") or "", series, spec))
+    def _jd_url(it) -> str:
+        if str(it.get("siteid") or "") != "1":
+            return ""
+        skuid = str(it.get("skuid") or "").strip()
+        return f"https://item.jd.com/{skuid}.html" if skuid.isdigit() else ""
+
+    def _ok(it, need_sales=False):
+        url = _jd_url(it)
+        if not url or _is_host(it.get("title") or ""):
+            return False
+        if not _match_spec(it.get("title") or "", series, spec):
+            return False
+        return (not need_sales) or mmb._num(it.get("sales")) > 0
 
     tops = mmb.search_top(kw, top_n)
     time.sleep(random.uniform(*_ANCHOR_SLEEP))
     lows = mmb.compare_price(kw, 12)
     sales_anchor = next(filter(_ok, tops), None)
-    price_anchor = next(filter(_ok, lows), None)
+    price_anchor = next((it for it in lows if _ok(it, need_sales=True)
+                         and it.get("prourl") != (sales_anchor or {}).get("prourl")), None)
 
     out = {"keyword": kw, "series": series, "spec": spec,
            "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -320,12 +358,14 @@ def discover(series: str, spec: str, keyword: str | None = None,
     for tag, it in (("sales", sales_anchor), ("price", price_anchor)):
         if not it:
             out["candidates"][tag] = None
+            print(f"[{tag}] 无合格候选（京东站+规格匹配+整机词过滤后为空）")
             continue
-        raw_url = it.get("prourl") or it.get("gourl") or ""
-        url = _resolve_item_url(raw_url)
+        url = _jd_url(it)
         time.sleep(random.uniform(*_ANCHOR_SLEEP))
         try:
             trend = mmb.trend(url)
+            if not isinstance(trend, dict):
+                raise ValueError(f"trend 返回非 dict: {type(trend).__name__}")
             pts = len(trend.get("datePrice") or [])
             sp_name = (trend.get("spName") or it.get("title") or "")[:40]
             cur = trend.get("currentPrice")
@@ -340,11 +380,12 @@ def discover(series: str, spec: str, keyword: str | None = None,
             "siteid": str(it.get("siteid") or ""),
             "price": it.get("price"), "sales": it.get("sales"),
             "monthComment": it.get("monthComment"),
-            "prourl": raw_url, "resolved_url": url, "trend_points": pts,
+            "prourl": it.get("prourl") or it.get("gourl") or "",
+            "url": url, "trend_points": pts,
             "current_price": cur}
         c = out["candidates"][tag]
         print(f"[{tag}] {c['sp_name']} | ¥{c['price']} 销量:{c['sales']}"
-              f" | {c['resolved_url'][:48]} | 曲线 {pts} 点")
+              f" | {c['url'][:48]} | 曲线 {pts} 点")
     return out
 
 

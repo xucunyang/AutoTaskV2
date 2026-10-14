@@ -71,6 +71,7 @@ def test_load_registry_validates_against_contract():
     {"url": "https://item.taobao.com/1.htm"},  # 非京东详情页
     {"vendor": "英伟达"},                       # vendor 枚举里没有（NVIDIA 官方不卖卡）
     {"identity": {"category": "显卡", "series": "RTX 5060 Ti"}},  # 缺 spec
+    {"anchor": "地板价"},                       # 不在 anchor 枚举（规则 v1）
 ])
 def test_load_registry_rejects_bad_listing(patch, tmp_path):
     base = mbf.load_registry(Contract.load(ROOT, "hardware"))
@@ -122,11 +123,11 @@ def _cache() -> dict:
         {"identity": {"category": "显卡", "series": "RTX 5060 Ti", "spec": "8GB"},
          "url": "https://item.jd.com/100211023968.html",
          "sp_name": "技嘉（GIGABYTE）5060Ti 8G显卡 魔鹰",
-         "channel": "自营", "vendor": "技嘉", "trend": trend8g},
+         "channel": "自营", "vendor": "技嘉", "anchor": "销量", "trend": trend8g},
         {"identity": {"category": "显卡", "series": "RTX 5060 Ti", "spec": "16GB"},
          "url": "https://item.jd.com/100164458263.html",
          "sp_name": "技嘉（GIGABYTE）5060Ti 16G显卡 小雕",
-         "channel": "自营", "vendor": "技嘉", "trend": trend16g},
+         "channel": "自营", "vendor": "技嘉", "anchor": "价格", "trend": trend16g},
     ]}
 
 
@@ -166,6 +167,7 @@ def test_run_end_to_end_from_cache(tmp_env, capsys):
     assert r8["attrs_hint"]["condition"] == "全新"
     assert r8["attrs_hint"]["channel"] == "自营"
     assert r8["attrs_hint"]["vendor"] == "技嘉"
+    assert r8["attrs_hint"]["anchor"] == "销量"   # 品类采集规则 v1 双锚
     assert r8["attrs_hint"]["promo_event"] == "国补"
     assert r8["low_price"] == 2879.1          # 同日两点取最低
     assert r8["shop"]["url"] == "https://item.jd.com/100211023968.html"
@@ -245,6 +247,27 @@ def test_match_spec_blocks_suffix_bleed():
     # 5090D 是独立实体：不混进 RTX 5090 桶，但归属自己的桶
     assert not mbf._match_spec("影驰 RTX 5090D 32G", "RTX 5090", "32GB")
     assert mbf._match_spec("影驰 RTX 5090D 32G", "RTX 5090 D", "32GB")
+
+
+def test_match_spec_blocks_xt_gre_bleed():
+    """批量发现实测：9070XT/9070GRE 混进 RX 9070 桶（xt/gre 补防线）。"""
+    assert not mbf._match_spec(
+        "讯景 AMD RADEON RX 9070 XT 雪狼 16GB", "RX 9070", "16GB")
+    assert not mbf._match_spec(
+        "讯景 AMD RADEON RX 9070 GRE 雪狼 12GB", "RX 9070", "16GB")
+    # 自带后缀的实体归属自身桶
+    assert mbf._match_spec(
+        "讯景 AMD RADEON RX 9070 XT 雪狼 16GB", "RX 9070 XT", "16GB")
+    assert mbf._match_spec(
+        "AMD RADEON RX 9070 GRE 雪狼 12GB", "RX 9070 GRE", "12GB")
+
+
+def test_is_host_words():
+    """整机词防线：联想工作站混进 RTX 5090 桶（批量发现实测抓到）。"""
+    assert mbf._is_host("联想 GeekPro 游戏台式电脑主机 RTX 5090")
+    assert mbf._is_host("七彩虹 iGame 工作站 RTX 5090D 建模")
+    assert not mbf._is_host("七彩虹 iGame GeForce RTX 5090 D V2 火神")
+    assert not mbf._is_host("技嘉魔鹰 GeForce RTX 5060 Ti 8G")
 
 
 def test_resolve_item_url_passthrough():

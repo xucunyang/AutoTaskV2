@@ -1,4 +1,4 @@
-# 慢慢买回填 listing 注册表（R27）。
+﻿# 慢慢买回填 listing 注册表（R27）。
 #
 # 品类采集规则 v1（2026-10-14 用户定稿：searchbox + 双锚）：
 # * 每实体挂两个锚——**销量锚**（search_top 规格匹配里销量第一：
@@ -34,16 +34,19 @@ listings:
     channel: 自营
     url: https://item.jd.com/100211023968.html
     sp_name: 技嘉（GIGABYTE）5060Ti 8G显卡 魔鹰
+    anchor: 销量
     verified: "2026-10-14 18:53"   # 首采 410 点（2025-09-01 起）
   - identity: {category: 显卡, series: RTX 5060 Ti, spec: 16GB}
     vendor: 技嘉
     channel: 自营
     url: https://item.jd.com/100211023996.html
     sp_name: 技嘉（GIGABYTE）5060Ti 16G显卡 魔鹰
+    anchor: 销量
     verified: "2026-10-14 18:53"   # 首采 394 点（2025-09-17 起）
   - identity: {category: 显卡, series: RTX 5060 Ti, spec: 16GB}
     vendor: 技嘉
     channel: 自营
     url: https://item.jd.com/100164458263.html
     sp_name: 技嘉（GIGABYTE）5060Ti 16G显卡 小雕
+    anchor: 价格
     verified: "2026-10-14 18:53"   # 首采 410 点；入门款锚，对冲魔鹰溢价
