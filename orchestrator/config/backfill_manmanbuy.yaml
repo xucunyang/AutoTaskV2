@@ -34,14 +34,14 @@ listings:
     channel: 自营
     url: https://item.jd.com/100211023968.html
     sp_name: 技嘉（GIGABYTE）5060Ti 8G显卡 魔鹰
-    anchor: 销量
+    # anchor: 销量  ← 2026-10-14 23:5x 降级（销量王让位数据更优者）
     verified: "2026-10-14 18:53"   # 首采 410 点（2025-09-01 起）
   - identity: {category: 显卡, series: RTX 5060 Ti, spec: 16GB}
     vendor: 技嘉
     channel: 自营
     url: https://item.jd.com/100211023996.html
     sp_name: 技嘉（GIGABYTE）5060Ti 16G显卡 魔鹰
-    anchor: 销量
+    # anchor: 销量  ← 2026-10-14 23:5x 降级（销量王让位数据更优者）
     verified: "2026-10-14 18:53"   # 首采 394 点（2025-09-17 起）
   - identity: {category: 显卡, series: RTX 5060 Ti, spec: 16GB}
     vendor: 技嘉
@@ -50,3 +50,125 @@ listings:
     sp_name: 技嘉（GIGABYTE）5060Ti 16G显卡 小雕
     anchor: 价格
     verified: "2026-10-14 18:53"   # 首采 410 点；入门款锚，对冲魔鹰溢价
+
+  - identity: {category: 显卡, series: Arc B580, spec: 12GB}
+    vendor: 铭瑄
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/Wl4IE2NQUnYfI17RlWKjfITVCgUCF4_3QWdDLu0He2PcmR3PY.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3m8L81CvZdLij3pRVO!!0110101000111&otherFrom=price
+    sp_name: 铭瑄全新台式游戏显卡Intel Arc B580 iCraftMilestone
+    verified: "2026-10-15 00:13"   # R35 批量发现 197 点（¥￥2968.50 销量:0）
+
+  - identity: {category: 显卡, series: RTX 5070 Ti, spec: 16GB}
+    vendor: 微星
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/DTQ5lLLOThPdLvR7y18VdLvR7y18VQ_3VBX8NupLO5LusuzeK.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3nmugEMrv2CAZEUHVw!!0000110011111110&otherFrom=price
+    sp_name: 微星（MSI）幻影师 GeForce RTX 5070 Ti 16G SHADO
+    verified: "2026-10-15 00:13"   # R35 批量发现 271 点（¥￥10999.00 销量:10001）
+
+  - identity: {category: 显卡, series: RX 9070 GRE, spec: 12GB}
+    vendor: 蓝宝石
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/IwQNjSHPFZk3HnE4ZSVH3HnE4ZSVHQ_cIOf4YEBZpYSwNz2vN.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3rtcvZYknf98aXqLYU!!000011000010111&otherFrom=price
+    sp_name: 蓝宝石（Sapphire）AMD Radeon RX 9070 GRE 12GB
+    verified: "2026-10-15 00:13"   # R35 批量发现 140 点（¥￥5099.00 销量:1000）
+
+  - identity: {category: 显卡, series: RX 9070 XT, spec: 16GB}
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/MHQuhO5mDioWO5fCIbVyWO5fCIbVyQ_3RTWqXQ5JUuOqHKMpI.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3PAq5PeWsFd78qNlat!!11010101001000&otherFrom=price
+    sp_name: 讯景（XFX）AMD RADEON RX 9070 XT 雪狼 16GB 白色 
+    verified: "2026-10-15 00:13"   # R35 批量发现 411 点（¥￥7299.00 销量:20001）
+  - identity: {category: 显卡, series: RTX 4060, spec: 8GB}
+    vendor: 技嘉
+    channel: 第三方
+    anchor: 销量
+    url: https://item.jd.com/100091929767.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=100091929767&otherFrom=price
+    sp_name: 技嘉4060显卡 猎鹰 GeForce RTX 4060 Eagle OC 8G
+    verified: "2026-10-15 00:34"   # R35 v4 批量发现 411 点（¥￥2799.00 销量:20001）
+  - identity: {category: 显卡, series: RTX 4060 Ti, spec: 8GB}
+    vendor: 华硕
+    channel: 第三方
+    anchor: 销量
+    url: https://item.jd.com/100059910583.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=100059910583&otherFrom=price
+    sp_name: 华硕（ASUS）白色 DUAL GeForce RTX 4060 Ti O8G 
+    verified: "2026-10-15 00:34"   # R35 v4 批量发现 411 点（¥￥3299.00 销量:50001）
+  - identity: {category: 显卡, series: RTX 5050, spec: 8GB}
+    vendor: 技嘉
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/ph4N7gEXPoMNg69FzvUMNg69FzvUM4_373Z9LzKz2NgLUcTzG.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3m8L81CvZdX5O40XDO!!01101011111&otherFrom=price
+    sp_name: 技嘉（GIGABYTE）5050 8G显卡 魔鹰 GeForce RTX 505
+    verified: "2026-10-15 00:34"   # R35 v4 批量发现 411 点（¥￥3299.00 销量:1000）
+  - identity: {category: 显卡, series: RTX 5060, spec: 8GB}
+    vendor: 微星
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/RB6CAbcKkK48Mhi2NeN39ImoA0MqQ_364tk8oDog6MQTi6rB.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3LZQS3baRCbvFmna0I!!111100110010001&otherFrom=price
+    sp_name: 微星（MSI）魔龙 GeForce RTX 5060 8G GAMING TRI
+    verified: "2026-10-15 00:34"   # R35 v4 批量发现 411 点（¥￥3799.00 销量:20001）
+  - identity: {category: 显卡, series: RTX 5070, spec: 12GB}
+    vendor: 微星
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/ra4PatdeyHeEc01fsGd3Ec01fsGd34_3df4TuXLTkPcoBkOq8.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3df4TuCZTkPcoBkOq8!!001011101001010&otherFrom=price
+    sp_name: 微星（MSI）幻影师 GeForce RTX 5070 12G SHADOW 3
+    verified: "2026-10-15 00:34"   # R35 v4 批量发现 271 点（¥￥8199.00 销量:10001）
+  - identity: {category: 显卡, series: RTX 5080, spec: 16GB}
+    vendor: 影驰
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/aBXTr0NiJpYH0ZmrnG9UH0ZmrnG9UX_3paYfDqvGPT0iKwW7q.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3ASiIEzM4vhnbXYkCA!!1101101000011011&otherFrom=price
+    sp_name: 影驰名人堂 GeForce RTX 5080 HOF OC LAB Deluxe
+    verified: "2026-10-15 00:34"   # R35 v4 批量发现 411 点（¥￥16433.01 销量:10001）
+  - identity: {category: 显卡, series: RTX 5090D V2, spec: 24GB}
+    vendor: 技嘉
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/WST0rKNEk9P10ZnhffTVB3Cp5kXhX_3paYXLI5LMxINkKJdU.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3paYXLI5LMxINkKJdU!!0011111101101101&otherFrom=price
+    sp_name: 技嘉（GIGABYTE）RTX5090DV2 24G游戏显卡4K 魔鹰/超级雕白
+    verified: "2026-10-15 00:34"   # R35 v4 批量发现 352 点（¥￥40799.00 销量:1000）
+  - identity: {category: 显卡, series: RX 9060 XT, spec: 16GB}
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/Wl4yE2NwiOpfI1Z8xEXXfI1Z8xEXX4_3QWdDL1di9yI0ox60G.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3jk9JOjTEbFhxVX0tS!!001101101001101&otherFrom=price
+    sp_name: 讯景（XFX）AMD RADEON RX 9060 XT海外版pro V3 16
+    verified: "2026-10-15 00:34"   # R35 v4 批量发现 269 点（¥￥5099.00 销量:2000）
+  - identity: {category: 显卡, series: RX 9060 XT, spec: 8GB}
+    vendor: 技嘉
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/RtJFicJBCM4W3a8JpnrIqrNFUa6I4_3cvPzVnVSeJ3Tt8vXU.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3vbTPltP6nZ4s1lDnt!!00110010100100&otherFrom=price
+    sp_name: 技嘉（GIGABYTE）9060XT显卡 魔鹰 AMD Radeon RX 90
+    verified: "2026-10-15 00:34"   # R35 v4 批量发现 411 点（¥￥3899.00 销量:1000）
+  - identity: {category: 显卡, series: RTX 5060 Ti, spec: 8GB}
+    vendor: 影驰
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/DTQ5lLLOThPdLvRaligFdLvRaligFQ_3VBX8NupLO5LusqgsK.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3nmugEMrv2CAZEOQKw!!0000110011111110&otherFrom=price
+    sp_name: 影驰GeForce RTX 5060 Ti 金属大师 白金版 OC 8G GDD
+    verified: "2026-10-15 00:36"   # R35 v3 批量发现 411 点（¥￥4198.00 销量:20001）；魔鹰原销量锚降级
+  - identity: {category: 显卡, series: RTX 5060 Ti, spec: 16GB}
+    vendor: 微星
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/3o4JislcDNyF3aD9nCNHF3aD9nCNH4_3cvPR8nap7J3THux1L.html
+    shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3XCylg3WotmGpIJt2q!!110001000101100&otherFrom=price
+    sp_name: 微星（MSI）魔龙 GeForce RTX 5060 Ti 16G GAMING
+    verified: "2026-10-15 00:36"   # R35 v3 批量发现 411 点（¥￥6799.00 销量:10001）；魔鹰原销量锚降级
