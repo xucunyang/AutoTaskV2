@@ -19,15 +19,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
-# 每天跑一次的链：ScheduleByDay + DaysInterval=1
-DAILY_JOBS = ("daily_report", "housing_daily", "policy_daily")
-# 2026-10-07 新增的慢链：**不是**每天跑，触发器换成 ScheduleByMonth +
-# DaysOfMonth。Windows 的 ScheduleByDay/DaysInterval 表达不出"每月 1 号和 15 号"
+# 每天跑一次的链：ScheduleByDay + DaysInterval=1。
+# 2026-10-14 精简后唯一每天一次的是 daily_report（08:00）。
+# policy_daily 已改半月（ScheduleByMonth），Finance 两条链不在本仓库
+# 的 XML 目录里——DAILY_JOBS 只断言本仓库 XML 的每日形态。
+DAILY_JOBS = ("daily_report",)
+# 2026-10-07 新增的慢链 + 2026-10-14 改半月的 policy_daily：
+# 不是每天跑，触发器换成 ScheduleByMonth + DaysOfMonth。Windows 的
+# ScheduleByDay/DaysInterval 表达不出"每月 1 号和 15 号"
 # （DaysInterval=14 在 31 天的月份会跑成 1/16/31 三次），
-# 所以这两条与上面三条的触发器形状本就不同，断言必须分开写。
+# 所以这些触发器形状本就不同，断言必须分开写。
 CALENDAR_JOBS = {
-    # job -> 每月第几天
-    "housing_fortnight": {"1", "15"},
+    # 半月：2026-10-14 housing_fortnight 取消，policy_daily 替代
+    "policy_daily": {"1", "15"},
     "housing_monthly": {"8"},
     # 每 5 天 = 每月 1/6/11/16/21/26 六天（2026-10-08 用户点名的新链）
     "housing_rr_fiveday": {"1", "6", "11", "16", "21", "26"},
@@ -100,23 +104,17 @@ def test_principal_is_an_account_not_the_machine_name():
 
 
 def test_jobs_do_not_overlap():
-    """daily 先跑（timeout-min 90 → 最迟 09:30 退出），housing 才起跑。"""
-    hours = {}
-    for job in DAILY_JOBS:
-        sb = _tree(job).findtext(".//t:StartBoundary", default="", namespaces=NS)
-        assert len(sb) >= 13 and sb[4] == "-" and sb[7] == "-", \
-            f"{job}: StartBoundary 格式不对：{sb!r}"
-        hours[job] = int(sb[11:13])
-    assert hours["daily_report"] < hours["housing_daily"], \
-        f"两个 job 的触发时间重叠：{hours}"
-    assert hours["housing_daily"] - hours["daily_report"] >= 2, \
-        f"daily 的 --timeout-min 90 需要至少 1.5h 错开，实际只差 " \
-        f"{hours['housing_daily'] - hours['daily_report']}h：{hours}"
-    # 同一天各跑一次
-    for job in DAILY_JOBS:
-        root = _tree(job)
-        assert root.findtext(".//t:DaysInterval", namespaces=NS) == "1", \
-            f"{job} 不是每天一次"
+    """daily_report 08:00 先跑（timeout-min 90 → 最迟 09:30 退出）；
+    慢链都在它之后或不同日期，不会同起并行写 state.db。
+
+    2026-10-14 精简：DAILY_JOBS 只剩 daily_report；policy_daily 改
+    ScheduleByMonth（本测试不再比较 daily 内部顺序，减法即是答案）。
+    """
+    sb = _tree("daily_report").findtext(
+        ".//t:StartBoundary", default="", namespaces=NS)
+    assert len(sb) >= 13 and sb[4] == "-" and sb[7] == "-", \
+        f"daily_report: StartBoundary 格式不对：{sb!r}"
+    assert int(sb[11:13]) == 8, f"daily_report 应在 08:00：{sb!r}"
 
 
 def test_slow_jobs_use_schedule_by_month():

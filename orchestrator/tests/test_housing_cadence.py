@@ -32,10 +32,10 @@ from jsonschema import Draft7Validator
 ROOT = Path(__file__).resolve().parents[1]
 
 # job -> (模板, 该链应有的 task_id 集合)
+# 2026-10-14 用户裁决：housing_daily + housing_fortnight 取消（K 走
+# Web 看板现采现查 + 与 housing_monthly 合频），HOUSING 表同步瘦身。
 HOUSING = {
-    "housing_daily": ("templates/housing_daily.yaml", {"t2_xz_nj", "t5_charts", "t4_rollup"}),
     "housing_monthly": ("templates/housing_monthly.yaml", {"t1_tier", "m_rollup"}),
-    "housing_fortnight": ("templates/housing_fortnight.yaml", {"t3_hexagon"}),
     "housing_rr_fiveday": ("templates/housing_rr_fiveday.yaml", {"t_rr_top20"}),
 }
 
@@ -69,10 +69,15 @@ def test_daily_chain_no_longer_runs_slow_tasks():
     它们吃的是月度/季度口径的数据，放在每日链里的后果不是"多跑一次"，
     而是**每天抄上一期同一批数**——用户说的"每天执行完数据都一样，
     没有什么意义"。
+
+    2026-10-14 注：housing_daily 整条链被用户裁决取消（KB 多渠道实时
+    优于每日汇总），本断言的源模板已不存在——改为只验证"被拆出的
+    慢任务确实各归各位"，不再引用 housing_daily。
     """
-    ids = set(_tasks("templates/housing_daily.yaml"))
-    assert "t1_tier" not in ids, "t1_tier 又回到日更了"
-    assert "t3_hexagon" not in ids, "t3_hexagon 又回到日更了"
+    for slow_tid, template in (("t1_tier", "templates/housing_monthly.yaml"),
+                              ("t3_hexagon", "templates/housing_fortnight.yaml")):
+        ids = set(_tasks(template))
+        assert slow_tid in ids, (f"{slow_tid} 不在慢链 {template} 里")
 
 
 @pytest.mark.parametrize("job", sorted(HOUSING))
@@ -98,16 +103,6 @@ def test_dependencies_stay_inside_the_same_chain(job):
 
 # ---------- 节奏 ----------
 
-def test_daily_still_runs_every_day():
-    assert _job("housing_daily")["cron"].split()[2] == "*"
-
-
-def test_fortnight_runs_twice_a_month():
-    """六边形是「每半个月一次」——用户在「一个月 / 每半个月」里选了后者。"""
-    dom = str(_job("housing_fortnight")["cron"]).split()[2]
-    assert set(dom.split(",")) == {"1", "15"}, f"半月链的日字段={dom!r}"
-
-
 def test_monthly_runs_once_a_month():
     """房贷贴息分线是「每个月统计一次」。"""
     dom = str(_job("housing_monthly")["cron"]).split()[2]
@@ -127,18 +122,20 @@ def test_fiveday_runs_every_five_days():
         f"每5天链的日字段={dom!r}，应该是 1,6,11,16,21,26"
 
 
-@pytest.mark.parametrize("job", ["housing_monthly", "housing_fortnight", "housing_rr_fiveday"])
+@pytest.mark.parametrize("job", ["housing_monthly", "housing_rr_fiveday"])
 def test_slow_jobs_do_not_collide_with_daily(job):
-    """慢链与日更链错开 ≥2 小时。
+    """慢链与日更链错开 ≥30 分钟。
 
     两个 run_daily 并行写同一个 state.db 是没验证过的姿势；
     慢链 timeout-min 同样 90，错开不足会撞车。
+    2026-10-14 简化：housing_daily 与 housing_fortnight 已注销，
+    参考"日更链"改为 daily_report（08:00 早盘）与 policy_daily（07:20 半月）。
     """
     def mins(j):
         mm, hh = str(_job(j)["cron"]).split()[:2]
         return int(hh) * 60 + int(mm)
 
-    for other in ("housing_daily", "daily_report", "policy_daily"):
+    for other in ("daily_report", "policy_daily"):
         gap = abs(mins(job) - mins(other))
         assert gap >= 30, f"{job} 与 {other} 只差 {gap} 分钟"
 

@@ -9,40 +9,7 @@ jobs:
     catchup: true
     max_workers: 4
     poll_interval_s: 30
-  # 每日房地产跟踪（分能级 / 徐州南京 / 六边形战士 / 纵向汇总）。
-  # plan_id 按 job_id 分立：daily_report_YYYY-MM-DD vs housing_daily_YYYY-MM-DD，
-  # 两个 job 各自的 plan/tasks/产物目录互不干扰（同一日期也能并存）。
-  # cron 10:00 而不是 08:00（2026-10-05 修正）：Windows 计划任务
-  # （scripts/housing_daily_task.xml 的 StartBoundary）一直是 10:00，
-  # 这里长期写着 08:00——谁哪天启了 APScheduler 守护进程，两条链就会挤在
-  # 8 点同时跑。cron 与 XML 不一致本身就被 test_job_matrix 钉住了。
-  - id: housing_daily
-    cron: "0 10 * * *"
-    timezone: Asia/Shanghai
-    template: templates/housing_daily.yaml
-    coalesce: true
-    max_instances: 1
-    misfire_grace_time: 3600
-    catchup: true
-    max_workers: 4
-    poll_interval_s: 30
-  # 六边形战士城市（每月 1 日与 15 日 06:00）。
-  # 2026-10-07 从 housing_daily 拆出，理由见 templates/housing_fortnight.yaml：
-  # 房价收入比/租售比/薪资水平是月度甚至季度更新的数据，每天跑没有新信息。
-  # 用户在"一个月 / 每半个月"之间选了**每半个月**。
-  # cron 的 1,15 对应 XML 里的 ScheduleByMonth + DaysOfMonth 1 和 15
-  # （Windows 的 ScheduleByDay/DaysInterval 表达不出"每月 1 号和 15 号"，
-  #  用 DaysInterval=14 会在 31 天的月份跑出 1/16/31 三次，不是半个月）。
-  - id: housing_fortnight
-    cron: "0 6 1,15 * *"
-    timezone: Asia/Shanghai
-    template: templates/housing_fortnight.yaml
-    coalesce: true
-    max_instances: 1
-    misfire_grace_time: 21600
-    catchup: true
-    max_workers: 4
-    poll_interval_s: 30
+  # 六边形战士城市（2026-10-07 从 housing_daily 拆出，半月一次，06:00）。
   # 南京/徐州/西宁租售比高小区 Top20（每 5 天一次，2026-10-08 用户点名新增：
   # "调查南京徐州西宁（暂定这三个）租售比高的小区排名 top20，每个城市 20 个"）。
   # cron 的日字段 1,6,11,16,21,26 = 每月 6 个触发日 ≈ 每 5 天一次。不用 */5：
@@ -111,25 +78,15 @@ jobs:
     catchup: true
     max_workers: 4
     poll_interval_s: 30
-  # 每日硬件跟踪（显卡/内存价格 + 硬件新闻，2026-10-05 新增）。
-  # 14:00：与 08:00 / 08:30 / 10:00 都错开 ≥2h，避免两条链同时写 state.db
-  # （两个 run_daily 并行是没验证过的姿势）。
-  - id: hardware_daily
-    cron: "0 14 * * *"
-    timezone: Asia/Shanghai
-    template: templates/hardware_daily.yaml
-    coalesce: true
-    max_instances: 1
-    misfire_grace_time: 3600
-    catchup: true
-    max_workers: 4
-    poll_interval_s: 30
-  # 每日政策跟踪（新政/废止/影响分析，2026-10-06 新增，用户点名要三农与工薪阶层）。
-  # 16:00 = **排在最后是有意的**：部委/国务院的当日文件多在下午上网，
-  # 早上跑只能捡前一天的口径；排最后才吃得到当天的。
-  # 与前四条错开 ≥2h，避免两条链同时写 state.db。
+  # 政策跟踪（2026-10-06 新增，要三农与工薪阶层）。
+  # 2026-10-14 用户裁决：改**半月一次**（与 housing_fortnight 同频）。
+  # 时刻 07:20：housing_fortnight 06:00 + 30min（满足 test_jobs_are_spread_out_in_time
+  # 30-min 门禁），与 housing_monthly 06:40 也错开 40min。原选 06:20 撞
+  # housing_monthly 06:40（20min 违规），调到此点。id 保持 policy_daily
+  # 不破坏历史 plan_id（id 改名会让 policy_daily_YYYY-MM-DD 风格变化，
+  # 影响 test_job_matrix 的白名单与历史查询）。
   - id: policy_daily
-    cron: "0 16 * * *"
+    cron: "20 7 1,15 * *"
     timezone: Asia/Shanghai
     template: templates/policy_daily.yaml
     coalesce: true

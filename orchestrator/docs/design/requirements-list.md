@@ -54,6 +54,25 @@
 
 ## C. 变更记录
 
+- 2026-10-14 16:55：**定期任务精简（用户逐条打勾裁决）**——保留
+  daily_report / finance_daily / finance_postclose / housing_monthly /
+  housing_rr_fiveday；**注销 hardware_daily、housing_daily、
+  housing_fortnight**（schtasks 删除 + schedule.yaml 删块 + 孤儿 XML
+  删除：hardware_daily_task.xml / housing_daily_task.xml /
+  housing_fortnight_task.xml）；**policy_daily 改半月一次**
+  （每月 1/15，Windows ScheduleByMonth + cron `20 7 1,15 * *`）。
+  时刻 07:20 的依据：原拟 06:20 与 housing_monthly 06:40 只差 20 分钟
+  违反 30-min spread 门禁（test_jobs_are_spread_out_in_time 抓住），
+  07:20 与 06:40 错 40 分钟、与 daily_report 08:00 错 40 分钟。
+  id 保持 policy_daily 不改名，保护历史 plan_id 与 test 白名单。
+  schedule.yaml 中 job 数 9→6；模板 templates/housing_daily.yaml、
+  housing_fortnight.yaml、hardware_daily.yaml 留存未删（历史产物
+  引用仍在，模板孤儿有 test_no_orphan_scheduled_task_xml 同款门禁
+  暂不覆盖，后续清理另议）。教训记录：schtasks /create /xml 对
+  PowerShell 写出的 UTF-16 XML 偶发把 ScheduleByMonth 解析成空
+  ScheduleByDay（表面 SUCCESS 实为每日空触发）——必须用 Python
+  显式 utf-16 BOM 写入并用 `schtasks /query /xml` 回读验证 trigger
+  形状，Next Run Time 是缓存会骗人。
 - 2026-10-11 19:4x：**三机组合采样收官**——honor r2 6 行（K60 5 行、
   一加 r2 8 行已入），今日 35 行观测、21/22 实体覆盖（9050 京东无
   在售）；BUG-20 raw_price 字符串类型拒收（入库器门禁正确）；
