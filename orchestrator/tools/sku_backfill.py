@@ -25,9 +25,16 @@ sys.path.insert(0, str(ROOT))
 
 
 def convert(raw: dict, *, entity_hint: dict, source: str, channel: str,
-            condition: str = "全新") -> list[dict]:
+            condition: str = "全新",
+            extra_attrs: dict | None = None) -> list[dict]:
     """平铺序列 → observations.json 行。不查库——entity 匹配交给入库器
-    （单一职责：转换器不懂实体，入库器不懂渠道）。"""
+    （单一职责：转换器不懂实体，入库器不懂渠道）。
+
+    extra_attrs：可选追加维度（如 promo_event），**不覆盖**三轨字段
+    （condition/channel/source 是 aggregate_scope 分轨命脉，转换器
+    保底不让调用方冲掉）。枚举合法性由调用方（渠道适配器）对照契约
+    校验后传入。
+    """
     dates, prices = raw.get("dates") or [], raw.get("prices") or []
     if len(dates) != len(prices):
         raise ValueError(f"dates/prices 长度不一致: {len(dates)}≠{len(prices)}")
@@ -36,17 +43,32 @@ def convert(raw: dict, *, entity_hint: dict, source: str, channel: str,
     for d, p in zip(dates, prices):
         rows.append({
             "identity_hint": entity_hint,
-            "attrs_hint": {"condition": condition, "channel": channel,
+            "attrs_hint": {**(extra_attrs or {}),
+                           "condition": condition, "channel": channel,
                            "source": source},
             "low_price": float(p), "raw_price": float(p),
             "price_date": str(d),
             "shop": {"name": shop.get("name") or source,
-                     "platform": shop.get("platform") or source},
+                     "platform": shop.get("platform") or source,
+                     # Q6/R21：shop_url 必须是商品详情页（京东 item URL）——
+                     # 溯源弹窗点得回去。2026-10-14 慢慢买接入补上。
+                     "url": shop.get("url") or ""},
             "coupons": [], "in_stock": True,
             "source_url": raw.get("source_url") or "",
             "source_tier": "C",
         })
     return rows
+
+
+def append_rows(out: Path, rows: list[dict]) -> int:
+    """追加合并进采集日目录的 observations.json（同日多实体/多渠道
+    不互相覆盖）。返回合并后总行数。"""
+    existing = json.loads(out.read_text(encoding="utf-8")) if out.exists() else []
+    existing.extend(rows)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(existing, ensure_ascii=False, indent=1),
+                   encoding="utf-8")
+    return len(existing)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -69,13 +91,8 @@ def main(argv: list[str] | None = None) -> int:
                                      "spec": args.spec},
                    source=args.source, channel=args.channel)
     out = ROOT / "artifacts" / args.date_dir / "t1_sku_observations.json"
-    # 追加合并：同一天可能回填多个实体，别互相覆盖
-    existing = json.loads(out.read_text(encoding="utf-8")) if out.exists() else []
-    existing.extend(rows)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(existing, ensure_ascii=False, indent=1),
-                   encoding="utf-8")
-    print(f"appended {len(rows)} rows -> {out} (total {len(existing)})")
+    total = append_rows(out, rows)
+    print(f"appended {len(rows)} rows -> {out} (total {total})")
     return 0
 
 
