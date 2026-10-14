@@ -43,3 +43,7 @@ orchestrator/reports/*.out
 orchestrator/reports/alerts_suppressed.jsonl
 orchestrator/outputs/
 orchestrator/data/
+
+# ---- 闲鱼扫描报告 2026-10-14 加：reports/ 是 AI 自动生成的轮次报告，
+#      只给用户看，按时间序轮号命名。值低、量大、每次扫都更新，不入仓。----
+xianyu-hunter/reports/
