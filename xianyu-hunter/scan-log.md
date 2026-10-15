@@ -102,3 +102,148 @@
 - 10-15 13:24:17 AUTO-R30: PARSED total=0 fresh=0
 - 10-15 13:24:17 AUTO-R30: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R30_1015-1319_auto.md
 - 10-15 13:24:19 AUTO-R30: IME restored + sdcard cleaned
+- 10-15 13:24:20 AUTO-R30: DONE round 30
+- 10-15 13:49:02 AUTO-R31: START round 31 (1015-1349)
+- 10-15 13:49:03 PAD R31: LEASE_OK
+- 10-15 13:49:03 AUTO-R31: PAD: LEASE_OK
+- 10-15 13:49:48 PAD R31: KEYWORD 1/3: macbookpro m1max 64g
+- 10-15 13:49:48 AUTO-R31: PAD: KEYWORD 1/3: macbookpro m1max 64g
+- 10-15 13:49:50 PAD R31: WARN: home search bar id not found for macbookpro m1max 64g
+- 10-15 13:49:50 AUTO-R31: PAD: WARN: home search bar id not found for macbookpro m1max 64g
+- 10-15 13:49:57 PAD R31: WARN: search input not found for macbookpro m1max 64g
+- 10-15 13:49:57 AUTO-R31: PAD: WARN: search input not found for macbookpro m1max 64g
+- 10-15 13:50:12 PAD R31: filter personal-idle tapped
+- 10-15 13:50:12 AUTO-R31: PAD: filter personal-idle tapped
+- 10-15 13:50:44 PAD R31: KEYWORD 2/3: m1max 64g 1t
+- 10-15 13:50:44 AUTO-R31: PAD: KEYWORD 2/3: m1max 64g 1t
+- 10-15 13:50:48 PAD R31: tapped home search bar (1000,205)
+- 10-15 13:50:48 AUTO-R31: PAD: tapped home search bar (1000,205)
+- 10-15 13:50:55 PAD R31: tapped search input (954,111)
+- 10-15 13:50:55 AUTO-R31: PAD: tapped search input (954,111)
+- 10-15 13:51:13 PAD R31: filter personal-idle tapped
+- 10-15 13:51:13 AUTO-R31: PAD: filter personal-idle tapped
+- 10-15 13:51:45 PAD R31: KEYWORD 3/3: 16瀵竚1max
+- 10-15 13:51:45 AUTO-R31: PAD: KEYWORD 3/3: 16瀵竚1max
+- 10-15 13:51:48 PAD R31: tapped home search bar (1000,205)
+- 10-15 13:51:48 AUTO-R31: PAD: tapped home search bar (1000,205)
+- 10-15 13:51:55 PAD R31: tapped search input (954,111)
+- 10-15 13:51:55 AUTO-R31: PAD: tapped search input (954,111)
+- 10-15 13:52:13 PAD R31: filter personal-idle tapped
+- 10-15 13:52:13 AUTO-R31: PAD: filter personal-idle tapped
+- 10-15 13:52:45 PAD R31: DONE pad31_1015_1349
+- 10-15 13:52:45 AUTO-R31: PAD: DONE pad31_1015_1349
+- 10-15 13:52:45 AUTO-R31: PAD: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-15 13:52:45 AUTO-R31: PAD: 件。
+- 10-15 13:52:45 AUTO-R31: PAD: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_pad.ps1:22 字符: 3
+- 10-15 13:52:45 AUTO-R31: PAD: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-15 13:52:45 AUTO-R31: PAD: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 13:52:45 AUTO-R31: PAD:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-15 13:52:45 AUTO-R31: PAD:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-15 13:52:45 AUTO-R31: PAD:  
+- 10-15 13:52:45 AUTO-R31: PAD: TRACE: no leads.md, skip
+- 10-15 13:52:46 R31: LEASE_OK
+- 10-15 13:52:46 AUTO-R31: HONOR: LEASE_OK
+- 10-15 13:52:46 R31: DEVICE_STALE, recovering...
+- 10-15 13:52:52 R31: SWITCHED to wifi device
+- 10-15 13:52:52 AUTO-R31: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 13:52:53 AUTO-R31: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 13:53:07 R31: DEVICE_STALE, recovering...
+- 10-15 13:53:12 R31: SWITCHED to wifi device
+- 10-15 13:53:16 R31: DEVICE_STALE, recovering...
+- 10-15 13:53:21 R31: SWITCHED to wifi device
+- 10-15 13:53:21 AUTO-R31: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 13:53:40 R31: DEVICE_STALE, recovering...
+- 10-15 13:53:45 R31: SWITCHED to wifi device
+- 10-15 13:53:48 R31: DEVICE_STALE, recovering...
+- 10-15 13:53:54 R31: SWITCHED to wifi device
+- 10-15 13:53:54 AUTO-R31: HONOR: 使用“1”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\round31
+- 10-15 13:53:54 AUTO-R31: HONOR: _1015_1352_nav1.xml”。”
+- 10-15 13:53:54 AUTO-R31: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:211 字符: 3
+- 10-15 13:53:54 AUTO-R31: HONOR: +   $navContent = [IO.File]::ReadAllText("$OutDir\${tag}_nav$j.xml")
+- 10-15 13:53:54 AUTO-R31: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 13:53:54 AUTO-R31: HONOR:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-15 13:53:54 AUTO-R31: HONOR:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-15 13:53:54 AUTO-R31: HONOR:  
+- 10-15 13:53:54 AUTO-R31: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 13:53:56 R31: DEVICE_STALE, recovering...
+- 10-15 13:54:02 R31: SWITCHED to wifi device
+- 10-15 13:54:05 R31: DEVICE_STALE, recovering...
+- 10-15 13:54:11 R31: SWITCHED to wifi device
+- 10-15 13:54:11 AUTO-R31: HONOR: 使用“1”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\round31
+- 10-15 13:54:11 AUTO-R31: HONOR: _1015_1352_nav2.xml”。”
+- 10-15 13:54:11 AUTO-R31: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:211 字符: 3
+- 10-15 13:54:11 AUTO-R31: HONOR: +   $navContent = [IO.File]::ReadAllText("$OutDir\${tag}_nav$j.xml")
+- 10-15 13:54:11 AUTO-R31: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 13:54:11 AUTO-R31: HONOR:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-15 13:54:11 AUTO-R31: HONOR:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-15 13:54:11 AUTO-R31: HONOR:  
+- 10-15 13:54:11 AUTO-R31: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 13:54:13 R31: DEVICE_STALE, recovering...
+- 10-15 13:54:19 R31: SWITCHED to wifi device
+- 10-15 13:54:22 R31: DEVICE_STALE, recovering...
+- 10-15 13:54:49 R31: SWITCHED to wifi device
+- 10-15 13:54:49 AUTO-R31: HONOR: 使用“1”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\round31
+- 10-15 13:54:49 AUTO-R31: HONOR: _1015_1352_nav3.xml”。”
+- 10-15 13:54:49 AUTO-R31: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:211 字符: 3
+- 10-15 13:54:49 AUTO-R31: HONOR: +   $navContent = [IO.File]::ReadAllText("$OutDir\${tag}_nav$j.xml")
+- 10-15 13:54:49 AUTO-R31: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 13:54:49 AUTO-R31: HONOR:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-15 13:54:49 AUTO-R31: HONOR:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-15 13:54:49 AUTO-R31: HONOR:  
+- 10-15 13:54:49 AUTO-R31: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 13:54:51 R31: DEVICE_STALE, recovering...
+- 10-15 13:55:12 R31: RECOVERED (reconnect)
+- 10-15 13:55:19 AUTO-R31: HONOR: 使用“1”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\round31
+- 10-15 13:55:19 AUTO-R31: HONOR: _1015_1352_nav4.xml”。”
+- 10-15 13:55:19 AUTO-R31: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:211 字符: 3
+- 10-15 13:55:19 AUTO-R31: HONOR: +   $navContent = [IO.File]::ReadAllText("$OutDir\${tag}_nav$j.xml")
+- 10-15 13:55:19 AUTO-R31: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 13:55:19 AUTO-R31: HONOR:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-15 13:55:19 AUTO-R31: HONOR:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-15 13:55:19 AUTO-R31: HONOR:  
+- 10-15 13:55:28 AUTO-R31: HONOR: 使用“1”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\round31
+- 10-15 13:55:28 AUTO-R31: HONOR: _1015_1352_nav5.xml”。”
+- 10-15 13:55:29 AUTO-R31: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:211 字符: 3
+- 10-15 13:55:29 AUTO-R31: HONOR: +   $navContent = [IO.File]::ReadAllText("$OutDir\${tag}_nav$j.xml")
+- 10-15 13:55:29 AUTO-R31: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 13:55:29 AUTO-R31: HONOR:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-15 13:55:29 AUTO-R31: HONOR:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-15 13:55:29 AUTO-R31: HONOR:  
+- 10-15 13:55:49 R31: keyword count = 3
+- 10-15 13:55:49 AUTO-R31: HONOR: keyword count = 3
+- 10-15 13:55:49 AUTO-R31: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-15 13:55:49 AUTO-R31: HONOR: 件。
+- 10-15 13:55:49 AUTO-R31: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-15 13:55:49 AUTO-R31: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-15 13:55:49 AUTO-R31: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 13:55:49 AUTO-R31: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-15 13:55:50 AUTO-R31: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-15 13:55:50 AUTO-R31: HONOR:  
+- 10-15 13:55:50 AUTO-R31: HONOR: KEYWORD 1/1: mac studio 64g
+- 10-15 13:56:05 R31: WARN: input field not found (skip kw=mac studio 64g)
+- 10-15 13:56:05 AUTO-R31: HONOR: WARN: input field not found (skip kw=mac studio 64g)
+- 10-15 13:56:10 R31: KEYWORD 2/1: studio m1 max
+- 10-15 13:56:10 AUTO-R31: HONOR: KEYWORD 2/1: studio m1 max
+- 10-15 13:56:25 R31: WARN: input field not found (skip kw=studio m1 max)
+- 10-15 13:56:25 AUTO-R31: HONOR: WARN: input field not found (skip kw=studio m1 max)
+- 10-15 13:56:29 R31: KEYWORD 3/1: m1max 鍙板紡
+- 10-15 13:56:29 AUTO-R31: HONOR: KEYWORD 3/1: m1max 鍙板紡
+- 10-15 13:56:44 R31: WARN: input field not found (skip kw=m1max 鍙板紡)
+- 10-15 13:56:44 AUTO-R31: HONOR: WARN: input field not found (skip kw=m1max 鍙板紡)
+- 10-15 13:56:45 R31: DONE round31_1015_1352
+- 10-15 13:56:45 AUTO-R31: HONOR: DONE round31_1015_1352
+- 10-15 13:56:45 AUTO-R31: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-15 13:56:45 AUTO-R31: HONOR: 件。
+- 10-15 13:56:45 AUTO-R31: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-15 13:56:45 AUTO-R31: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-15 13:56:45 AUTO-R31: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 13:56:45 AUTO-R31: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-15 13:56:45 AUTO-R31: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-15 13:56:45 AUTO-R31: HONOR:  
+- 10-15 13:56:45 AUTO-R31: HONOR: TRACE: no leads.md, skip
+- 10-15 13:56:46 AUTO-R31: pad-parse: written E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\pad31_1015_1349_16__1max_leads.md
+- 10-15 13:56:46 AUTO-R31: pad-parse: total=0 with64G=0 blocked=0 soft=0
+- 10-15 13:56:46 AUTO-R31: honor: no scans, skip
+- 10-15 13:56:46 AUTO-R31: PARSED total=0 fresh=0
+- 10-15 13:56:46 AUTO-R31: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R31_1015-1349_auto.md
+- 10-15 13:56:47 AUTO-R31: IME restored + sdcard cleaned
