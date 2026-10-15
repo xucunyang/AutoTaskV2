@@ -466,6 +466,24 @@ function initChart(e) {
   entry.draw();
 }
 
+/* R37 周采样平滑：自然周（周一为界）分桶取均值——逐日价格是阶梯函数
+   （电商改价横盘数日一跳），周均线抹平台阶呈现趋势方向。展示层聚合，
+   不产生新数据、不参与指标计算。 */
+function weeklySeries(daily) {
+  const buckets = new Map();
+  for (const p of daily) {
+    if (p[1] == null || isNaN(p[1])) continue;
+    const t = new Date(p[0] + 'T00:00:00');
+    t.setDate(t.getDate() - ((t.getDay() + 6) % 7));   // 对齐到本周周一
+    const key = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    const b = buckets.get(key) || { sum: 0, n: 0 };
+    b.sum += p[1]; b.n += 1;
+    buckets.set(key, b);
+  }
+  return [...buckets.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1)
+    .map(([k, b]) => [k, Math.round(b.sum / b.n * 100) / 100]);
+}
+
 function drawChart(div, e, withTracks) {
   const inst = charts.find(x => x.div === div).inst;
   const m = e.metrics;
@@ -483,6 +501,17 @@ function drawChart(div, e, withTracks) {
       itemStyle: { color: '#d89b3a' }, emphasis: { disabled: true },
       z: 3,
     });
+  }
+  if (main.length >= 14) {                     // R37：不足两周不画周线（点太稀）
+    const wk = weeklySeries(main);
+    if (wk.length >= 2) {
+      lines.push({
+        name: '主线·周均', type: 'line', data: wk,
+        symbol: 'none', lineStyle: { width: 2.5, color: 'rgba(216,155,58,0.45)' },
+        itemStyle: { color: 'rgba(216,155,58,0.45)' }, emphasis: { disabled: true },
+        z: 4, smooth: true,
+      });
+    }
   }
   const sameCurve = main.length >= 2 && lowest.length === main.length &&
     lowest.every((p, i) => p[0] === main[i][0] && p[1] === main[i][1]);
