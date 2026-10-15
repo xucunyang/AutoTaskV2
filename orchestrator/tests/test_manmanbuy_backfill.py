@@ -268,8 +268,31 @@ def test_is_host_words():
     """整机词防线：联想工作站混进 RTX 5090 桶（批量发现实测抓到）。"""
     assert mbf._is_host("联想 GeekPro 游戏台式电脑主机 RTX 5090")
     assert mbf._is_host("七彩虹 iGame 工作站 RTX 5090D 建模")
+    assert mbf._is_host("朴赛英特尔i9 14900K 深度学习双卡GPU服务器 4090/5090")
     assert not mbf._is_host("七彩虹 iGame GeForce RTX 5090 D V2 火神")
     assert not mbf._is_host("技嘉魔鹰 GeForce RTX 5060 Ti 8G")
+    # 「台式机显卡」是单卡堆砌写法——讯景雪狼 9070（销量 5000）曾被误杀
+    assert not mbf._is_host(
+        "讯景(XFX)AMD RADEON RX 9070 雪狼 16GB 白 电竞游戏设计DeepSeek"
+        "人工智能AI本地部署台式机显卡")
+    assert mbf._is_host("华硕(ASUS)AMD锐龙9图形设计电脑 ET500A 9950X")
+
+
+def test_match_spec_rejects_multimodel_stuffing():
+    """多型号堆砌防线：v5 批量实测抓到的两类混装/堆砌页。"""
+    # 斜杠型号列表（4060Ti 16G 桶搜到的技嘉混装页）
+    assert not mbf._match_spec(
+        "技嘉RTX4060/4070/4070Super/4070TI SUPER/4060Ti 16G 显卡",
+        "RTX 4060 Ti", "16GB")
+    # 无斜杠但多前缀型号（4070 Super 桶搜到的堆砌页）
+    assert not mbf._match_spec(
+        "英伟达RTX4090显卡3090涡轮显卡4080S 32G显卡英伟达RTX5090",
+        "RTX 4070 Super", "12GB")
+    # 正常单卡标题不受影响
+    assert mbf._match_spec(
+        "华硕（ASUS）白色 DUAL GeForce RTX 4060 Ti O8G 版", "RTX 4060 Ti", "8GB")
+    assert mbf._match_spec(
+        "微星（MSI）魔龙 GeForce RTX 5060 Ti 16G GAMING", "RTX 5060 Ti", "16GB")
 
 
 def test_registry_accepts_jingfen_key(tmp_path_factory):

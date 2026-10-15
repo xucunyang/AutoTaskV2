@@ -368,15 +368,21 @@ function makeCard(e) {
   card.className = 'card'; card.id = 'card-' + e.entity_id;
 
   const hd = document.createElement('div'); hd.className = 'hd';
+  /* 自采轨已清除（2026-10-15 脏数据处置）：指标/标签以回填曲线为准——
+     badge 显示回填天数，价格取最低价线最新点 */
+  const mmbDays = e.mmb && e.mmb.lowest ? e.mmb.lowest.length : 0;
+  const mmbLast = mmbDays ? e.mmb.lowest[mmbDays - 1][1] : null;
   const badge = m
     ? `<span class="badge" style="background:${LABELS[m.label][1]}">${LABELS[m.label][0]}</span>`
-    : `<span class="badge" style="background:var(--none)">样本 ${e.n_periods}/5 期</span>`;
+    : (mmbDays >= 2
+        ? `<span class="badge" style="background:var(--none)">回填 ${mmbDays} 天</span>`
+        : `<span class="badge" style="background:var(--none)">暂无数据</span>`);
   const d1 = m ? `<span class="d1" style="color:${m.d1_pct < 0 ? 'var(--fast-drop)' : 'var(--fast-rise)'}">
                     ${m.d1_pct < 0 ? DOWN : UP}${Math.abs(m.d1_pct)}%</span>` : '';
   const anchor = e.perf_anchor ? '<span class="anchor">基底</span>' : '';
   const nTracks = Object.keys(e.tracks).length;
   hd.innerHTML = `<span class="name">${grpIcon(e.group)} ${esc(e.display_name)}</span>${anchor}${badge}${d1}
-    <span class="price">${m ? '<b>' + money(m.last_price) + '</b>' : ''}</span>`;
+    <span class="price">${mmbLast != null ? '<b>' + money(mmbLast) + '</b>' : (m ? '<b>' + money(m.last_price) + '</b>' : '')}</span>`;
   card.appendChild(hd);
 
   let trackSel = null;
@@ -394,7 +400,9 @@ function makeCard(e) {
   if (!m) {
     const ph = document.createElement('div');
     ph.className = 'placeholder';
-    ph.textContent = `样本 ${e.n_periods}/5 期——指标计算暂缓（Q12 占位），曲线照常展示；点数据点可看原始报价`;
+    ph.textContent = mmbDays >= 2
+      ? `回填 ${mmbDays} 天（金线=销量锚主线，绿虚线=全网最低）`
+      : '锚未覆盖——待发现迭代（R35）；覆盖后展示双曲线';
     card.appendChild(ph);
   }
 
@@ -452,40 +460,47 @@ function initChart(e) {
 function drawChart(div, e, withTracks) {
   const inst = charts.find(x => x.div === div).inst;
   const m = e.metrics;
-  /* 品类采集规则 v1 双曲线：主线=销量锚（市场主流成交价，金色实线）、
-     最低价线=manmanmai 轨全体 min（绿色虚线）。x 轴是 time 类型——
-     回填曲线 400+ 天，与自采序列（个位数天）日期完全不同，category
-     轴对不齐（2026-10-14 重构）。 */
-  const mmbLines = [];
-  if (e.mmb && e.mmb.sales_main && e.mmb.sales_main.length >= 2) {
-    mmbLines.push({
-      name: '主线·销量锚', type: 'line', data: e.mmb.sales_main,
-      symbol: 'none', lineStyle: { width: 1.6, color: '#d89b3a' },
+  /* 双曲线（品类采集规则 v1）：主线=销量锚（金色实线）、最低价线=manmanmai
+     轨全体 min（绿虚线）。单锚实体两线完全重合 → 只画主线（2026-10-15）。
+     「每日最低」（自采轨）随脏数据清除后恒为空——无数据不画线不进 legend。 */
+  const lines = [];
+  const mmb = e.mmb || {};
+  const main = (mmb.sales_main || []).filter(p => p[1] != null && !isNaN(p[1]));
+  const lowest = (mmb.lowest || []).filter(p => p[1] != null && !isNaN(p[1]));
+  if (main.length >= 2) {
+    lines.push({
+      name: '主线·销量锚', type: 'line', data: main,
+      symbol: 'none', lineStyle: { width: 1.8, color: '#d89b3a' },
       itemStyle: { color: '#d89b3a' }, emphasis: { disabled: true },
       z: 3,
     });
   }
-  if (e.mmb && e.mmb.lowest && e.mmb.lowest.length >= 2) {
-    mmbLines.push({
-      name: '最低价线', type: 'line', data: e.mmb.lowest,
+  const sameCurve = main.length >= 2 && lowest.length === main.length &&
+    lowest.every((p, i) => p[0] === main[i][0] && p[1] === main[i][1]);
+  if (lowest.length >= 2 && !sameCurve) {
+    lines.push({
+      name: '最低价线', type: 'line', data: lowest,
       symbol: 'none', lineStyle: { width: 1.3, type: 'dashed', color: '#1e9e5a' },
       itemStyle: { color: '#1e9e5a' }, emphasis: { disabled: true },
       z: 2,
     });
   }
-  const lines = [{
-    name: '每日最低', type: 'line', data: e.series,
-    symbol: 'circle', symbolSize: 7,
-    lineStyle: { width: 2, color: m ? LABELS[m.label][1] : '#7a8499' },
-    itemStyle: { color: m ? LABELS[m.label][1] : '#7a8499' },
-    emphasis: { disabled: true },
-  }];
-  if (m) lines[0].markLine = {
-    silent: true, symbol: 'none',
-    data: [{ yAxis: m.min_30, label: { formatter: '30期低点 ' + money(m.min_30),
-             position: 'insideEndTop', fontSize: 11, color: '#7a8499' } }],
-    lineStyle: { type: 'dashed', color: '#b9c0cc' }
-  };
+  if (e.series && e.series.length >= 2) {
+    const self = {
+      name: '每日最低', type: 'line', data: e.series,
+      symbol: 'circle', symbolSize: 7,
+      lineStyle: { width: 2, color: m ? LABELS[m.label][1] : '#7a8499' },
+      itemStyle: { color: m ? LABELS[m.label][1] : '#7a8499' },
+      emphasis: { disabled: true },
+    };
+    if (m) self.markLine = {
+      silent: true, symbol: 'none',
+      data: [{ yAxis: m.min_30, label: { formatter: '30期低点 ' + money(m.min_30),
+               position: 'insideEndTop', fontSize: 11, color: '#7a8499' } }],
+      lineStyle: { type: 'dashed', color: '#b9c0cc' }
+    };
+    lines.push(self);
+  }
   const colors = ['#8e6fd8', '#d8a13a', '#3aa0c9', '#c96f9a'];
   if (withTracks) Object.entries(e.tracks).forEach(([v, s], i) => {
     if (s.length < 2) return;
@@ -493,20 +508,23 @@ function drawChart(div, e, withTracks) {
       symbol: 'none', lineStyle: { width: 1.4, type: 'dashed', color: colors[i % 4] },
       itemStyle: { color: colors[i % 4] }, emphasis: { disabled: true } });
   });
-  lines.push(...mmbLines);
-  const hasOverlay = withTracks && lines.length > 2 || mmbLines.length > 0;
+  const hasLegend = lines.length > 1;
   inst.setOption({
     animation: false,
-    grid: { left: 62, right: 16, top: hasOverlay ? 30 : 14, bottom: 26 },
-    legend: hasOverlay
+    grid: { left: 62, right: 16, top: hasLegend ? 30 : 14, bottom: 26 },
+    legend: hasLegend
       ? { top: 2, textStyle: { fontSize: 11, color: '#7a8499' }, selectedMode: false } : null,
-    tooltip: { trigger: 'axis', valueFormatter: v => money(v),
+    tooltip: { trigger: 'axis',
                axisPointer: { type: 'line', lineStyle: { color: '#c3cbd8' } },
                formatter: ps => {
-                 const d = new Date(ps[0].value[0]);
+                 /* 悬停位置没有数据点的序列不进悬浮框——否则显示 NaN */
+                 const pts = ps.filter(p => p.value && p.value[1] != null &&
+                                           !isNaN(p.value[1]));
+                 if (!pts.length) return '';
+                 const d = new Date(pts[0].value[0]);
                  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                  return esc(day) + '<br>' +
-                   ps.map(p => `${p.marker}${esc(p.seriesName)} ${money(p.value)}`).join('<br>') +
+                   pts.map(p => `${p.marker}${esc(p.seriesName)} ${money(p.value[1])}`).join('<br>') +
                    '<br><span style="color:#7a8499">点击查看当天原始报价</span>';
                } },
     xAxis: { type: 'time', axisLabel: { fontSize: 11, color: '#7a8499' } },

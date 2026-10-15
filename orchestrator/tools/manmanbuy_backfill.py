@@ -281,17 +281,30 @@ def _match_spec(title: str, series: str, spec: str) -> bool:
         for suf in ("ti", "super", "pro", "v2", "d", "xt", "gre"):
             if not s.endswith(suf) and rest.startswith(suf):
                 return False
+    # 多型号堆砌防线（2026-10-15 v5 批量实测抓到）：标题塞多个型号的
+    # 混装/堆砌页不是单卡 listing——「RTX4090…3090涡轮…4080S…RTX509」
+    # 「RTX4060/4070/4070Super/…」两类。判据：斜杠相邻型号，或 ≥2 个
+    # 带前缀（rtx/gtx/rx）的不同型号。
+    if re.search(r"\d{3,4}\w{0,6}/\s*\d{3,4}", t):
+        return False
+    models = set(re.findall(r"(?:rtx|gtx|rx)\s?\d{3,4}\w{0,4}", t))
+    if len(models) >= 2:
+        return False
     return True
 
 
 # 整机词黑名单（R28 教训的采集侧防线）：标题含这些词 = 整机/工作站/
 # 关键词堆砌页，不是单卡 listing——RTX 5090 桶曾搜出联想工作站。
-_HOSTWORDS = ("主机", "整机", "工作站", "笔记本", "台式机", "电脑",
-              "水冷", "显示器", "电源")
+# 2026-10-15 补充：服务器 入列；「台式机显卡/电脑独显」是单卡的堆砌
+# 写法（讯景雪狼 9070 销量 5000 曾被误杀），紧跟显卡/独显时不算整机。
+_HOSTWORDS = ("主机", "整机", "工作站", "笔记本", "服务器",
+              "台式机", "电脑", "水冷", "显示器", "电源")
 
 
 def _is_host(title: str) -> bool:
     t = title or ""
+    # 机器词紧跟（独）显卡 → 单卡堆砌写法，先摘除再判
+    t = re.sub(r"(台式机|台式电脑|电脑|台式)(?=独?显卡)", "", t)
     return any(w in t for w in _HOSTWORDS)
 
 
