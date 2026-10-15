@@ -601,3 +601,60 @@
 - 10-15 15:26:45 AUTO-R34: PARSED total=0 fresh=0
 - 10-15 15:26:45 AUTO-R34: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R34_1015-1519_auto.md
 - 10-15 15:26:46 AUTO-R34: IME restored + sdcard cleaned
+- 10-15 15:26:48 AUTO-R34: DONE round 34
+- 10-15 15:49:04 AUTO-R35: START round 35 (1015-1549)
+- 10-15 15:49:05 PAD R35: LEASE_OK
+- 10-15 15:49:05 AUTO-R35: PAD: LEASE_OK
+- 10-15 15:49:50 PAD R35: KEYWORD 1/3: macbookpro m1max 64g
+- 10-15 15:49:50 AUTO-R35: PAD: KEYWORD 1/3: macbookpro m1max 64g
+- 10-15 15:49:54 PAD R35: tapped home search bar (1000,205)
+- 10-15 15:49:54 AUTO-R35: PAD: tapped home search bar (1000,205)
+- 10-15 15:50:01 PAD R35: tapped search input (954,111)
+- 10-15 15:50:01 AUTO-R35: PAD: tapped search input (954,111)
+- 10-15 15:50:18 PAD R35: filter personal-idle tapped
+- 10-15 15:50:18 AUTO-R35: PAD: filter personal-idle tapped
+- 10-15 15:50:50 PAD R35: KEYWORD 2/3: m1max 64g 1t
+- 10-15 15:50:50 AUTO-R35: PAD: KEYWORD 2/3: m1max 64g 1t
+- 10-15 15:50:54 PAD R35: tapped home search bar (1000,205)
+- 10-15 15:50:54 AUTO-R35: PAD: tapped home search bar (1000,205)
+- 10-15 15:51:01 PAD R35: tapped search input (954,111)
+- 10-15 15:51:01 AUTO-R35: PAD: tapped search input (954,111)
+- 10-15 15:51:18 PAD R35: filter personal-idle tapped
+- 10-15 15:51:18 AUTO-R35: PAD: filter personal-idle tapped
+- 10-15 15:51:50 PAD R35: KEYWORD 3/3: 16瀵竚1max
+- 10-15 15:51:50 AUTO-R35: PAD: KEYWORD 3/3: 16瀵竚1max
+- 10-15 15:51:53 PAD R35: tapped home search bar (1000,205)
+- 10-15 15:51:53 AUTO-R35: PAD: tapped home search bar (1000,205)
+- 10-15 15:52:00 PAD R35: tapped search input (954,111)
+- 10-15 15:52:00 AUTO-R35: PAD: tapped search input (954,111)
+- 10-15 15:52:18 PAD R35: filter personal-idle tapped
+- 10-15 15:52:18 AUTO-R35: PAD: filter personal-idle tapped
+- 10-15 15:52:50 PAD R35: DONE pad35_1015_1549
+- 10-15 15:52:50 PAD R35: TRACE: no leads.md, skip
+- 10-15 15:52:50 AUTO-R35: PAD: TRACE: no leads.md, skip
+- 10-15 15:52:51 R35: LEASE_OK
+- 10-15 15:52:51 AUTO-R35: HONOR: LEASE_OK
+- 10-15 15:52:51 R35: DEVICE_STALE, recovering...
+- 10-15 15:52:56 R35: SWITCHED to wifi device
+- 10-15 15:52:56 AUTO-R35: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:52:58 AUTO-R35: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:53:12 R35: DEVICE_STALE, recovering...
+- 10-15 15:53:17 R35: SWITCHED to wifi device
+- 10-15 15:53:20 R35: DEVICE_STALE, recovering...
+- 10-15 15:53:26 R35: SWITCHED to wifi device
+- 10-15 15:53:26 AUTO-R35: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:53:44 R35: DEVICE_STALE, recovering...
+- 10-15 15:53:50 R35: SWITCHED to wifi device
+- 10-15 15:53:53 R35: DEVICE_STALE, recovering...
+- 10-15 15:53:58 R35: SWITCHED to wifi device
+- 10-15 15:53:59 AUTO-R35: HONOR: 使用“1”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\round35
+- 10-15 15:53:59 AUTO-R35: HONOR: _1015_1552_nav1.xml”。”
+- 10-15 15:53:59 AUTO-R35: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:211 字符: 3
+- 10-15 15:53:59 AUTO-R35: HONOR: +   $navContent = [IO.File]::ReadAllText("$OutDir\${tag}_nav$j.xml")
+- 10-15 15:53:59 AUTO-R35: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 15:53:59 AUTO-R35: HONOR:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-15 15:53:59 AUTO-R35: HONOR:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-15 15:53:59 AUTO-R35: HONOR:  
+- 10-15 15:53:59 AUTO-R35: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:54:01 R35: DEVICE_STALE, recovering...
+- 10-15 13:05 R31: 追补 3 台三件套(P11/P12/P13)，报告 reports/R31_1015-1305_追补3台.md；输入法已还原；租约已释放
