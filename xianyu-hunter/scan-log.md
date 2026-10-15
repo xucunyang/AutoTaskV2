@@ -39,3 +39,66 @@
 - 10-15 10:55:38 R29: TRACE: no leads.md, skip
 - 10-15 11:04:00 R29: 6 台三件套齐全, 报告 reports/R29_1015-1104_6台三件套评分.md
 - 10-15 12:25 R30: 13 条新记录(9 台详情/三件套 + 2 Studio + 2 截图)，R29 六台全部去重命中；荣耀无线 192.168.31.95:5555 全程稳定；输入法已还原；报告 reports/R30_1015-1225_10个新候选去重.md
+- 10-15 13:19:02 AUTO-R30: START round 30 (1015-1319)
+- 10-15 13:19:03 PAD R30: LEASE_OK
+- 10-15 13:19:03 AUTO-R30: PAD: LEASE_OK
+- 10-15 13:19:49 PAD R30: KEYWORD 1/3: macbookpro m1max 64g
+- 10-15 13:19:49 AUTO-R30: PAD: KEYWORD 1/3: macbookpro m1max 64g
+- 10-15 13:19:53 PAD R30: tapped home search bar (1000,205)
+- 10-15 13:19:53 AUTO-R30: PAD: tapped home search bar (1000,205)
+- 10-15 13:20:00 PAD R30: tapped search input (954,111)
+- 10-15 13:20:00 AUTO-R30: PAD: tapped search input (954,111)
+- 10-15 13:20:18 PAD R30: filter personal-idle tapped
+- 10-15 13:20:18 AUTO-R30: PAD: filter personal-idle tapped
+- 10-15 13:20:50 PAD R30: KEYWORD 2/3: m1max 64g 1t
+- 10-15 13:20:50 AUTO-R30: PAD: KEYWORD 2/3: m1max 64g 1t
+- 10-15 13:20:54 PAD R30: tapped home search bar (1000,205)
+- 10-15 13:20:54 AUTO-R30: PAD: tapped home search bar (1000,205)
+- 10-15 13:21:01 PAD R30: tapped search input (954,111)
+- 10-15 13:21:01 AUTO-R30: PAD: tapped search input (954,111)
+- 10-15 13:21:18 PAD R30: filter personal-idle tapped
+- 10-15 13:21:18 AUTO-R30: PAD: filter personal-idle tapped
+- 10-15 13:21:51 PAD R30: KEYWORD 3/3: 16瀵竚1max
+- 10-15 13:21:51 AUTO-R30: PAD: KEYWORD 3/3: 16瀵竚1max
+- 10-15 13:21:55 PAD R30: tapped home search bar (1000,205)
+- 10-15 13:21:55 AUTO-R30: PAD: tapped home search bar (1000,205)
+- 10-15 13:22:02 PAD R30: tapped search input (954,111)
+- 10-15 13:22:02 AUTO-R30: PAD: tapped search input (954,111)
+- 10-15 13:22:19 PAD R30: filter personal-idle tapped
+- 10-15 13:22:19 AUTO-R30: PAD: filter personal-idle tapped
+- 10-15 13:22:52 PAD R30: DONE pad30_1015_1319
+- 10-15 13:22:52 AUTO-R30: PAD: DONE pad30_1015_1319
+- 10-15 13:22:52 AUTO-R30: PAD: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问
+- 10-15 13:22:52 AUTO-R30: PAD: 此文件。
+- 10-15 13:22:52 AUTO-R30: PAD: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_pad.ps1:22 字符: 3
+- 10-15 13:22:52 AUTO-R30: PAD: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-15 13:22:52 AUTO-R30: PAD: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 13:22:52 AUTO-R30: PAD:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-15 13:22:52 AUTO-R30: PAD:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-15 13:22:52 AUTO-R30: PAD:  
+- 10-15 13:22:52 AUTO-R30: PAD: TRACE: no leads.md, skip
+- 10-15 13:22:53 R30: LEASE_OK
+- 10-15 13:22:53 AUTO-R30: HONOR: LEASE_OK
+- 10-15 13:23:20 R30: keyword count = 3
+- 10-15 13:23:20 AUTO-R30: HONOR: keyword count = 3
+- 10-15 13:23:20 R30: KEYWORD 1/1: mac studio 64g
+- 10-15 13:23:20 AUTO-R30: HONOR: KEYWORD 1/1: mac studio 64g
+- 10-15 13:23:36 R30: WARN: input field not found (skip kw=mac studio 64g)
+- 10-15 13:23:36 AUTO-R30: HONOR: WARN: input field not found (skip kw=mac studio 64g)
+- 10-15 13:23:41 R30: KEYWORD 2/1: studio m1 max
+- 10-15 13:23:41 AUTO-R30: HONOR: KEYWORD 2/1: studio m1 max
+- 10-15 13:23:56 R30: WARN: input field not found (skip kw=studio m1 max)
+- 10-15 13:23:56 AUTO-R30: HONOR: WARN: input field not found (skip kw=studio m1 max)
+- 10-15 13:24:00 R30: KEYWORD 3/1: m1max 鍙板紡
+- 10-15 13:24:00 AUTO-R30: HONOR: KEYWORD 3/1: m1max 鍙板紡
+- 10-15 13:24:15 R30: WARN: input field not found (skip kw=m1max 鍙板紡)
+- 10-15 13:24:15 AUTO-R30: HONOR: WARN: input field not found (skip kw=m1max 鍙板紡)
+- 10-15 13:24:16 R30: DONE round30_1015_1322
+- 10-15 13:24:16 R30: TRACE: no leads.md, skip
+- 10-15 13:24:16 AUTO-R30: HONOR: TRACE: no leads.md, skip
+- 10-15 13:24:17 AUTO-R30: pad-parse: written E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\pad30_1015_1319_16__1max_leads.md
+- 10-15 13:24:17 AUTO-R30: pad-parse: total=0 with64G=0 blocked=0 soft=0
+- 10-15 13:24:17 AUTO-R30: honor: no scans, skip
+- 10-15 13:24:17 AUTO-R30: PARSED total=0 fresh=0
+- 10-15 13:24:17 AUTO-R30: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R30_1015-1319_auto.md
+- 10-15 13:24:19 AUTO-R30: IME restored + sdcard cleaned
