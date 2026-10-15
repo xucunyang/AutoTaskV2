@@ -270,8 +270,11 @@ _ANCHOR_SLEEP = (2.0, 7.0)
 
 
 def _norm_token(s: str) -> str:
-    """标题/规格归一：小写、去空格、8GB→8G，供子串匹配。"""
-    return (s or "").lower().replace(" ", "").replace("gb", "g")
+    """标题/规格归一：小写、去空格、8GB→8G、×/*→x（内存套装容量三种写法
+    「16G×2 / 16g*2 / 16GX2」归一成 16gx2，2026-10-15 内存品类缺口），
+    供子串匹配。"""
+    return (s or "").lower().replace(" ", "").replace("gb", "g") \
+        .replace("×", "x").replace("*", "x")
 
 
 def _match_spec(title: str, series: str, spec: str) -> bool:

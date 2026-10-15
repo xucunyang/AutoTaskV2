@@ -295,6 +295,17 @@ def test_match_spec_rejects_multimodel_stuffing():
         "微星（MSI）魔龙 GeForce RTX 5060 Ti 16G GAMING", "RTX 5060 Ti", "16GB")
 
 
+def test_norm_token_unifies_kit_marks():
+    """内存套装容量标记归一：×/*/X 三种写法都能对上 spec 里的 ×。
+    2026-10-15 内存品类缺口（金百达「32GB(16GBX2)」 vs spec「32GB(16G×2)」）。"""
+    spec = "32GB(16G×2)"
+    assert mbf._match_spec("金百达 32GB(16GBX2) DDR5 6000 内存条", "DDR5 6000", spec)
+    assert mbf._match_spec("金百达 32GB(16GB*2) DDR5 6000 内存条", "DDR5 6000", spec)
+    assert mbf._match_spec("金百达 32GB(16GB×2) DDR5 6000 内存条", "DDR5 6000", spec)
+    # GPU 侧不回归：装饰性 * 不破坏正常匹配
+    assert mbf._match_spec("*限时特惠* 微星 RTX 5070 12G 显卡", "RTX 5070", "12GB")
+
+
 def test_registry_accepts_jingfen_key(tmp_path_factory):
     """锚 URL 形态收敛：jingfen 采集键 + gourl 溯源都能过注册表校验
     （搜索结果没有京东数字 SKU，v2 批量实测抓到）。"""
