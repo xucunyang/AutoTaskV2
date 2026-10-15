@@ -27,7 +27,6 @@ import random
 import re
 import sys
 import time
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -43,7 +42,9 @@ from tools.sku_ingest import Contract, ingest_file  # noqa: E402
 
 REGISTRY = ROOT / "config" / "backfill_manmanbuy.yaml"
 SOURCE_URL = "https://tool.manmanbuy.com/HistoryLowest.aspx"
-JD_ITEM = re.compile(r"^https://item\.jd\.com/\d+\.html$")
+# 锚的 URL 形态见 discover 附近的 TRACKED_URL 注释；注册表校验同一规则
+JD_ITEM = re.compile(
+    r"^https://(item\.jd\.com/\d+\.html|jingfen\.jd\.com/detail/)")
 
 # 促销事件识别（契约 promo_event 枚举的确定性映射；备注是慢慢买
 # 逐点自带的价格备注，如「国补前3347」「到手价3599.00」）
@@ -123,7 +124,8 @@ def trend_to_series(trend: dict, listing: dict, source: str) -> dict:
         "prices": [daily[d][0] for d in days],
         "remarks": [daily[d][1] for d in days],
         "shop": {"name": listing["sp_name"], "platform": "京东",
-                 "url": listing["url"]},
+                 # 溯源优先显式 shop_url（如 redirectjd 跳转页），否则采集键
+                 "url": listing.get("shop_url") or listing["url"]},
         "source_url": SOURCE_URL,
         "_source_track": source,
     }
@@ -293,20 +295,20 @@ def _is_host(title: str) -> bool:
     return any(w in t for w in _HOSTWORDS)
 
 
-def _resolve_item_url(url: str) -> str:
-    """jingfen.jd.com 推广短链 → 最终 item.jd.com/数字.html（跟随跳转）。
+# 锚的 URL 形态（2026-10-14 实测收敛）：搜索结果没有京东数字 SKU
+# （skuid/itemid 都是慢慢买内部编码，gourl/union 链全是客户端 JS 跳转，
+# 服务端解析无解）——而慢慢买曲线的键就是它爬虫认识的 URL 本身
+# （prourl/jingfen 链实测 410 点全曲线）。所以：
+#   采集键 url = prourl（jingfen.jd.com/detail/...）
+#   溯源 shop_url = gourl（redirectjd.aspx，官方跳转页，浏览器直达商品页）
+# 注册表校验用顶部同规则的 JD_ITEM。
 
-    解析不出就原样返回（trend 也吃短链，但注册表只收稳定详情页 URL）。
-    """
-    if "item.jd.com" in (url or ""):
-        return url
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            final = r.geturl()
-        return final if "item.jd.com" in final else url
-    except Exception:
-        return url
+
+def _jd_url(it) -> str:
+    """京东站候选的采集键：prourl 优先，gourl 兜底；非京东站返回空。"""
+    if str(it.get("siteid") or "") != "1":
+        return ""
+    return it.get("prourl") or it.get("gourl") or ""
 
 
 def discover(series: str, spec: str, keyword: str | None = None,
@@ -321,8 +323,9 @@ def discover(series: str, spec: str, keyword: str | None = None,
     * 标题不含整机词（联想工作站曾混进 RTX 5090 桶）；
     * 销量锚取 sales 第一、价格锚要求 sales>0（¥2121 的 0 销量关键词
       堆砌页曾混进 5060 Ti 16GB 最低价）；
-    * URL 由 skuid 直接构造 item.jd.com/{skuid}.html——不走短链重定向
-      解析（京东风控中间页截住，且 GET 风控页徒增 bot 信号）。
+    * URL：采集键=prourl（jingfen 链，慢慢买爬虫原生键）、溯源=gourl
+      （官方跳转页）——skuid/itemid 是内部编码构造不出 item.jd.com，
+      短链重定向又被京东风控页截住（v2 批量实测）。
     """
     if not spec:
         raise ValueError("spec 不能为空（--spec，如 8GB/16GB）")
@@ -330,12 +333,6 @@ def discover(series: str, spec: str, keyword: str | None = None,
     mmb = Mmb()
     if not mmb.load_session():
         raise SessionExpired("未登录：先执行 python -m tools.manmanbuy_backfill login")
-
-    def _jd_url(it) -> str:
-        if str(it.get("siteid") or "") != "1":
-            return ""
-        skuid = str(it.get("skuid") or "").strip()
-        return f"https://item.jd.com/{skuid}.html" if skuid.isdigit() else ""
 
     def _ok(it, need_sales=False):
         url = _jd_url(it)
@@ -380,8 +377,9 @@ def discover(series: str, spec: str, keyword: str | None = None,
             "siteid": str(it.get("siteid") or ""),
             "price": it.get("price"), "sales": it.get("sales"),
             "monthComment": it.get("monthComment"),
-            "prourl": it.get("prourl") or it.get("gourl") or "",
-            "url": url, "trend_points": pts,
+            "url": url,                                    # 采集键（prourl）
+            "shop_url": it.get("gourl") or url,            # 溯源（官方跳转页）
+            "trend_points": pts,
             "current_price": cur}
         c = out["candidates"][tag]
         print(f"[{tag}] {c['sp_name']} | ¥{c['price']} 销量:{c['sales']}"

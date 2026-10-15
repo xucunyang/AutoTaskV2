@@ -63,7 +63,9 @@ def test_load_registry_validates_against_contract():
     assert len(reg["listings"]) >= 3          # 2026-10-14 首批：8G×1 + 16G×2
     for it in reg["listings"]:
         assert {"category", "series", "spec"} <= set(it["identity"])
-        assert it["url"].startswith("https://item.jd.com/")
+        # 锚 URL 两形态：item.jd.com 数字详情页（存量）或 jingfen 采集键（R35）
+        assert (it["url"].startswith("https://item.jd.com/")
+                or it["url"].startswith("https://jingfen.jd.com/detail/")), it["url"]
 
 
 @pytest.mark.parametrize("patch", [
@@ -270,7 +272,25 @@ def test_is_host_words():
     assert not mbf._is_host("技嘉魔鹰 GeForce RTX 5060 Ti 8G")
 
 
-def test_resolve_item_url_passthrough():
-    assert mbf._resolve_item_url("https://item.jd.com/100.html") == \
-        "https://item.jd.com/100.html"
+def test_registry_accepts_jingfen_key(tmp_path_factory):
+    """锚 URL 形态收敛：jingfen 采集键 + gourl 溯源都能过注册表校验
+    （搜索结果没有京东数字 SKU，v2 批量实测抓到）。"""
+    import yaml as _y
+    base = mbf.load_registry(Contract.load(ROOT, "hardware"))
+    entry = dict(base["listings"][0])
+    entry["url"] = "https://jingfen.jd.com/detail/jwQitWLyb63XqHbpMc6lX"
+    entry["shop_url"] = ("https://apph5.manmanbuy.com/redirectjd.aspx?"
+                         "skuid=3ERAptAX")
+    entry["sp_name"] = entry["sp_name"] + "（jingfen键测试）"
+    reg = {"domain": base["domain"], "source": base["source"],
+           "listings": base["listings"] + [entry]}
+    p = tmp_path_factory.mktemp("reg") / "reg.yaml"
+    p.write_text(_y.safe_dump(reg, allow_unicode=True), encoding="utf-8")
+    old = mbf.REGISTRY
+    mbf.REGISTRY = p
+    try:
+        reg2 = mbf.load_registry(Contract.load(ROOT, "hardware"))
+        assert any("jingfen" in it["url"] for it in reg2["listings"])
+    finally:
+        mbf.REGISTRY = old
 
