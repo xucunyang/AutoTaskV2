@@ -195,7 +195,8 @@ foreach ($kw in $kwList) {
   }
   else { Log "WARN: search input not found for $kw" }
   Start-Sleep 2
-  A "input text $kw" | Out-Null
+  # 用 ADBKeyboard broadcast 输关键词（绕开 PS 5.1 + adb input text 空格截断）
+  A "am broadcast -a ADB_INPUT_TEXT --es msg '$kw'" | Out-Null
   Start-Sleep 1
   A "input keyevent 66" | Out-Null
   Start-Sleep 5

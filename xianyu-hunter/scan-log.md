@@ -1,193 +1,28 @@
-# 闲鱼 M1 Max 64G 猎手 · 轮次日志
+# xianyu-hunter 扫描流水
 
-- 机制：荣耀采集机（AADEGL4701000138，USB断自动转无线 .95:5555）跑闲鱼采集，每轮由 GLM 推理筛选+收藏
-- 搜索词：`m1max64`｜筛选：个人闲置 + 新发布｜翻 3 屏
-- 活跃窗口：09:00-23:30（半夜自动跳过）
-- 轮次周期：约 30 分钟（脚本先 sleep 25 分钟再采集，采集+判断约 5 分钟）
-- 输出：candidates.md（正式候选）/ uncertain.md（存疑）/ scans/（原始数据）
-- 10-10 16:56:24 R2: DONE 
-- 10-10 16:58:56 R2: DONE round2_1010_1657
-- 10-10 17:02:44 R2: DONE round2_1010_1701
-- 10-10 17:23:33 R3: DONE round3_1010_1722
-- 10-10 17:31:03 R3: DONE round3_1010_1729
-- 10-10 17:31:25 R3: DONE round3_1010_1730
-- 10-10 17:33:06 R3: DEVICE_STALE, recovering...
-- 10-10 17:33:12 R3: SWITCHED to wifi device
-- 10-10 17:35:13 R3: DONE round3_1010_1733
-- 10-10 18:01:33 R4: DEVICE_STALE, recovering...
-- 10-10 18:01:38 R4: RECOVERED (reconnect)
-- 10-10 18:02:43 R4: DONE round4_1010_1801
-- 10-10 18:40:08 R5: DONE round5_1010_1839
-- 10-10 18:42:57 R6: DONE round6_1010_1841
-- 10-10 19:19:22 R7: DONE round7_1010_1918
-- 10-10 19:56:05 R8: DONE round8_1010_1954
-- 10-10 20:19:55 R8: LEASE_OK
-- 10-10 20:21:01 R8: DONE round8_1010_2019
-- 10-10 20:56:18 R9: LEASE_OK
-- 10-10 20:57:24 R9: DONE round9_1010_2056
-- 10-10 21:40:46 R10: LEASE_BUSY: BUSY AADEGL4701000138 held by [star-candidates] task=收藏5台候选到主账号(与K60同账号) remain=518s (skip this round, no fighting)
-- 10-10 夜间: 手动收藏会话（star-candidates）完成 4/5（成都/北京14寸/贵州/北京朝外），澳版官翻出池（涨价+疑似售出）；隔夜未排扫描
-- 10-11 上午: R10 重启（补昨晚被让路的一轮）；福建 9,699 监管机拉黑；北京朝外规格区实锤 64GB
-- 10-11 10:45-10:50: 卖家留言会话（seller-inquiry）：成都/北京14寸/贵州 3 条关键信息询问送达；北京朝外确认已售出；北京14寸降价至 10,699；装 ADBKeyboard 完成中文注入（用后已还原百度输入法）
-- 10-11 11:04: R10 采集 → 无新合格货；**纠错：澳版官翻未售出未涨价**（10-10 双列流卡片错位配对导致误判"涨价出池"），11,900 在售
-- 10-11 11:09-11:13: 回复检查 + 澳版补问（循环/瑕疵/周末面交）+ 澳版补星完成；贵州来的"回复"实为闲鱼 AI 客服代答（卖家不在线）
-- 10-11 11:45: R11 采集 → 零新合格货；成都卖家回"图片上面不是有吗"（略不耐烦），已追问请直发截图；成都 listing 详情页 webview 偶发不渲染图片区（强杀重进无效，主页封面可见图）——待卖家聊天发图；麦克风权限已拒（语音聊天用不到）
-- 10-11 12:25-12:35: 系统浏览 4 候选的商品图集/封面/卖家主页：发现**成都实为兼职卖家**（7年/卖过152件）→ 池内风险升级；北京14寸=极典型小微个人（宝贝4件/100%好评）→ 加分；贵州 listing 内嵌验机报告图（序列号/购入日期/ID锁开启/2026.09验过）；澳版未读
-- 10-11 12:35+: 成都卖家回"就第2章"（疑似"就第2张"打字错）→ 已二追问"能否直接给数字范围"；R12 因我在占用租约被 LEASE_BUSY 跳过，重排
-- 10-11 11:04:46 R10: LEASE_OK
-- 10-11 11:05:57 R10: DONE round10_1011_1104
-- 10-11 11:45:17 R11: LEASE_OK
-- 10-11 11:46:27 R11: DONE round11_1011_1145
-- 10-11 12:29:37 R12: LEASE_BUSY: BUSY AADEGL4701000138 held by [browse-images] task=浏览候选商品图片并提取关键文字 remain=566s (skip this round, no fighting)
-- 10-11 13:09:23 R12: LEASE_OK
-- 10-11 13:10:29 R12: DEVICE_STALE, recovering...
-- 10-11 13:10:35 R12: SWITCHED to wifi device
-- 10-11 13:10:37 R12: DEVICE_STALE, recovering...
-- 10-11 13:10:43 R12: SWITCHED to wifi device
-- 10-11 13:10:51 R12: DONE round12_1011_1309
-- 10-11 13:20:19 PAD R1: LEASE_OK
-- 10-11 13:20:41 PAD R1: KEYWORD 1/2: m2max
-- 10-11 13:21:44 PAD R1: KEYWORD 2/2: m4max
-- 10-11 13:22:48 PAD R1: DONE pad1_1011_1320
-- 10-11 13:25:02 PAD R2: LEASE_OK
-- 10-11 13:25:53 PAD R2: KEYWORD 1/1: m2max
-- 10-11 13:25:57 PAD R2: WARN: home search bar not found for m2max
-- 10-11 13:26:06 PAD R2: WARN: input field not found for m2max
-- 10-11 13:26:21 PAD R2: WARN: personal-idle filter not found for m2max
-- 10-11 13:26:55 PAD R2: DONE pad2_1011_1325
-- 10-11 13:30:12 PAD R3: LEASE_OK
-- 10-11 13:31:00 PAD R3: KEYWORD 1/1: m2max
-- 10-11 13:31:04 PAD R3: WARN: home search bar not found for m2max
-- 10-11 13:31:13 PAD R3: WARN: input field not found for m2max
-- 10-11 13:31:27 PAD R3: WARN: personal-idle filter not found for m2max
-- 10-11 13:32:01 PAD R3: DONE pad3_1011_1330
-- 10-11 13:33:26 PAD R4: LEASE_OK
-- 10-11 13:34:16 PAD R4: KEYWORD 1/1: m2max
-- 10-11 13:34:35 PAD R4: WARN: input field not found for m2max
-- 10-11 13:34:51 PAD R4: filter personal-idle tapped
-- 10-11 13:35:28 PAD R4: DONE pad4_1011_1333
-- 10-11 13:37:47 PAD R5: LEASE_OK
-- 10-11 13:38:37 PAD R5: KEYWORD 1/1: m2max
-- 10-11 13:38:42 PAD R5: tapped home search bar (1000,229)
-- 10-11 13:38:50 PAD R5: WARN: search input not found for m2max
-- 10-11 13:39:05 PAD R5: filter personal-idle tapped
-- 10-11 13:39:43 PAD R5: DONE pad5_1011_1337
-- 10-11 13:41:12 PAD R6: LEASE_OK
-- 10-11 13:42:01 PAD R6: KEYWORD 1/1: m2max
-- 10-11 13:42:05 PAD R6: tapped home search bar (1000,229)
-- 10-11 13:42:13 PAD R6: tapped search input (946,119)
-- 10-11 13:42:32 PAD R6: filter personal-idle tapped
-- 10-11 13:43:08 PAD R6: DONE pad6_1011_1341
-- 10-11 13:43:42 PAD R7: LEASE_OK
-- 10-11 13:44:30 PAD R7: KEYWORD 1/4: m4max
-- 10-11 13:44:35 PAD R7: tapped home search bar (1000,229)
-- 10-11 13:44:42 PAD R7: tapped search input (946,119)
-- 10-11 13:45:02 PAD R7: filter personal-idle tapped
-- 10-11 13:45:38 PAD R7: KEYWORD 2/4: m1max 64g
-- 10-11 13:45:43 PAD R7: tapped home search bar (1000,229)
-- 10-11 13:45:50 PAD R7: tapped search input (946,119)
-- 10-11 13:46:09 PAD R7: filter personal-idle tapped
-- 10-11 13:46:45 PAD R7: KEYWORD 3/4: macstudio
-- 10-11 13:46:50 PAD R7: tapped home search bar (1000,229)
-- 10-11 13:46:57 PAD R7: tapped search input (946,119)
-- 10-11 13:47:16 PAD R7: filter personal-idle tapped
-- 10-11 13:47:53 PAD R7: KEYWORD 4/4: m2pro
-- 10-11 13:47:57 PAD R7: tapped home search bar (1000,229)
-- 10-11 13:48:05 PAD R7: tapped search input (946,119)
-- 10-11 13:48:24 PAD R7: filter personal-idle tapped
-- 10-11 13:49:00 PAD R7: DONE pad7_1011_1343
-- 10-11 14:32:29 R13: LEASE_OK
-- 10-11 14:33:38 R13: DONE round13_1011_1432
-- 10-11 14:34:05 PAD R8: LEASE_OK
-- 10-11 14:35:01 PAD R8: KEYWORD 1/4: m1max 64g
-- 10-11 14:35:07 PAD R8: tapped home search bar (1000,229)
-- 10-11 14:35:14 PAD R8: tapped search input (946,119)
-- 10-11 14:35:34 PAD R8: filter personal-idle tapped
-- 10-11 14:36:09 PAD R8: KEYWORD 2/4: m2max
-- 10-11 14:36:13 PAD R8: tapped home search bar (1000,229)
-- 10-11 14:36:20 PAD R8: tapped search input (946,119)
-- 10-11 14:36:40 PAD R8: filter personal-idle tapped
-- 10-11 14:37:17 PAD R8: KEYWORD 3/4: macbook pro 64g
-- 10-11 14:37:22 PAD R8: tapped home search bar (1000,229)
-- 10-11 14:37:30 PAD R8: tapped search input (946,119)
-- 10-11 14:37:49 PAD R8: filter personal-idle tapped
-- 10-11 14:38:24 PAD R8: KEYWORD 4/4: m3pro 36
-- 10-11 14:38:28 PAD R8: tapped home search bar (1000,229)
-- 10-11 14:38:36 PAD R8: tapped search input (946,119)
-- 10-11 14:38:55 PAD R8: filter personal-idle tapped
-- 10-11 14:39:31 PAD R8: DONE pad8_1011_1434
-- 10-11 17:18:02 PAD R9: LEASE_OK
-- 10-11 17:18:53 PAD R9: KEYWORD 1/4: m1max 64g
-- 10-11 17:18:57 PAD R9: tapped home search bar (1000,229)
-- 10-11 17:19:04 PAD R9: tapped search input (946,119)
-- 10-11 17:19:23 PAD R9: filter personal-idle tapped
-- 10-11 17:19:57 PAD R9: KEYWORD 2/4: m2max 64g
-- 10-11 17:20:01 PAD R9: tapped home search bar (1000,229)
-- 10-11 17:20:09 PAD R9: tapped search input (946,119)
-- 10-11 17:20:27 PAD R9: filter personal-idle tapped
-- 10-11 17:21:03 PAD R9: KEYWORD 3/4: 64g m1
-- 10-11 17:21:06 PAD R9: tapped home search bar (1000,229)
-- 10-11 17:21:13 PAD R9: tapped search input (946,119)
-- 10-11 17:21:32 PAD R9: filter personal-idle tapped
-- 10-11 17:22:06 PAD R9: KEYWORD 4/4: macbook pro 64g
-- 10-11 17:22:10 PAD R9: tapped home search bar (1000,229)
-- 10-11 17:22:17 PAD R9: tapped search input (946,119)
-- 10-11 17:22:36 PAD R9: filter personal-idle tapped
-- 10-11 17:23:11 PAD R9: DONE pad9_1011_1718
-- 10-11 17:25:14 PAD R10: LEASE_OK
-- 10-11 17:26:02 PAD R10: KEYWORD 1/2: m1max 64g
-- 10-11 17:26:06 PAD R10: tapped home search bar (1000,229)
-- 10-11 17:26:13 PAD R10: tapped search input (946,119)
-- 10-11 17:26:33 PAD R10: filter personal-idle tapped
-- 10-11 17:27:06 PAD R10: KEYWORD 2/2: macbook pro 64g
-- 10-11 17:27:10 PAD R10: tapped home search bar (1000,229)
-- 10-11 17:27:17 PAD R10: tapped search input (946,119)
-- 10-11 17:27:36 PAD R10: filter personal-idle tapped
-- 10-11 17:28:11 PAD R10: DONE pad10_1011_1725
-- 10-11 17:44:00 PAD R11: LEASE_OK
-- 10-11 17:44:47 PAD R11: KEYWORD 1/2: m1max 64g
-- 10-11 17:44:51 PAD R11: tapped home search bar (1000,229)
-- 10-11 17:44:58 PAD R11: tapped search input (946,119)
-- 10-11 17:45:17 PAD R11: filter personal-idle tapped
-- 10-11 17:45:51 PAD R11: KEYWORD 2/2: macbook pro 64g
-- 10-11 17:45:55 PAD R11: tapped home search bar (1000,229)
-- 10-11 17:46:02 PAD R11: tapped search input (946,119)
-- 10-11 17:46:20 PAD R11: filter personal-idle tapped
-- 10-11 17:46:54 PAD R11: DONE pad11_1011_1744
-- 10-11 18:17:20 R14: LEASE_OK
-- 10-11 18:18:30 R14: DONE round14_1011_1817
-- 10-11 18:27:54 PAD R12: LEASE_OK
-- 10-11 18:28:44 PAD R12: KEYWORD 1/4: mac studio 64
-- 10-11 18:28:48 PAD R12: tapped home search bar (1000,229)
-- 10-11 18:28:56 PAD R12: tapped search input (946,119)
-- 10-11 18:29:15 PAD R12: filter personal-idle tapped
-- 10-11 18:29:37 PAD R13: LEASE_OK
-- 10-11 18:29:51 PAD R12: KEYWORD 2/4: mac mini m2 pro
-- 10-11 18:29:55 PAD R12: tapped home search bar (1000,229)
-- 10-11 18:30:03 PAD R12: WARN: search input not found for mac mini m2 pro
-- 10-11 18:30:18 PAD R12: filter personal-idle tapped
-- 10-11 18:30:23 PAD R13: KEYWORD 1/4: mac studio
-- 10-11 18:30:27 PAD R13: tapped home search bar (1000,229)
-- 10-11 18:30:36 PAD R13: tapped search input (946,119)
-- 10-11 18:30:52 PAD R12: KEYWORD 3/4: mac mini 64g
-- 10-11 18:30:53 PAD R13: filter personal-idle tapped
-- 10-11 18:30:57 PAD R12: tapped home search bar (1000,229)
-- 10-11 18:31:06 PAD R12: tapped search input (946,119)
-- 10-11 18:31:30 PAD R12: filter personal-idle tapped
-- 10-11 18:31:33 PAD R13: KEYWORD 2/4: mac studio m1 max
-- 10-11 18:31:36 PAD R13: tapped home search bar (1000,229)
-- 10-11 18:31:45 PAD R13: tapped search input (946,119)
-- 10-11 18:32:01 PAD R12: KEYWORD 4/4: m2max 32
-- 10-11 18:32:06 PAD R13: filter personal-idle tapped
-- 10-11 18:32:06 PAD R12: tapped home search bar (1000,229)
-- 10-11 18:32:15 PAD R12: tapped search input (946,119)
-- 10-11 18:32:31 PAD R12: filter personal-idle tapped
-- 10-11 18:34:56 PAD R13: DONE pad13_1011_1829
-- 10-12 用户策略放宽：贩子批量货源可入池，但需排除"导流款"（极速发/特价几台/限量/抢购），询「现货/价格是否固定」
-- 10-12 pad_leads.py 升级：TEASER! 硬出局（引流款），BULK?/SHOP? 软标记（贩子批量，可询后判断）
-- 10-12 用户反馈：token 紧，OCR 优先读图（ASCII/数字 90% 准），视觉兜底 CJK。SKILL.md 已同步
-- 10-12 OCR 修复尝试：PowerShell 5.1 GBK 控制台 + System.IO.File.WriteAllText 异常链，已回滚到 backup（OCR 仍能跑，ASCII 输出正常）
-- 10-12 R13 重现 16寸 M1 Max 64+1TB 贩子批量货源 ¥10,088/10,238/10,388（描述含"诚招零售代理"）→ R14 排程前实时复搜已下架
-- 10-12 R15 排程（荣耀 m1max64 轮询，间隔 20 分钟，~12:25 采集）
-- 10-12 🚩 红旗：其他会话（sku-multichannel）短暂占用 K60（红米私人机）17 分钟用于"测试 App"，已超时释放；未发现数据破坏，但触发了 SKILL 红线
-- 10-11 18:46:59 PAD R14: LEASE_BUSY: BUSY 192.168.31.208:5555 held by [sku-multichannel] task=京东App批量实采显卡（50系核心型号） remain=1296s (skip)
+- 20261015_102315 R28 重置：清空所有状态后重新开始
+- 10-15 10:24:14 PAD R28: LEASE_OK
+- 10-15 10:24:18 R28: LEASE_OK
+- 10-15 10:24:43 R28: keyword count = 3
+- 10-15 10:24:43 R28: KEYWORD 1/1: mac studio m1max 64g
+- 10-15 10:24:58 R28: WARN: input field not found (skip kw=mac studio m1max 64g)
+- 10-15 10:25:00 PAD R28: KEYWORD 1/3: macbookpro m1max 64g
+- 10-15 10:25:03 R28: KEYWORD 2/1: studio 64g m1
+- 10-15 10:25:04 PAD R28: tapped home search bar (1000,205)
+- 10-15 10:25:11 PAD R28: tapped search input (954,111)
+- 10-15 10:25:18 R28: WARN: input field not found (skip kw=studio 64g m1)
+- 10-15 10:25:22 R28: KEYWORD 3/1: macstudio m1max
+- 10-15 10:25:28 PAD R28: filter personal-idle tapped
+- 10-15 10:25:37 R28: WARN: input field not found (skip kw=macstudio m1max)
+- 10-15 10:25:38 R28: DONE round28_1015_1024
+- 10-15 10:25:38 R28: TRACE: no leads.md, skip
+- 10-15 10:26:00 PAD R28: KEYWORD 2/3: m1max 64g
+- 10-15 10:26:04 PAD R28: tapped home search bar (1000,205)
+- 10-15 10:26:11 PAD R28: tapped search input (954,111)
+- 10-15 10:26:29 PAD R28: filter personal-idle tapped
+- 10-15 10:27:00 PAD R28: KEYWORD 3/3: macbook 64g
+- 10-15 10:27:04 PAD R28: tapped home search bar (1000,205)
+- 10-15 10:27:11 PAD R28: tapped search input (954,111)
+- 10-15 10:27:29 PAD R28: filter personal-idle tapped
+- 10-15 10:28:01 PAD R28: DONE pad28_1015_1024
+- 10-15 10:28:01 PAD R28: TRACE: no leads.md, skip

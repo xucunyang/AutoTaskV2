@@ -153,11 +153,8 @@ function Run-KeywordJob([string]$kw, [int]$idx) {
   adb -s $Device shell input keyevent KEYCODE_MOVE_END; Start-Sleep 0.3
   for ($d=0;$d -lt 8;$d++) { adb -s $Device shell input keyevent KEYCODE_DEL; Start-Sleep 0.2 }
 
-  # 真正的关键词（用 adb input text，空格用 %s，% 在 shell 会被 format 转义需 %%）
-  $kwEscaped = $kw -replace ' ', '%s'
-  # 关键修复：adb shell 内部 %s 会被 printf 解释成 format，需转义
-  $kwForShell = $kwEscaped -replace '%', '%%'
-  adb -s $Device shell input text $kwForShell; Start-Sleep 1
+  # 真正的关键词（用 ADBKeyboard broadcast，绕开 PS 5.1 + adb input text 空格截断）
+  adb -s $Device shell "am broadcast -a ADB_INPUT_TEXT --es msg '$kw'"; Start-Sleep 1
   adb -s $Device shell input keyevent 66; Start-Sleep 4
 
   # personal-idle 筛选
