@@ -228,12 +228,17 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g,
 const money = v => '¥' + Number(v).toLocaleString('zh-CN');
 const domMeta = d => DOMAIN_META[d] || { name: d, icon: '📦' };
 const grpIcon = g => GROUP_ICONS[g] || '📦';
+/* 有数据 = 自采有序列 或 有回填双曲线（2026-10-15 自采清除后 n_periods
+   恒 0——旧的单一判据曾让全部实体掉进 noData，看板只剩空错误框） */
+const hasData = e => e.n_periods > 0 ||
+  (e.mmb && ((e.mmb.sales_main || []).length >= 2 ||
+             (e.mmb.lowest || []).length >= 2));
 
 fetch('/api/board').then(r => r.json()).then(data => {
   state.data = data;
   const domains = [...new Set(data.entities.map(e => e.domain))];
   state.domain = domains.find(d =>
-    data.entities.some(e => e.domain === d && e.n_periods > 0)) || domains[0];
+    data.entities.some(e => e.domain === d && hasData(e))) || domains[0];
   renderDomainTabs(domains);
   renderDomain();
 }).catch(err => {
@@ -267,7 +272,7 @@ function renderDomain() {
   for (const e of inDom) {
     (groups[e.group] = groups[e.group] || { with: 0, total: 0 });
     groups[e.group].total += 1;
-    if (e.n_periods > 0) groups[e.group].with += 1;
+    if (hasData(e)) groups[e.group].with += 1;
   }
   const order = Object.keys(groups).sort((a, b) =>
     groups[b].with - groups[a].with || groups[b].total - groups[a].total);
@@ -296,8 +301,8 @@ function renderDomain() {
 function renderNavAndWall() {
   const inView = state.data.entities.filter(
     e => e.domain === state.domain && e.group === state.group);
-  const withData = inView.filter(e => e.n_periods > 0);
-  const noData = inView.filter(e => e.n_periods === 0);
+  const withData = inView.filter(hasData);
+  const noData = inView.filter(e => !hasData(e));
 
   const nav = document.getElementById('nav'), wall = document.getElementById('wall');
   charts.forEach(x => x.inst.dispose()); charts.length = 0;
@@ -306,17 +311,18 @@ function renderNavAndWall() {
   for (const e of withData) {
     const a = document.createElement('a');
     a.href = '#';
-    a.innerHTML = `<span>${esc(e.display_name)}</span><span class="n">${e.n_periods}期</span>`;
+    const days = e.mmb && e.mmb.lowest ? e.mmb.lowest.length : 0;
+    a.innerHTML = `<span>${esc(e.display_name)}</span><span class="n">${days ? days + '天' : e.n_periods + '期'}</span>`;
     a.onclick = ev => { ev.preventDefault(); focusCard(e.entity_id); };
     nav.appendChild(a);
   }
   if (noData.length) {
     nav.appendChild(Object.assign(document.createElement('div'),
-      { className: 'group', textContent: `样本不足（${noData.length}）` }));
+      { className: 'group', textContent: `锚未覆盖（${noData.length}）` }));
     for (const e of noData) {
       const a = document.createElement('a');
       a.href = '#'; a.style.color = 'var(--sub)';
-      a.innerHTML = `<span>${esc(e.display_name)}</span><span class="n">0期</span>`;
+      a.innerHTML = `<span>${esc(e.display_name)}</span><span class="n">待发现</span>`;
       a.onclick = ev => ev.preventDefault();
       nav.appendChild(a);
     }
@@ -349,6 +355,9 @@ function renderNavAndWall() {
 }
 
 function lastPrice(e) {
+  /* 价格基准：回填最低价线最新点 > 自采 metrics > Infinity（排序沉底） */
+  if (e.mmb && e.mmb.lowest && e.mmb.lowest.length)
+    return e.mmb.lowest[e.mmb.lowest.length - 1][1];
   if (e.metrics) return e.metrics.last_price;
   return e.series.length ? e.series[e.series.length - 1][1] : Infinity;
 }
