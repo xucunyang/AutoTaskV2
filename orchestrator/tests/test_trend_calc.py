@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from tools.sku_db import connect, seed_entities  # noqa: E402
-from tools.trend_calc import (contrast, l0_metrics,  # noqa: E402
+from tools.trend_calc import (compute_snapshot, contrast, l0_metrics,  # noqa: E402
                               _aggregate_series, _label, _slope_pct_per_day,
                               _stddev_pct)
 
@@ -31,7 +31,8 @@ def db(tmp_path):
 
 
 def _seed_obs(con, eid, rows, *, condition="全新", source="自采",
-              shop_platform="京东"):
+              shop_platform="京东", shop_name="七彩虹京东自营旗舰店",
+              **extra_attrs):
     """rows: list of (date, low_price). 把每日一条写进 observation。"""
     import json
     for d, price in rows:
@@ -43,9 +44,9 @@ def _seed_obs(con, eid, rows, *, condition="全新", source="自采",
             "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (eid, d, d, price, price, "price", "CNY",
              json.dumps({"condition": condition, "source": source,
-                          "vendor": "七彩虹", "channel": "国行单卡"},
-                         ensure_ascii=False),
-             "七彩虹京东自营旗舰店", shop_platform, "https://x", "[]", 1,
+                          "vendor": "七彩虹", "channel": "国行单卡",
+                          **extra_attrs}, ensure_ascii=False),
+             shop_name, shop_platform, "https://x", "[]", 1,
              "https://x", "B", "{}", "now"))
 
 
@@ -145,3 +146,35 @@ def test_slope_percent_per_day(db):
 def test_stddev_pct_is_zero_for_constant():
     assert _stddev_pct([100, 100, 100]) == 0.0
     assert _stddev_pct([100, 110, 90]) > 5.0
+
+
+def test_snapshot_includes_mmb_sales_track_with_stab_risk(db):
+    """L1 解锁（2026-10-15）：compute_snapshot 遍历全实体，manmanmai 销量锚
+    轨出 mmb 块（L0 + stab_risk，≥60 期）；无回填数据的实体无 mmb 键。"""
+    # 实体 1 挂 70 天 manmanmai 销量锚序列（前 40 天缓跌 3000→2600，后 30 天横盘）
+    rows = [(f"2026-08-{d:02d}", 3000 - d * 10) for d in range(1, 11)]
+    rows += [(f"2026-09-{d:02d}", 2900 - d * 10) for d in range(1, 31)]
+    rows += [(f"2026-10-{d:02d}", 2600.0) for d in range(1, 31)]
+    assert len(rows) == 70
+    _seed_obs(db, 1, rows, source="manmanmai", anchor="销量")
+    # 干扰项：同实体 manmanmai 价格锚序列（不同店名满足唯一约束；
+    # 不该进 mmb 销量主线）
+    _seed_obs(db, 1, rows[:10], source="manmanmai", anchor="价格",
+              shop_name="其他店")
+    # 自采轨一条（自采 L0 照旧独立计算，不受 mmb 影响；换店名防撞唯一约束）
+    _seed_obs(db, 1, rows[:5], shop_name="自采店")
+
+    snap = compute_snapshot(db, "2026-10-31")
+    e1 = next(e for e in snap["entities"] if e["entity_id"] == 1)
+    assert "mmb" in e1
+    assert e1["mmb"]["n_periods"] == 70          # 只有销量锚进主线
+    assert e1["mmb"]["metrics"] is not None
+    assert e1["mmb"]["metrics"]["last_price"] == 2600.0
+    sr = e1["mmb"]["stab_risk"]
+    assert sr is not None and sr["median_pct"] >= 0
+    assert e1["mmb"]["stab_action"] in ("wait", "act_now")
+    # 下跌后横盘：高点的买入日有回撤，斜率走平 → act_now（阈值见模块注释）
+    assert e1["mmb"]["stab_action"] == "act_now"
+    # 无 manmanmai 数据的实体：无 mmb 键，不报错
+    e_other = next(e for e in snap["entities"] if e["entity_id"] != 1)
+    assert "mmb" not in e_other

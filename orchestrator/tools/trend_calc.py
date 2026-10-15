@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from tools.sku_db import connect  # noqa: E402
+from tools.stab_risk import stab_risk  # noqa: E402
 
 
 # --------------------------------------------------------------------------- L0
@@ -41,6 +42,28 @@ def _aggregate_series(con: sqlite3.Connection, entity_id: int,
          WHERE entity_id = ?
            AND json_extract(attrs_json, '$.source') = '自采'
            AND json_extract(attrs_json, '$.condition') = '全新'
+           AND obs_date <= ?
+         GROUP BY obs_date
+         ORDER BY obs_date
+        """,
+        (entity_id, date)).fetchall()
+    return [(r[0], float(r[1])) for r in rows]
+
+
+def _mmb_sales_series(con: sqlite3.Connection, entity_id: int,
+                      date: str) -> list[tuple[str, float]]:
+    """manmanmai 销量锚主线序列（R35 回填轨，2026-10-15 L1 解锁）。
+
+    销量锚 = search_top 销量第一 listing 的历史价（市场主流成交价），
+    attrs: source=manmanmai + anchor=销量。自采轨清脏后近空，指标层的
+    真实数据源就是这条轨。"""
+    rows = con.execute(
+        """
+        SELECT obs_date, MIN(low_price)
+          FROM observation
+         WHERE entity_id = ?
+           AND json_extract(attrs_json, '$.source') = 'manmanmai'
+           AND json_extract(attrs_json, '$.anchor') = '销量'
            AND obs_date <= ?
          GROUP BY obs_date
          ORDER BY obs_date
@@ -185,6 +208,10 @@ def _series_with_attrs(con: sqlite3.Connection, entity_id: int, date: str,
 def compute_snapshot(con: sqlite3.Connection, date: str) -> dict:
     """生成 trend_snapshot.json：每个实体的 L0 字段 + 选定 contrasts。
 
+    2026-10-15 起遍历全部实体：自采轨（契约默认过滤）照旧出 L0；
+    manmanmai 销量锚回填轨另出 `mmb` 块——L0 + stab_risk（≥60 期才出，
+    Q10-A 门槛）。stab_action 阈值按 stab_risk 模块定义：中位回撤>10%
+    且斜率未走平（slope<-0.2，与 _label 的 stable 边界一致）→ wait。
     contrast 范围：vary=vendor、condition=全新、source=自采、shop_platform
     自营——以「同型号不同 AIC 品牌走量厂商」为代表对比。
     """
@@ -193,14 +220,24 @@ def compute_snapshot(con: sqlite3.Connection, date: str) -> dict:
             "entities": [], "contrasts": []}
     for row in con.execute(
             "SELECT entity_id, display_name, perf_anchor FROM entity "
-            "WHERE perf_anchor=1.0").fetchall():
+            "ORDER BY entity_id").fetchall():
         eid, name, anchor = row["entity_id"], row["display_name"], row["perf_anchor"]
         series = _aggregate_series(con, eid, date)
-        m = l0_metrics(series)
-        snap["entities"].append({"entity_id": eid, "display_name": name,
-                                 "perf_anchor": anchor,
-                                 "n_periods": len(series),
-                                 "metrics": m})
+        entry = {"entity_id": eid, "display_name": name,
+                 "perf_anchor": anchor,
+                 "n_periods": len(series),
+                 "metrics": l0_metrics(series)}
+        mmb = _mmb_sales_series(con, eid, date)
+        if mmb:
+            mm = {"n_periods": len(mmb), "metrics": l0_metrics(mmb)}
+            sr = stab_risk([p for _, p in mmb])
+            if sr:
+                mm["stab_risk"] = sr
+                slope = (mm["metrics"] or {}).get("slope_7_pct_per_day") or 0.0
+                mm["stab_action"] = ("wait" if sr["median_pct"] > 10
+                                     and slope < -0.2 else "act_now")
+            entry["mmb"] = mm
+        snap["entities"].append(entry)
     # contrast 示例：基底实体的 vendor 对比
     if snap["entities"]:
         base_eid = snap["entities"][0]["entity_id"]
