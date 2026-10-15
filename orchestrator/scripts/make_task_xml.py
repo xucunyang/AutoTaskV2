@@ -82,15 +82,26 @@ _HEAD = """<?xml version="1.0" encoding="UTF-16"?>
   <Actions Context="Author">
     <Exec>
       <Command>{python}</Command>
-      <Arguments>"{root}\\scripts\\run_daily.py" --root "{root}" --job {job} --timeout-min 90</Arguments>
+      <Arguments>{arguments}</Arguments>
       <WorkingDirectory>{root}</WorkingDirectory>
     </Exec>
   </Actions>
 </Task>
 """
 
+_STD_ARGS = '"{root}\\scripts\\run_daily.py" --root "{root}" --job {job} --timeout-min 90'
+# 不走编排器的独立脚本：arguments 直接写死完整命令行
+_CUSTOM_ARGS = {
+    "mmb_backfill_daily":
+        '"{root}\\scripts\\mmb_backfill_daily.py"',
+}
+
 # job -> (描述, StartBoundary, 每月第几天 或 None=每天)
 SPECS = {
+    "mmb_backfill_daily": (
+        "AutoTaskV2 慢慢买每日增量回填+L1快照（scripts\\mmb_backfill_daily.py，"
+        "06:30，注册表 19 listing 逐个拉当日价 + trend_calc 刷新快照）",
+        "2026-10-16T06:30:00+08:00", None),
     "housing_daily": (
         "AutoTaskV2 每日地产跟踪（run_daily --job housing_daily）",
         "2026-10-06T10:00:00+08:00", None),
@@ -114,8 +125,10 @@ def render(job: str) -> str:
         trigger = _CALENDAR.format(
             start=start,
             days="\n".join(f"          <Day>{d}</Day>" for d in days))
+    args_tpl = _CUSTOM_ARGS.get(job, _STD_ARGS)
     return _HEAD.format(description=description, sid=SID, trigger=trigger,
-                        python=PYTHON, root=ROOT, job=job)
+                        python=PYTHON, root=ROOT, job=job,
+                        arguments=args_tpl.format(root=ROOT, job=job))
 
 
 def main(argv: list[str]) -> int:

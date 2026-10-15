@@ -164,3 +164,37 @@ def test_slow_jobs_are_not_in_daily_cron():
             f"与「{job} 走慢节奏」的约定冲突")
         assert set(dom[2].split(",")) == want_days, (
             f"{job} 的 cron 日字段={dom[2]!r} 与 XML 的 DaysOfMonth 不一致")
+
+
+# ---------- mmb_backfill_daily（2026-10-15）：独立 action，不进 JOBS ----------
+# JOBS 的断言钉的是 run_daily（--job 与任务名一致），mmb 调的是自己的
+# wrapper 脚本，必须单独断言，不然要么漏覆盖、要么把 run_daily 断言改松。
+
+MMB = "mmb_backfill_daily"
+
+
+def test_mmb_xml_encoding_and_action():
+    """UTF-16 门禁同 JOBS；action 必须是 wrapper 脚本而非 run_daily。"""
+    raw = _load(MMB).read_bytes()
+    assert raw[:2] == b"\xff\xfe", "mmb XML 不是 UTF-16LE（schtasks 只吃 UTF-16）"
+    assert 'encoding="UTF-16"' in raw[:80].decode("utf-16-le", errors="replace")
+    args = _args(MMB)
+    assert "mmb_backfill_daily.py" in args, f"mmb 没调 wrapper：{args!r}"
+    assert "run_daily.py" not in args, "mmb 不该走编排器（单命令采集，无需模板链）"
+
+
+def test_mmb_runs_daily_before_policy():
+    """每天一次（ScheduleByDay），06:30——在 07:20 policy_daily 之前，
+    回填 19 listing 逐个节流约 3~5 分钟，不会撞车。"""
+    root = _tree(MMB)
+    trig = root.find(".//t:Triggers", NS)
+    assert trig is not None
+    assert trig.find(".//t:ScheduleByDay", NS) is not None, \
+        "mmb 必须是每天跑（增量回填的天粒度）"
+    sb = root.findtext(".//t:StartBoundary", default="", namespaces=NS)
+    assert sb[11:16] == "06:30", f"mmb 应在 06:30：{sb!r}"
+    for tag in ("WakeToRun", "StartWhenAvailable"):
+        node = root.find("t:Settings", NS).find(f"t:{tag}", NS)
+        assert node is not None and node.text == "true"
+    uid = root.findtext(".//t:UserId", default="", namespaces=NS)
+    assert uid.startswith("S-1-5-21-") or "\\" in uid
