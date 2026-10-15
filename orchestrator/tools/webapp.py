@@ -221,7 +221,10 @@ def build_board(con: sqlite3.Connection, root: Path | None = None,
 def index() -> FileResponse:
     if not (STATIC / "index.html").is_file():
         raise HTTPException(500, "index.html 缺失（webapp_static/）")
-    return FileResponse(STATIC / "index.html")
+    # 禁缓存：页面脚本与数据结构强耦合（2026-10-15 事故——浏览器缓存旧
+    # 脚本 + 新数据结构 = 全部曲线画不出来），必须每次回源校验
+    return FileResponse(STATIC / "index.html",
+                        headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/board")
