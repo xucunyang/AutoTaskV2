@@ -87,11 +87,39 @@ def test_every_job_has_matching_scheduled_task_xml():
             f"{xml.name} 没勾「错过时尽快补跑」"
 
 
+def _standalone_wrapper_xmls() -> set[str]:
+    """不走编排器的独立 wrapper 任务名 = make_task_xml._CUSTOM_ARGS 的键。
+
+    importlib 按文件加载（scripts/ 无 __init__，与 test_mmb_backfill_daily
+    同模式）；make_task_xml 顶层只有数据定义，import 无副作用。
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "make_task_xml", ROOT / "scripts" / "make_task_xml.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return set(mod._CUSTOM_ARGS)
+
+
 def test_no_orphan_scheduled_task_xml():
-    """反过来：磁盘上不该躺着没人调度的孤儿 XML。"""
+    """反过来：磁盘上不该躺着没人调度的孤儿 XML。
+
+    例外：不走编排器的独立 wrapper（make_task_xml._CUSTOM_ARGS，如
+    mmb_backfill_daily）——没有 template/plan，schedule.yaml 是 APScheduler
+    语义（template/max_workers/catchup），硬塞进去会同时炸掉模板存在性与
+    cron 对齐两条。豁免条件钉死：action 里必须**不**含 run_daily——一旦调
+    编排器就必须进 schedule.yaml 走矩阵三件套，没有第三条路。
+    """
     ids = {j["id"] for j in _schedule().get("jobs") or []}
+    standalone = _standalone_wrapper_xmls()
     for xml in sorted((ROOT / "scripts").glob("*_task.xml")):
         name = xml.name[: -len("_task.xml")]
+        if name in standalone:
+            text = xml.read_bytes().decode("utf-16")
+            assert "run_daily.py" not in text, (
+                f"{xml.name} 调编排器却不在 schedule.yaml 里——要么进矩阵，"
+                f"要么删 XML，两者必居其一")
+            continue
         assert name in ids, f"{xml.name} 对应的 job 不在 schedule.yaml 里（孤儿任务）"
 
 
