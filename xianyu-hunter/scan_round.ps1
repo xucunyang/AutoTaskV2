@@ -121,13 +121,16 @@ function Run-KeywordJob([string]$kw, [int]$idx) {
     }
   }
   if ($hX) {
-    adb -s $Device shell input tap $hX $hY; Start-Sleep 3
+    adb -s $Device shell input tap $hX $hY; Start-Sleep 2
+    # 新版闲鱼首次 tap 进的是搜索建议页（无 EditText），需要再 tap 一次中间区域激活输入态
+    adb -s $Device shell input tap 320 165; Start-Sleep 3
   } else {
     Log "WARN: search bar not found"
     return
   }
 
-  # 找 EditText
+  # 找 EditText (sbox 前等 1.5s 让键盘完全弹出)
+  Start-Sleep 2
   Dump-Uixml "${sub}_sbox"
   $f = "$OutDir\${sub}_sbox.xml"
   $edX = $null; $edY = $null
