@@ -98,3 +98,53 @@ entities:
     display_name: 三星 990 EVO 1TB
   - identity: {category: 固态硬盘, series: WD SN770, spec: 1TB}
     display_name: WD SN770 1TB
+
+  # ---- CPU 扩充（2026-10-15 用户圈定：主流在售补齐）----
+  # K/KF 合并跟踪（同一型号数字， 价差小）；series=标题稳定 token
+  - identity: {category: CPU, series: 7800X3D, spec: ''}
+    display_name: Ryzen 7 7800X3D
+    aliases: ["R7 7800X3D", "锐龙7 7800X3D"]
+  - identity: {category: CPU, series: 9950X3D, spec: ''}
+    display_name: Ryzen 9 9950X3D
+    aliases: ["R9 9950X3D"]
+  - identity: {category: CPU, series: 12600KF, spec: ''}
+    display_name: Core i5-12600KF
+    aliases: ["12600K", "i5 12600KF"]
+  - identity: {category: CPU, series: 14700K, spec: ''}
+    display_name: Core i7-14700K
+    aliases: ["14700KF", "i7 14700K"]
+  - identity: {category: CPU, series: 14900K, spec: ''}
+    display_name: Core i9-14900K
+    aliases: ["14900KF", "i9 14900K"]
+  - identity: {category: CPU, series: 245K, spec: ''}
+    display_name: Core Ultra 5 245K
+    aliases: ["245KF", "Ultra5 245K"]
+  - identity: {category: CPU, series: 270K, spec: ''}
+    display_name: Core Ultra 7 270K
+    aliases: ["270KF", "Ultra7 270K"]
+  - identity: {category: CPU, series: 285K, spec: ''}
+    display_name: Core Ultra 9 285K
+    aliases: ["285KF", "Ultra9 285K"]
+  # ---- 内存扩充（2026-10-15：高频段 + 大容量）----
+  - identity: {category: 内存, series: DDR5 7200, spec: 32GB(16G×2)}
+    display_name: DDR5 7200 32GB(16G×2)
+  - identity: {category: 内存, series: DDR5 8000, spec: 32GB(16G×2)}
+    display_name: DDR5 8000 32GB(16G×2)
+  - identity: {category: 内存, series: DDR5 6400, spec: 64GB(32G×2)}
+    display_name: DDR5 6400 64GB(32G×2)
+  # ---- 固态扩充（2026-10-15：512G 段 + 2TB 甜点）----
+  - identity: {category: 固态硬盘, series: 致态 Ti600s, spec: 512GB PCIe4.0 NVMe}
+    display_name: 致态 Ti600s 512GB
+  - identity: {category: 固态硬盘, series: 宏碁掠夺者, spec: 2TB PCIe4.0 NVMe}
+    display_name: 宏碁掠夺者 2TB NVMe
+  # ---- 主板扩充（2026-10-15：AM5/Z890 低中高三档）----
+  - identity: {category: 主板, series: B850M, spec: AM5}
+    display_name: B850M (AM5 中端)
+  - identity: {category: 主板, series: X870E, spec: AM5}
+    display_name: X870E (AM5 高端)
+  - identity: {category: 主板, series: Z890 Pacific, spec: LGA1851}
+    display_name: Z890 Pacific (入门)
+  - identity: {category: 主板, series: Z890 Vertex, spec: LGA1851}
+    display_name: Z890 Vertex (中端)
+  - identity: {category: 主板, series: Z890 GAMING X, spec: LGA1851}
+    display_name: Z890 GAMING X (高端)

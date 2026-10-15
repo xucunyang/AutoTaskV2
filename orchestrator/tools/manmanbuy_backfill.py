@@ -407,6 +407,94 @@ def discover(series: str, spec: str, keyword: str | None = None,
     return out
 
 
+def _price_num(price) -> float:
+    """『￥3,799.00』→ 3799.0；解析不了返回 inf（排序沉底）。"""
+    m = re.sub(r"[^0-9.]", "", str(price or ""))
+    try:
+        return float(m)
+    except ValueError:
+        return float("inf")
+
+
+def discover_cheap(series: str, spec: str, keyword: str,
+                   pages: int = 2, top_cheap: int = 3,
+                   min_points: int = 50,
+                   sleep_range: tuple[float, float] | None = None,
+                   match: bool = True, reject: str | None = None) -> dict:
+    """价格锚发现（2026-10-15）：search 结果里挑最便宜的合格单卡。
+
+    为什么不走 compare_price：该接口条目**没有 prourl**（无法做趋势键）
+    且标题多为堆砌页——实测解剖见 2026-10-15 会话记录。search 条目带
+    prourl 且曲线完整，最低价的合格单卡即是可持续的价格锚。
+
+    sleep_range：试采间隔覆写（默认 _ANCHOR_SLEEP 2~7s；被 trend 风控
+    限流时传 (30,60) 之类慢速档）。
+    match=False：跳过 _match_spec 规格校验（CPU/内存/SSD/主板等品类的
+    series 全名在标题里匹配不上，靠 keyword 搜索 + 人工遴选兜底）。
+    reject：标题命中该正则的候选直接排除（如 CPU 的 r"主板|套装|整机"）。
+
+    返回 {"keyword", "series", "spec", "candidates": [...]}，candidates
+    按价格升序，每条含试采点数（< min_points 丢弃）。
+    """
+    sl = sleep_range or _ANCHOR_SLEEP
+    mmb = Mmb()
+    if not mmb.load_session():
+        raise SessionExpired("未登录：先执行 python -m tools.manmanbuy_backfill login")
+
+    seen, items = set(), []
+    for page in range(1, pages + 1):
+        rows = mmb.search(keyword, page)
+        for it in rows or []:
+            u = _jd_url(it)
+            if not u or u in seen:
+                continue
+            seen.add(u)
+            t = it.get("title") or ""
+            if _is_host(t):
+                continue
+            if match and not _match_spec(t, series, spec):
+                continue
+            if reject and re.search(reject, t):
+                continue
+            if mmb._num(it.get("sales")) <= 0:
+                continue
+            items.append({**it, "url": u})
+        if items:
+            break                     # 首页有货就不再翻页（控制请求量）
+        time.sleep(random.uniform(*sl))
+
+    items.sort(key=lambda it: _price_num(it.get("price")))
+    cands = []
+    for it in items[:top_cheap]:
+        time.sleep(random.uniform(*sl))
+        try:
+            trend = mmb.trend(it["url"])
+            if not isinstance(trend, dict):
+                raise ValueError("trend 返回非 dict")
+            pts = len(trend.get("datePrice") or [])
+            sp_name = (trend.get("spName") or it.get("title") or "")[:40]
+            cur = trend.get("currentPrice")
+        except SessionExpired:
+            raise
+        except Exception:
+            pts, sp_name, cur = 0, (it.get("title") or "")[:40], None
+        if pts < min_points:
+            print(f"  · 廉价候选点数不足（{pts}<{min_points}）：{sp_name[:36]}")
+            continue
+        cands.append({
+            "anchor": "price", "title": (it.get("title") or "")[:60],
+            "sp_name": sp_name, "mall": it.get("mall"),
+            "siteid": str(it.get("siteid") or ""),
+            "price": it.get("price"), "sales": it.get("sales"),
+            "url": it["url"], "shop_url": it.get("gourl") or it["url"],
+            "trend_points": pts, "current_price": cur})
+        print(f"  ✓ 价格锚候选: {sp_name[:36]} | ¥{it.get('price')} "
+              f"销量:{it.get('sales')} | {pts} 点")
+    return {"keyword": keyword, "series": series, "spec": spec,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "candidates": cands}
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
     ap = argparse.ArgumentParser(prog="manmanbuy_backfill")
