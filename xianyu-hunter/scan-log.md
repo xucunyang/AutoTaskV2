@@ -26,3 +26,15 @@
 - 10-15 10:27:29 PAD R28: filter personal-idle tapped
 - 10-15 10:28:01 PAD R28: DONE pad28_1015_1024
 - 10-15 10:28:01 PAD R28: TRACE: no leads.md, skip
+- 10-15 10:55:00 PAD R29: LEASE_OK (pad-r29 macbookpro m1max 64g 三件套)
+- 10-15 10:55:00 R29: LEASE_OK (honor-r29 mac studio m1max 64g 三件套)
+- 10-15 10:55:18 R29: keyword count = 3
+- 10-15 10:55:19 R29: KEYWORD 1/3: mac studio m1max 64g
+- 10-15 10:55:19 R29: KEYWORD 2/3: studio 64g m1
+- 10-15 10:55:19 R29: KEYWORD 3/3: macstudio m1max
+- 10-15 10:55:34 R29: WARN: input field not found (skip kw=mac studio m1max 64g)
+- 10-15 10:55:36 R29: WARN: input field not found (skip kw=studio 64g m1)
+- 10-15 10:55:37 R29: WARN: input field not found (skip kw=macstudio m1max)
+- 10-15 10:55:38 R29: DONE round29_1015_1055
+- 10-15 10:55:38 R29: TRACE: no leads.md, skip
+- 10-15 11:04:00 R29: 6 台三件套齐全, 报告 reports/R29_1015-1104_6台三件套评分.md
