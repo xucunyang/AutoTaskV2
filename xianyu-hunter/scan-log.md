@@ -397,3 +397,207 @@
 - 10-15 14:54:11 AUTO-R33: PARSED total=0 fresh=0
 - 10-15 14:54:11 AUTO-R33: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R33_1015-1449_auto.md
 - 10-15 14:54:12 AUTO-R33: IME restored + sdcard cleaned
+- 10-15 14:54:14 AUTO-R33: DONE round 33
+- 10-15 15:19:04 AUTO-R34: START round 34 (1015-1519)
+- 10-15 15:19:05 PAD R34: LEASE_OK
+- 10-15 15:19:05 AUTO-R34: PAD: LEASE_OK
+- 10-15 15:19:49 PAD R34: KEYWORD 1/3: macbookpro m1max 64g
+- 10-15 15:19:49 AUTO-R34: PAD: KEYWORD 1/3: macbookpro m1max 64g
+- 10-15 15:19:53 PAD R34: tapped home search bar (1000,205)
+- 10-15 15:19:53 AUTO-R34: PAD: tapped home search bar (1000,205)
+- 10-15 15:20:00 PAD R34: tapped search input (954,111)
+- 10-15 15:20:00 AUTO-R34: PAD: tapped search input (954,111)
+- 10-15 15:20:18 PAD R34: filter personal-idle tapped
+- 10-15 15:20:18 AUTO-R34: PAD: filter personal-idle tapped
+- 10-15 15:20:50 PAD R34: KEYWORD 2/3: m1max 64g 1t
+- 10-15 15:20:50 AUTO-R34: PAD: KEYWORD 2/3: m1max 64g 1t
+- 10-15 15:20:54 PAD R34: tapped home search bar (1000,205)
+- 10-15 15:20:54 AUTO-R34: PAD: tapped home search bar (1000,205)
+- 10-15 15:21:01 PAD R34: tapped search input (954,111)
+- 10-15 15:21:01 AUTO-R34: PAD: tapped search input (954,111)
+- 10-15 15:21:18 PAD R34: filter personal-idle tapped
+- 10-15 15:21:18 AUTO-R34: PAD: filter personal-idle tapped
+- 10-15 15:21:50 PAD R34: KEYWORD 3/3: 16瀵竚1max
+- 10-15 15:21:50 AUTO-R34: PAD: KEYWORD 3/3: 16瀵竚1max
+- 10-15 15:21:54 PAD R34: tapped home search bar (1000,205)
+- 10-15 15:21:54 AUTO-R34: PAD: tapped home search bar (1000,205)
+- 10-15 15:22:01 PAD R34: tapped search input (954,111)
+- 10-15 15:22:01 AUTO-R34: PAD: tapped search input (954,111)
+- 10-15 15:22:18 PAD R34: filter personal-idle tapped
+- 10-15 15:22:19 AUTO-R34: PAD: filter personal-idle tapped
+- 10-15 15:22:51 PAD R34: DONE pad34_1015_1519
+- 10-15 15:22:51 AUTO-R34: PAD: DONE pad34_1015_1519
+- 10-15 15:22:51 AUTO-R34: PAD: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-15 15:22:51 AUTO-R34: PAD: 件。
+- 10-15 15:22:51 AUTO-R34: PAD: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_pad.ps1:22 字符: 3
+- 10-15 15:22:51 AUTO-R34: PAD: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-15 15:22:51 AUTO-R34: PAD: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 15:22:51 AUTO-R34: PAD:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-15 15:22:51 AUTO-R34: PAD:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-15 15:22:51 AUTO-R34: PAD:  
+- 10-15 15:22:51 AUTO-R34: PAD: TRACE: no leads.md, skip
+- 10-15 15:22:52 R34: LEASE_OK
+- 10-15 15:22:52 AUTO-R34: HONOR: LEASE_OK
+- 10-15 15:22:52 R34: DEVICE_STALE, recovering...
+- 10-15 15:22:57 R34: SWITCHED to wifi device
+- 10-15 15:22:57 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:22:58 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:23:13 R34: DEVICE_STALE, recovering...
+- 10-15 15:23:18 R34: SWITCHED to wifi device
+- 10-15 15:23:21 R34: DEVICE_STALE, recovering...
+- 10-15 15:23:26 R34: SWITCHED to wifi device
+- 10-15 15:23:27 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:23:45 R34: DEVICE_STALE, recovering...
+- 10-15 15:23:50 R34: SWITCHED to wifi device
+- 10-15 15:23:54 R34: DEVICE_STALE, recovering...
+- 10-15 15:23:59 R34: SWITCHED to wifi device
+- 10-15 15:24:00 AUTO-R34: HONOR: 使用“1”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\round34
+- 10-15 15:24:00 AUTO-R34: HONOR: _1015_1522_nav1.xml”。”
+- 10-15 15:24:00 AUTO-R34: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:211 字符: 3
+- 10-15 15:24:00 AUTO-R34: HONOR: +   $navContent = [IO.File]::ReadAllText("$OutDir\${tag}_nav$j.xml")
+- 10-15 15:24:00 AUTO-R34: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 15:24:00 AUTO-R34: HONOR:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-15 15:24:00 AUTO-R34: HONOR:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-15 15:24:00 AUTO-R34: HONOR:  
+- 10-15 15:24:00 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:24:02 R34: DEVICE_STALE, recovering...
+- 10-15 15:24:07 R34: SWITCHED to wifi device
+- 10-15 15:24:10 R34: DEVICE_STALE, recovering...
+- 10-15 15:24:16 R34: SWITCHED to wifi device
+- 10-15 15:24:16 AUTO-R34: HONOR: 使用“1”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\round34
+- 10-15 15:24:16 AUTO-R34: HONOR: _1015_1522_nav2.xml”。”
+- 10-15 15:24:16 AUTO-R34: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:211 字符: 3
+- 10-15 15:24:16 AUTO-R34: HONOR: +   $navContent = [IO.File]::ReadAllText("$OutDir\${tag}_nav$j.xml")
+- 10-15 15:24:16 AUTO-R34: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 15:24:16 AUTO-R34: HONOR:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-15 15:24:16 AUTO-R34: HONOR:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-15 15:24:16 AUTO-R34: HONOR:  
+- 10-15 15:24:16 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:24:18 R34: DEVICE_STALE, recovering...
+- 10-15 15:24:24 R34: SWITCHED to wifi device
+- 10-15 15:24:27 R34: DEVICE_STALE, recovering...
+- 10-15 15:24:32 R34: SWITCHED to wifi device
+- 10-15 15:24:33 AUTO-R34: HONOR: 使用“1”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\round34
+- 10-15 15:24:33 AUTO-R34: HONOR: _1015_1522_nav3.xml”。”
+- 10-15 15:24:33 AUTO-R34: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:211 字符: 3
+- 10-15 15:24:33 AUTO-R34: HONOR: +   $navContent = [IO.File]::ReadAllText("$OutDir\${tag}_nav$j.xml")
+- 10-15 15:24:33 AUTO-R34: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 15:24:33 AUTO-R34: HONOR:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-15 15:24:33 AUTO-R34: HONOR:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-15 15:24:33 AUTO-R34: HONOR:  
+- 10-15 15:24:33 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:24:35 R34: DEVICE_STALE, recovering...
+- 10-15 15:24:40 R34: SWITCHED to wifi device
+- 10-15 15:24:43 R34: DEVICE_STALE, recovering...
+- 10-15 15:24:49 R34: SWITCHED to wifi device
+- 10-15 15:24:49 AUTO-R34: HONOR: 使用“1”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\round34
+- 10-15 15:24:49 AUTO-R34: HONOR: _1015_1522_nav4.xml”。”
+- 10-15 15:24:49 AUTO-R34: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:211 字符: 3
+- 10-15 15:24:49 AUTO-R34: HONOR: +   $navContent = [IO.File]::ReadAllText("$OutDir\${tag}_nav$j.xml")
+- 10-15 15:24:49 AUTO-R34: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 15:24:49 AUTO-R34: HONOR:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-15 15:24:49 AUTO-R34: HONOR:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-15 15:24:49 AUTO-R34: HONOR:  
+- 10-15 15:24:49 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:24:51 R34: DEVICE_STALE, recovering...
+- 10-15 15:24:57 R34: SWITCHED to wifi device
+- 10-15 15:25:00 R34: DEVICE_STALE, recovering...
+- 10-15 15:25:05 R34: SWITCHED to wifi device
+- 10-15 15:25:06 AUTO-R34: HONOR: 使用“1”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\round34
+- 10-15 15:25:06 AUTO-R34: HONOR: _1015_1522_nav5.xml”。”
+- 10-15 15:25:06 AUTO-R34: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:211 字符: 3
+- 10-15 15:25:06 AUTO-R34: HONOR: +   $navContent = [IO.File]::ReadAllText("$OutDir\${tag}_nav$j.xml")
+- 10-15 15:25:06 AUTO-R34: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 15:25:06 AUTO-R34: HONOR:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-15 15:25:06 AUTO-R34: HONOR:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-15 15:25:06 AUTO-R34: HONOR:  
+- 10-15 15:25:06 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:25:08 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:25:22 R34: DEVICE_STALE, recovering...
+- 10-15 15:25:27 R34: SWITCHED to wifi device
+- 10-15 15:25:30 R34: DEVICE_STALE, recovering...
+- 10-15 15:25:36 R34: SWITCHED to wifi device
+- 10-15 15:25:36 AUTO-R34: HONOR: 使用“1”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\round34
+- 10-15 15:25:36 AUTO-R34: HONOR: _1015_1522_popupchk.xml”。”
+- 10-15 15:25:36 AUTO-R34: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:222 字符: 1
+- 10-15 15:25:36 AUTO-R34: HONOR: + $popContent = [IO.File]::ReadAllText("$OutDir\${tag}_popupchk.xml")
+- 10-15 15:25:36 AUTO-R34: HONOR: + ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 15:25:36 AUTO-R34: HONOR:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-15 15:25:36 AUTO-R34: HONOR:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-15 15:25:37 AUTO-R34: HONOR:  
+- 10-15 15:25:37 AUTO-R34: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-15 15:25:37 AUTO-R34: HONOR: 件。
+- 10-15 15:25:37 AUTO-R34: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-15 15:25:37 AUTO-R34: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-15 15:25:37 AUTO-R34: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 15:25:37 AUTO-R34: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-15 15:25:37 AUTO-R34: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-15 15:25:37 AUTO-R34: HONOR:  
+- 10-15 15:25:37 AUTO-R34: HONOR: keyword count = 3
+- 10-15 15:25:37 AUTO-R34: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-15 15:25:37 AUTO-R34: HONOR: 件。
+- 10-15 15:25:37 AUTO-R34: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-15 15:25:37 AUTO-R34: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-15 15:25:37 AUTO-R34: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 15:25:38 AUTO-R34: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-15 15:25:38 AUTO-R34: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-15 15:25:38 AUTO-R34: HONOR:  
+- 10-15 15:25:38 AUTO-R34: HONOR: KEYWORD 1/1: mac studio 64g
+- 10-15 15:25:38 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:25:38 R34: DEVICE_STALE, recovering...
+- 10-15 15:25:50 R34: DEVICE_LOST
+- 10-15 15:25:53 R34: DEVICE_STALE, recovering...
+- 10-15 15:25:59 R34: SWITCHED to wifi device
+- 10-15 15:25:59 R34: WARN: search bar not found
+- 10-15 15:25:59 AUTO-R34: HONOR: WARN: search bar not found
+- 10-15 15:25:59 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:26:00 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:26:01 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:26:02 R34: KEYWORD 2/1: studio m1 max
+- 10-15 15:26:02 AUTO-R34: HONOR: KEYWORD 2/1: studio m1 max
+- 10-15 15:26:02 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:26:04 R34: DEVICE_STALE, recovering...
+- 10-15 15:26:10 R34: SWITCHED to wifi device
+- 10-15 15:26:13 R34: DEVICE_STALE, recovering...
+- 10-15 15:26:18 R34: SWITCHED to wifi device
+- 10-15 15:26:18 R34: WARN: search bar not found
+- 10-15 15:26:18 AUTO-R34: HONOR: WARN: search bar not found
+- 10-15 15:26:19 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:26:20 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:26:21 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:26:22 R34: KEYWORD 3/1: m1max 鍙板紡
+- 10-15 15:26:22 AUTO-R34: HONOR: KEYWORD 3/1: m1max 鍙板紡
+- 10-15 15:26:22 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:26:24 R34: DEVICE_STALE, recovering...
+- 10-15 15:26:29 R34: SWITCHED to wifi device
+- 10-15 15:26:33 R34: DEVICE_STALE, recovering...
+- 10-15 15:26:38 R34: SWITCHED to wifi device
+- 10-15 15:26:38 R34: WARN: search bar not found
+- 10-15 15:26:38 AUTO-R34: HONOR: WARN: search bar not found
+- 10-15 15:26:38 AUTO-R34: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-15 15:26:38 AUTO-R34: HONOR: 件。
+- 10-15 15:26:39 AUTO-R34: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-15 15:26:39 AUTO-R34: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-15 15:26:39 AUTO-R34: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 15:26:39 AUTO-R34: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-15 15:26:39 AUTO-R34: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-15 15:26:39 AUTO-R34: HONOR:  
+- 10-15 15:26:44 R34: SWITCHED to wifi device
+- 10-15 15:26:44 AUTO-R34: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-15 15:26:44 R34: DONE round34_1015_1522
+- 10-15 15:26:44 AUTO-R34: HONOR: DONE round34_1015_1522
+- 10-15 15:26:44 AUTO-R34: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-15 15:26:44 AUTO-R34: HONOR: 件。
+- 10-15 15:26:44 AUTO-R34: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-15 15:26:44 AUTO-R34: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-15 15:26:44 AUTO-R34: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 15:26:45 AUTO-R34: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-15 15:26:45 AUTO-R34: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-15 15:26:45 AUTO-R34: HONOR:  
+- 10-15 15:26:45 AUTO-R34: HONOR: TRACE: no leads.md, skip
+- 10-15 15:26:45 AUTO-R34: pad-parse: written E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\pad34_1015_1519_16__1max_leads.md
+- 10-15 15:26:45 AUTO-R34: pad-parse: total=0 with64G=0 blocked=0 soft=0
+- 10-15 15:26:45 AUTO-R34: honor: no scans, skip
+- 10-15 15:26:45 AUTO-R34: PARSED total=0 fresh=0
+- 10-15 15:26:45 AUTO-R34: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R34_1015-1519_auto.md
+- 10-15 15:26:46 AUTO-R34: IME restored + sdcard cleaned
