@@ -225,3 +225,13 @@ foreach ($kw in $kwList) {
 A "rm /sdcard/ui.xml" | Out-Null
 python $LeaseTool release --device $Device --session $SessionId 2>$null | Out-Null
 Log "DONE $tag"
+
+# === 三件套溯源（10-15 用户硬规则）===
+$leadsMd = "$OutDir\${tag}_leads.md"
+if (Test-Path $leadsMd) {
+  $PYTHONIOENCODING = "utf-8"
+  $env:PYTHONIOENCODING = "utf-8"
+  python "$BaseDir\trace_leads.py" $Round $leadsMd $Device 2>&1 | Out-String | ForEach-Object { Log "TRACE: $_" }
+} else {
+  Log "TRACE: no leads.md, skip"
+}

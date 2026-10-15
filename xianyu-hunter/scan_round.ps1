@@ -153,9 +153,11 @@ function Run-KeywordJob([string]$kw, [int]$idx) {
   adb -s $Device shell input keyevent KEYCODE_MOVE_END; Start-Sleep 0.3
   for ($d=0;$d -lt 8;$d++) { adb -s $Device shell input keyevent KEYCODE_DEL; Start-Sleep 0.2 }
 
-  # 真正的关键词（用 adb input text，空格用 %s）
+  # 真正的关键词（用 adb input text，空格用 %s，% 在 shell 会被 format 转义需 %%）
   $kwEscaped = $kw -replace ' ', '%s'
-  adb -s $Device shell input text $kwEscaped; Start-Sleep 1
+  # 关键修复：adb shell 内部 %s 会被 printf 解释成 format，需转义
+  $kwForShell = $kwEscaped -replace '%', '%%'
+  adb -s $Device shell input text $kwForShell; Start-Sleep 1
   adb -s $Device shell input keyevent 66; Start-Sleep 4
 
   # personal-idle 筛选
@@ -249,3 +251,12 @@ adb -s $Device pull /sdcard/s.png "$OutDir\${tag}_final.png" 2>$null | Out-Null
 adb -s $Device shell rm /sdcard/ui.xml /sdcard/s.png 2>$null | Out-Null
 python $LeaseTool release --device $Device --session $SessionId 2>$null | Out-Null
 Log "DONE $tag"
+
+# === 三件套溯源（10-15 用户硬规则）===
+$leadsMd = "$OutDir\${tag}_leads.md"
+if (Test-Path $leadsMd) {
+  $env:PYTHONIOENCODING = "utf-8"
+  python "$BaseDir\trace_leads.py" $Round $leadsMd $Device 2>&1 | Out-String | ForEach-Object { Log "TRACE: $_" }
+} else {
+  Log "TRACE: no leads.md, skip"
+}
