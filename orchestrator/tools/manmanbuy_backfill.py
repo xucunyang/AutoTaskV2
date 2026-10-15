@@ -149,7 +149,14 @@ def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float]) -> 
             # 节流=区间内随机（默认 2~7s）：固定间隔是可被识别的机器指纹，
             # 随机化更像人；区间上限可按需放宽（--sleep-max）
             time.sleep(random.uniform(*sleep_range))
-        trend = mmb.trend(it["url"])
+        try:
+            trend = mmb.trend(it["url"])
+        except SessionExpired:
+            raise   # 全局会话死，整批无意义，交上层提示人工 login
+        except Exception as e:
+            # 单 listing 瞬时失败（风控/空响应）只跳过本轮，不炸整批
+            print(f"  FAILED {it['sp_name'][:30]}: {e}")
+            continue
         dumps["listings"].append({
             "identity": it["identity"], "url": it["url"],
             "sp_name": it["sp_name"], "channel": it["channel"],

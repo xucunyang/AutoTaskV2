@@ -173,7 +173,7 @@ class Mmb:
         return ts
 
     # ---------- 数据接口 ----------
-    def trend(self, url: str) -> dict:
+    def trend(self, url: str, _retried: bool = False) -> dict:
         """历史价格走势。url: 京东/天猫等商品链接。datePrice 已解析为列表。"""
         p = {"method": "getHistoryTrend", "key": url, "t": str(int(time.time() * 1000))}
         p["token"] = self._sign_tool(p)
@@ -188,6 +188,13 @@ class Mmb:
             j = json.loads(raw)
         except Exception:
             raise SessionExpired(f"tool 接口返回非 JSON（会话可能失效）：{raw[:120]!r}")
+        if not isinstance(j, dict):
+            # 服务端偶发裸数字/列表（瞬时风控/限流，2026-10-15 实测），
+            # 不是会话死——退避 5s 重试一次，仍坏才报
+            if _retried:
+                raise SessionExpired(f"tool 接口返回非对象响应（瞬时风控？重试无效）：{raw[:80]!r}")
+            time.sleep(5)
+            return self.trend(url, _retried=True)
         d = j.get("data") or {}
         d["datePrice"] = parse_date_price(d.get("datePrice"))
         return d

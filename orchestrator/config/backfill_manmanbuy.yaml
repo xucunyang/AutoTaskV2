@@ -172,3 +172,9 @@ listings:
     shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3XCylg3WotmGpIJt2q!!110001000101100&otherFrom=price
     sp_name: 微星（MSI）魔龙 GeForce RTX 5060 Ti 16G GAMING
     verified: "2026-10-15 00:36"   # R35 v3 批量发现 411 点（¥￥6799.00 销量:10001）；魔鹰原销量锚降级
+  - identity: {category: 显卡, series: RX 9070, spec: 16GB}
+    channel: 第三方
+    anchor: 销量
+    url: https://jingfen.jd.com/detail/2W983jp3GnsF8PgLsKGUs2mLqvHlQ_3rtcvZYknf98aEMsaU.html
+    sp_name: 讯景（XFX）AMD RADEON RX 9070 雪狼 16GB 白
+    verified: "2026-10-15 09:3x"   # R35 v5 深翻页排查：销量 5000（¥6299），411 点试采通过；台式机显卡=堆砌写法已防线修正；10-15 09:5x 修复落表截断（尾部曾丢 → haveTrend:0 假性失效）
