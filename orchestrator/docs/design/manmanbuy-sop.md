@@ -170,7 +170,7 @@ token  = MD5( (SECRET + Σ 排序enc(k)+enc(v) + SECRET).upper() ).upper()   # �
 4. **登录 302 超时**不是失败，Cookie 已生效，捕获异常继续
 5. **频率**：未知限速；实测 1 请求/2秒 无任何封锁。**不要刷短信接口**
 6. 老趋势方法（`getHistoryTrend2021`/`trendJava` 走 sqk/search host）全部返回 `emplety`，是死接口，别浪费时间
-7. **trend 工具有账号级配额**（2026-10-15 实测）：单日 ~60 次 trend 调用后接口进入静默限流——返回**合法 JSON 但 `haveTrend=0, spbh=None, datePrice=[]`**（URL→商品解析都不做），同 ticket 的 search/compare_price 不受影响，刷新 ticket 无效。处置：停手等恢复（时长未知，≥75 分钟）；日常全量 run（19 listing≈19 次/日）远低于阈值，安全。判别口诀：**「合法 JSON + 空数据 = 配额；空串/异常 = 传输层限流；402 = 会话过期」**
+7. **trend 返「合法 JSON 但空数据」先查 URL 完整性**（2026-10-15 R36 定案）：`haveTrend=0, spbh=None, datePrice=[]` 的真凶是 **jingfen 锚 URL 被截断**（必须完整 `…detail/<token>_3<spbh>.html`，截断即静默空数据、不报错）——上会话曾误诊为"账号级配额冷却"，干等 75 分钟。判别顺序：**①核 URL 形状（是否完整）→ ②逐锚体检定位个别/全局 → ③才怀疑接口**。另：tool 接口偶发裸数字响应（非 dict）= 瞬时风控，trend() 已带 5s 重试；正常节奏（3s/req）连发 27+ 次实测无限流，历史封锁事件是 80 req/8min 轰炸搜索接口所致，与 trend 无关
 
 ## 6. 逆向资料位置（需要深挖时）
 
