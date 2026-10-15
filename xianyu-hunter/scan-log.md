@@ -247,3 +247,82 @@
 - 10-15 13:56:46 AUTO-R31: PARSED total=0 fresh=0
 - 10-15 13:56:46 AUTO-R31: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R31_1015-1349_auto.md
 - 10-15 13:56:47 AUTO-R31: IME restored + sdcard cleaned
+- 10-15 13:56:48 AUTO-R31: DONE round 31
+- 10-15 14:19:02 AUTO-R32: START round 32 (1015-1419)
+- 10-15 14:19:03 PAD R32: LEASE_OK
+- 10-15 14:19:03 AUTO-R32: PAD: LEASE_OK
+- 10-15 14:19:51 PAD R32: KEYWORD 1/3: macbookpro m1max 64g
+- 10-15 14:19:51 AUTO-R32: PAD: KEYWORD 1/3: macbookpro m1max 64g
+- 10-15 14:19:55 PAD R32: tapped home search bar (1000,205)
+- 10-15 14:19:55 AUTO-R32: PAD: tapped home search bar (1000,205)
+- 10-15 14:20:02 PAD R32: tapped search input (954,111)
+- 10-15 14:20:02 AUTO-R32: PAD: tapped search input (954,111)
+- 10-15 14:20:19 PAD R32: filter personal-idle tapped
+- 10-15 14:20:19 AUTO-R32: PAD: filter personal-idle tapped
+- 10-15 14:20:52 PAD R32: KEYWORD 2/3: m1max 64g 1t
+- 10-15 14:20:52 AUTO-R32: PAD: KEYWORD 2/3: m1max 64g 1t
+- 10-15 14:20:56 PAD R32: tapped home search bar (1000,205)
+- 10-15 14:20:56 AUTO-R32: PAD: tapped home search bar (1000,205)
+- 10-15 14:21:03 PAD R32: tapped search input (954,111)
+- 10-15 14:21:03 AUTO-R32: PAD: tapped search input (954,111)
+- 10-15 14:21:20 PAD R32: filter personal-idle tapped
+- 10-15 14:21:20 AUTO-R32: PAD: filter personal-idle tapped
+- 10-15 14:21:53 PAD R32: KEYWORD 3/3: 16瀵竚1max
+- 10-15 14:21:53 AUTO-R32: PAD: KEYWORD 3/3: 16瀵竚1max
+- 10-15 14:21:56 PAD R32: tapped home search bar (1000,205)
+- 10-15 14:21:56 AUTO-R32: PAD: tapped home search bar (1000,205)
+- 10-15 14:22:03 PAD R32: tapped search input (954,111)
+- 10-15 14:22:03 AUTO-R32: PAD: tapped search input (954,111)
+- 10-15 14:22:20 PAD R32: filter personal-idle tapped
+- 10-15 14:22:20 AUTO-R32: PAD: filter personal-idle tapped
+- 10-15 14:22:53 PAD R32: DONE pad32_1015_1419
+- 10-15 14:22:53 AUTO-R32: PAD: DONE pad32_1015_1419
+- 10-15 14:22:53 AUTO-R32: PAD: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-15 14:22:53 AUTO-R32: PAD: 件。
+- 10-15 14:22:53 AUTO-R32: PAD: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_pad.ps1:22 字符: 3
+- 10-15 14:22:53 AUTO-R32: PAD: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-15 14:22:54 AUTO-R32: PAD: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 14:22:54 AUTO-R32: PAD:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-15 14:22:54 AUTO-R32: PAD:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-15 14:22:54 AUTO-R32: PAD:  
+- 10-15 14:22:54 AUTO-R32: PAD: TRACE: no leads.md, skip
+- 10-15 14:22:55 R32: LEASE_OK
+- 10-15 14:22:55 AUTO-R32: HONOR: LEASE_OK
+- 10-15 14:23:18 R32: keyword count = 3
+- 10-15 14:23:18 AUTO-R32: HONOR: keyword count = 3
+- 10-15 14:23:18 AUTO-R32: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-15 14:23:19 AUTO-R32: HONOR: 件。
+- 10-15 14:23:19 AUTO-R32: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-15 14:23:19 AUTO-R32: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-15 14:23:19 AUTO-R32: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 14:23:19 AUTO-R32: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-15 14:23:19 AUTO-R32: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-15 14:23:19 AUTO-R32: HONOR:  
+- 10-15 14:23:19 AUTO-R32: HONOR: KEYWORD 1/1: mac studio 64g
+- 10-15 14:23:34 R32: WARN: input field not found (skip kw=mac studio 64g)
+- 10-15 14:23:34 AUTO-R32: HONOR: WARN: input field not found (skip kw=mac studio 64g)
+- 10-15 14:23:39 R32: KEYWORD 2/1: studio m1 max
+- 10-15 14:23:39 AUTO-R32: HONOR: KEYWORD 2/1: studio m1 max
+- 10-15 14:23:55 R32: WARN: input field not found (skip kw=studio m1 max)
+- 10-15 14:23:55 AUTO-R32: HONOR: WARN: input field not found (skip kw=studio m1 max)
+- 10-15 14:24:00 R32: KEYWORD 3/1: m1max 鍙板紡
+- 10-15 14:24:00 AUTO-R32: HONOR: KEYWORD 3/1: m1max 鍙板紡
+- 10-15 14:24:14 R32: WARN: input field not found (skip kw=m1max 鍙板紡)
+- 10-15 14:24:14 AUTO-R32: HONOR: WARN: input field not found (skip kw=m1max 鍙板紡)
+- 10-15 14:24:15 R32: DONE round32_1015_1422
+- 10-15 14:24:15 AUTO-R32: HONOR: DONE round32_1015_1422
+- 10-15 14:24:15 AUTO-R32: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-15 14:24:15 AUTO-R32: HONOR: 件。
+- 10-15 14:24:16 AUTO-R32: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-15 14:24:16 AUTO-R32: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-15 14:24:16 AUTO-R32: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-15 14:24:16 AUTO-R32: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-15 14:24:16 AUTO-R32: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-15 14:24:16 AUTO-R32: HONOR:  
+- 10-15 14:24:16 AUTO-R32: HONOR: TRACE: no leads.md, skip
+- 10-15 14:24:16 AUTO-R32: pad-parse: written E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\pad32_1015_1419_16__1max_leads.md
+- 10-15 14:24:16 AUTO-R32: pad-parse: total=0 with64G=0 blocked=0 soft=0
+- 10-15 14:24:16 AUTO-R32: honor: no scans, skip
+- 10-15 14:24:16 AUTO-R32: PARSED total=0 fresh=0
+- 10-15 14:24:16 AUTO-R32: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R32_1015-1419_auto.md
+- 10-15 14:24:17 AUTO-R32: IME restored + sdcard cleaned
