@@ -22,6 +22,7 @@ from __future__ import annotations
 import http.cookiejar
 import json
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -103,23 +104,43 @@ class Gwdang:
             return False
 
     # ---------- 数据接口 ----------
+    HOSTS = ("www.gwdang.com", "www2.gwdang.com")   # www2 为官方镜像（2026-10-15 实测同返回）
+
     def trend(self, url: str) -> dict:
-        """商品链接 → 归一化历史价格。与 Mmb.trend 同构，另带 raw。"""
+        """商品链接 → 归一化历史价格。与 Mmb.trend 同构，另带 raw。
+
+        主机级 fallback：www 连接失败/5xx 时换 www2 镜像；
+        403（会话失效）与 is_ban（账号风控）不 fallback——同后端换了也一样。"""
         u1 = ("https://www.gwdang.com/api/url_to_dp?url="
               + urllib.parse.quote(url, safe="") + f"&t={int(time.time())}")
         dp = json.loads(self.get(u1, referer="https://www.gwdang.com/trend")).get("dp_id")
         if not dp:
             raise RuntimeError(f"购物党 url_to_dp 未返回 dp_id：{url}")
         time.sleep(1.5)   # 两跳之间保底间隔，节流大头由调用方控制
-        u2 = ("https://www.gwdang.com/trend/data_www?show_prom=true&v=2"
-              f"&get_coupon=1&dp_id={dp}")
-        payload = json.loads(self.get(u2, referer="https://www.gwdang.com/trend",
-                                      xhr=True))
-        if isinstance(payload, dict) and "is_ban" in payload:
-            raise GwdangBlocked("购物党 is_ban：浏览器登录 gwdang.com 过一次人机验证")
-        out = normalize_trend(payload)
-        out["raw"] = payload
-        return out
+        last_err: Exception | None = None
+        for host in self.HOSTS:
+            u2 = (f"https://{host}/trend/data_www?show_prom=true&v=2"
+                  f"&get_coupon=1&dp_id={dp}")
+            try:
+                payload = json.loads(self.get(u2,
+                                              referer="https://www.gwdang.com/trend",
+                                              xhr=True))
+            except urllib.error.HTTPError as e:
+                if e.code == 403:
+                    raise RuntimeError("购物党 403：Cookie 失效，重新导出 "
+                                       "gwdang_session.json") from e
+                last_err = e
+                continue    # 5xx 等：换镜像
+            except Exception as e:
+                last_err = e
+                continue
+            if isinstance(payload, dict) and "is_ban" in payload:
+                raise GwdangBlocked("购物党 is_ban：浏览器登录 gwdang.com 过一次人机验证")
+            out = normalize_trend(payload)
+            out["raw"] = payload
+            out["host"] = host
+            return out
+        raise RuntimeError(f"购物党 trend 两台主机均失败：{last_err}")
 
 
 if __name__ == "__main__":   # 调试入口：python -m tools.gwdang_client <商品URL>
