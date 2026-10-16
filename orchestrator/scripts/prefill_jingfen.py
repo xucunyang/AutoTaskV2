@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import difflib
 import sys
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,13 @@ from channel_gate import ChannelGate  # noqa: E402
 from tools.manmanbuy_client import Mmb  # noqa: E402
 
 PROP = ROOT / "data" / "manmanbuy_proposals.yaml"
+
+
+def _stamp(msg: str) -> None:
+    """控制台传统样式：[日期 时间.毫秒] 消息。"""
+    t = datetime.now()
+    print(f"[{t.strftime('%Y-%m-%d %H:%M:%S')}.{t.microsecond // 1000:03d}] {msg}",
+          flush=True)
 
 
 def norm(s: str) -> str:
@@ -89,13 +97,13 @@ def main(argv: list[str] | None = None) -> int:
     if a.limit:
         todo = todo[:a.limit]
     if not todo:
-        print("没有待补链的 jingfen 提案")
+        _stamp("没有待补链的 jingfen 提案")
         return 0
     est = len(todo) * 2
-    print(f"待补链 {len(todo)} 条 · 预估 {est} 发（search+same 各半）")
+    _stamp(f"待补链 {len(todo)} 条 · 预估 {est} 发（search+same 各半）")
 
     mmb = Mmb()
-    gate = ChannelGate("mmb", budget=60)
+    gate = ChannelGate("mmb", budget=60, log=_stamp)
     done = skipped = 0
     with gate.session("jingfen 补链"):
         for p in todo:
@@ -105,31 +113,31 @@ def main(argv: list[str] | None = None) -> int:
             prop_price = Mmb._num(p.get("price"))
             gate.wait()
             if not gate.spend(1, f"search {kw}"):
-                print("⛔ 预算尽，停发（剩余条目下次跑）")
+                _stamp("⛔ 预算尽，停发（剩余条目下次跑）")
                 break
             try:
                 rows = mmb.search(kw)
             except Exception as e:
-                print(f"✗ {tag} · search 失败：{e}")
+                _stamp(f"✗ {tag} · search 失败：{e}")
                 skipped += 1
                 continue
             best = match_candidate(rows, ident.get("series", ""),
                                    ident.get("spec", ""),
                                    p.get("sp_name", ""), prop_price)
             if not best:
-                print(f"✗ {tag} · 无合格候选（相似度/价格不达标），留人工")
+                _stamp(f"✗ {tag} · 无合格候选（相似度/价格不达标），留人工")
                 skipped += 1
                 continue
             sim, r = best
             skuid = str(r["skuid"])
             gate.wait()
             if not gate.spend(1, f"same {skuid}"):
-                print("⛔ 预算尽，停发（剩余条目下次跑）")
+                _stamp("⛔ 预算尽，停发（剩余条目下次跑）")
                 break
             same = mmb.same_by_spbh(f"1|{skuid}")
             shop = (same[0].get("shopName") or "").strip() if same else ""
             if not shop:
-                print(f"△ {tag} · 配到 skuid={skuid}（相似度 {sim:.2f}）但店名未返回，留人工")
+                _stamp(f"△ {tag} · 配到 skuid={skuid}（相似度 {sim:.2f}）但店名未返回，留人工")
                 skipped += 1
                 continue
             ch = channel_of(shop)
@@ -140,13 +148,13 @@ def main(argv: list[str] | None = None) -> int:
             p["match_note"] = (f"2026-10-17 search 配对：相似度 {sim:.2f}，"
                                f"店名「{shop}」→ {ch}")
             done += 1
-            print(f"✓ {tag} · {shop} → {ch}（skuid {skuid}，相似度 {sim:.2f}）")
+            _stamp(f"✓ {tag} · {shop} → {ch}（skuid {skuid}，相似度 {sim:.2f}）")
 
     if done:
         PROP.write_text(yaml.safe_dump(items, allow_unicode=True, sort_keys=False),
                         encoding="utf-8")
-    print(f"{'─' * 20} 总结 {'─' * 20}")
-    print(f"补链成功 {done} / 留人工 {skipped} ｜ 预算 {gate.spent()}/{gate.budget}")
+    _stamp(f"{'─' * 20} 总结 {'─' * 20}")
+    _stamp(f"补链成功 {done} / 留人工 {skipped} ｜ 预算 {gate.spent()}/{gate.budget}")
     return 0
 
 

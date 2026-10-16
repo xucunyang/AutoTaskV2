@@ -143,8 +143,14 @@ def dedupe_rows(new_rows: list[dict], existing_rows: list[dict]) -> list[dict]:
 
 
 def _ts() -> str:
-    """日志行时间戳（流水账可读性）。"""
-    return datetime.now().strftime("%H:%M:%S")
+    """日志行时间戳（控制台传统样式：日期 时间.毫秒）。"""
+    t = datetime.now()
+    return f"{t.strftime('%Y-%m-%d %H:%M:%S')}.{t.microsecond // 1000:03d}"
+
+
+def _stamp(msg: str) -> None:
+    """闸门日志统一走时间戳前缀（ChannelGate log= 注入）。"""
+    print(f"[{_ts()}] {msg}", flush=True)
 
 
 def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
@@ -159,7 +165,7 @@ def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
             gate.wait()
             if not gate.spend(1, it.get("sp_name", "")):
                 stopped = len(registry["listings"]) - i
-                print(f"{_ts()} ⛔ 今日预算已尽，停发剩余 {stopped} 锚")
+                print(f"[{_ts()}] ⛔ 今日预算已尽，停发剩余 {stopped} 锚")
                 break
         elif i:
             # 节流=区间内随机（默认 2~7s）：固定间隔是可被识别的机器指纹，
@@ -172,7 +178,7 @@ def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
             raise   # 全局会话死，整批无意义，交上层提示人工 login
         except Exception as e:
             # 单 listing 瞬时失败（风控/空响应）只跳过本轮，不炸整批
-            print(f"{_ts()} ✗ {name} · 瞬时失败：{e}")
+            print(f"[{_ts()}] ✗ {name} · 瞬时失败：{e}")
             continue
         n = len(trend.get("datePrice") or [])
         dumps["listings"].append({
@@ -180,9 +186,9 @@ def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
             "sp_name": it["sp_name"], "channel": it["channel"],
             "vendor": it.get("vendor") or "", "trend": trend})
         if n:
-            print(f"{_ts()} ✓ {name} · {n} 点")
+            print(f"[{_ts()}] ✓ {name} · {n} 点")
         else:
-            print(f"{_ts()} ✗ {name} · 0 点（listing 疑似失效，跳过）")
+            print(f"[{_ts()}] ✗ {name} · 0 点（listing 疑似失效，跳过）")
     return dumps
 
 
@@ -208,13 +214,13 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
         if not mmb.load_session():
             print("未登录：先执行 python -m tools.manmanbuy_backfill login")
             return 2
-        print(f"{_ts()} ▶ 开始采集（{len(registry['listings'])} 锚）")
+        print(f"[{_ts()}] ▶ 开始采集（{len(registry['listings'])} 锚）")
         dumps = _fetch_dumps(mmb, registry, (sleep_min, sleep_max), gate=gate)
         cache_path = root / "artifacts" / date_dir / "backfill_manmanbuy_raw.json"
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(json.dumps(dumps, ensure_ascii=False, indent=1),
                               encoding="utf-8")
-        print(f"{_ts()} ◇ raw 留档 -> {cache_path}")
+        print(f"[{_ts()}] ◇ raw 留档 -> {cache_path}")
 
     obs_path = root / "artifacts" / date_dir / "t1_sku_observations.json"
     existing = json.loads(obs_path.read_text(encoding="utf-8")) if obs_path.exists() else []
@@ -227,7 +233,7 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
         try:
             series = trend_to_series(it["trend"], it, registry["source"])
         except ValueError as e:
-            print(f"{_ts()} − {it['sp_name'][:28]} · 无价格点未入库（{e}）")
+            print(f"[{_ts()}] − {it['sp_name'][:28]} · 无价格点未入库（{e}）")
             continue
         extra = ({"vendor": it["vendor"]} if it.get("vendor") else {}) \
             | ({"anchor": it["anchor"]} if it.get("anchor") else {})
@@ -242,7 +248,7 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
             existing = existing + rows
             append_rows(obs_path, rows)
         total_added += len(rows)
-        print(f"{_ts()} + {it['sp_name'][:28]} · +{len(rows)} 行"
+        print(f"[{_ts()}] + {it['sp_name'][:28]} · +{len(rows)} 行"
               f"（{series['dates'][0]} ~ {series['dates'][-1]}）")
     if dry_run:
         print(f"[dry-run] 共 {total_added} 行，未写文件未入库")
@@ -263,9 +269,9 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
         json.dumps({**stats, "date": date_dir, "channel_adapter": "manmanbuy"},
                    ensure_ascii=False, indent=2), encoding="utf-8")
     # 人话版入库统计（JSON 明细在 stats 文件里）
-    print(f"{_ts()} ◆ 入库：新 {stats.get('ingested', 0)} / 更新 {stats.get('updated', 0)}"
+    print(f"[{_ts()}] ◆ 入库：新 {stats.get('ingested', 0)} / 更新 {stats.get('updated', 0)}"
           f" / 隔离 {stats.get('quarantined', 0)} / 无实体 {stats.get('no_entity', 0)}")
-    print(f"{_ts()} ◆ stats 明细 -> {stats_path}")
+    print(f"[{_ts()}] ◆ stats 明细 -> {stats_path}")
 
     # ── 总结一行看全 ──
     got = sum(1 for x in dumps["listings"] if x.get("trend", {}).get("datePrice"))
@@ -276,7 +282,7 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
         budget_txt = (f"预算 {gate.spent()}/{gate.budget}" if gate else
                       f"节奏 {sleep_min}~{sleep_max}s")
     print(f"{'─' * 28} 总结 {'─' * 28}")
-    print(f"{_ts()} ■ 采集 {len(dumps['listings'])} 锚（有曲线 {got} / 无点 {zero}）"
+    print(f"[{_ts()}] ■ 采集 {len(dumps['listings'])} 锚（有曲线 {got} / 无点 {zero}）"
           f" ｜ 行 +{total_added} ｜ 入库 新{stats.get('ingested', 0)} 隔离{stats.get('quarantined', 0)}"
           f" ｜ {budget_txt}")
     return 0
@@ -578,7 +584,7 @@ def main(argv: list[str] | None = None) -> int:
         with ChannelGate("mmb").session("login"):
             return login(args.user)
     if args.cmd == "discover":
-        gate = ChannelGate("mmb", budget=60)
+        gate = ChannelGate("mmb", budget=60, log=_stamp)
         try:
             with gate.session("discover"):
                 result = discover(args.series, args.spec, keyword=args.keyword,
@@ -600,7 +606,7 @@ def main(argv: list[str] | None = None) -> int:
                    dry_run=args.dry_run, skip_ingest=args.skip_ingest,
                    sleep_min=args.sleep_min, sleep_max=args.sleep_max,
                    only=args.only)
-    gate = ChannelGate("mmb", budget=60)   # R2：全接口日总预算（操作手册红线）
+    gate = ChannelGate("mmb", budget=60, log=_stamp)   # R2：全接口日总预算（操作手册红线）
     try:
         with gate.session("run 采集"):
             return run(args.date_dir, root=root, from_cache=args.from_cache,

@@ -194,27 +194,35 @@
            border-radius: 4px; padding: 0 4px; flex: none; }
   .st-驳回 { color: var(--sub); font-size: 11px; border: 1px solid var(--sub);
            border-radius: 4px; padding: 0 4px; flex: none; }
-  .cmp-panel { position: fixed; left: 0; top: 130px; width: 216px; max-height: 62vh;
-    background: #fff; border: 1px solid var(--line); border-left: none;
-    border-radius: 0 10px 10px 0; box-shadow: 2px 2px 14px rgba(0,0,0,.08);
-    z-index: 60; display: flex; flex-direction: column; transition: transform .25s; }
-  .cmp-panel.collapsed { transform: translateX(calc(-100% + 26px)); }
+  .cmp-fab { position: fixed; right: 16px; top: 106px; z-index: 62; display: flex;
+    align-items: center; gap: 3px; padding: 6px 9px; background: #fff;
+    border: 1px solid var(--line); border-radius: 18px; cursor: pointer; font-size: 15px;
+    box-shadow: 1px 1px 10px rgba(0,0,0,.10); }
+  .cmp-fab:hover { border-color: var(--accent); }
+  .cmp-fab .ar { font-size: 10px; color: var(--sub); }
+  .cmp-panel { position: fixed; left: 56%; top: 130px; width: 216px; max-height: 62vh;
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 2px 2px 14px rgba(0,0,0,.10); z-index: 61; display: none;
+    flex-direction: column; }
+  .cmp-panel.open { display: flex; }
   .cmp-head { padding: 8px 10px; font-size: 12.5px; font-weight: 600; color: var(--txt);
-    border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 6px; }
+    border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 6px;
+    cursor: move; user-select: none; }
   .cmp-fold { margin-left: auto; cursor: pointer; border: none; background: none;
-    color: var(--sub); font-size: 14px; padding: 0 2px; }
+    color: var(--sub); font-size: 13px; padding: 0 2px; }
   .cmp-tip { font-size: 11px; color: var(--sub); padding: 6px 10px 2px; }
   .cmp-list { overflow: auto; padding: 4px 6px 8px; }
   .cmp-list label { display: flex; align-items: center; gap: 6px; padding: 3px 4px;
     font-size: 12px; border-radius: 6px; cursor: pointer; color: var(--txt); }
   .cmp-list label:hover { background: rgba(127,127,127,.08); }
   .cmp-list input { accent-color: var(--accent); flex: none; }
-  .cmp-chart-w { position: fixed; left: 232px; bottom: 18px; width: min(780px, calc(100vw - 260px));
+  .cmp-chart-w { position: fixed; left: 340px; bottom: 18px; top: auto; width: min(780px, calc(100vw - 380px));
     height: 440px; background: #fff; border: 1px solid var(--line); border-radius: 12px;
     box-shadow: 2px 2px 18px rgba(0,0,0,.12); z-index: 55; display: none; flex-direction: column; }
   .cmp-chart-w.show { display: flex; }
   .cmp-chart-hd { padding: 8px 12px; font-size: 12.5px; color: var(--txt); display: flex;
-    gap: 8px; align-items: center; border-bottom: 1px solid var(--line); }
+    gap: 8px; align-items: center; border-bottom: 1px solid var(--line); cursor: move;
+    user-select: none; }
   .cmp-chart-hd .close { margin-left: auto; border: 1px solid var(--line); background: #fff;
     border-radius: 6px; padding: 2px 10px; cursor: pointer; font-size: 12px; }
   #cmp-chart { flex: 1; }
@@ -312,16 +320,16 @@
   </div>
 </div>
 
+<button class="cmp-fab" id="cmp-fab" title="曲线对比（勾1聚焦 / 2~3条同图对比）">📈<span class="ar" id="cmp-ar">▾</span></button>
 <div class="cmp-panel" id="cmp-panel">
-  <div class="cmp-head">📈 曲线对比
-    <button class="cmp-fold" title="收起/展开"
-      onclick="document.getElementById('cmp-panel').classList.toggle('collapsed')">‹</button>
+  <div class="cmp-head" id="cmp-drag">📈 曲线对比 <span class="cnt" id="cmp-picked" style="font-weight:400;color:var(--sub)"></span>
+    <button class="cmp-fold" title="收起（点左上角图标再展开）" onclick="cmpToggle(false)">✕</button>
   </div>
-  <div class="cmp-tip">勾 1 条=聚焦大图 · 勾 2~3 条=同图对比（切分组自动刷新列表）</div>
+  <div class="cmp-tip">勾 1 条=聚焦 · 2~3 条=对比 · 拖标题栏可移动</div>
   <div class="cmp-list" id="cmp-list"></div>
 </div>
 <div class="cmp-chart-w" id="cmp-chart-w">
-  <div class="cmp-chart-hd"><b id="cmp-title" style="font-size:12.5px"></b>
+  <div class="cmp-chart-hd" id="cmp-chart-drag"><b id="cmp-title" style="font-size:12.5px"></b>
     <button class="close" onclick="cmpClear()">关闭</button></div>
   <div id="cmp-chart"></div>
 </div>
@@ -479,6 +487,39 @@ function renderNavAndWall() {
 }
 
 /* ---------- 侧边曲线对比悬浮窗（2026-10-17）：勾 1 条聚焦 / 2~3 条同图对比 ---------- */
+function cmpToggle(on) {
+  const panel = document.getElementById('cmp-panel');
+  const open = on === undefined ? !panel.classList.contains('open') : !!on;
+  panel.classList.toggle('open', open);
+  document.getElementById('cmp-ar').textContent = open ? '▴' : '▾';
+}
+/* 拖拽：按住标题栏移动悬浮窗（首次拖动把 right/bottom 定位换算成 left/top） */
+function makeDraggable(handle, el) {
+  if (!handle || !el) return;
+  handle.addEventListener('mousedown', ev => {
+    if (ev.target.closest('button') || ev.target.tagName === 'INPUT') return;
+    const r = el.getBoundingClientRect();
+    el.style.left = r.left + 'px';
+    el.style.top = r.top + 'px';
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+    const dx = ev.clientX - r.left, dy = ev.clientY - r.top;
+    const move = e2 => {
+      el.style.left = Math.max(0, e2.clientX - dx) + 'px';
+      el.style.top = Math.max(0, e2.clientY - dy) + 'px';
+    };
+    const up = () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+    ev.preventDefault();
+  });
+}
+document.getElementById('cmp-fab').addEventListener('click', () => cmpToggle());
+makeDraggable(document.getElementById('cmp-drag'), document.getElementById('cmp-panel'));
+makeDraggable(document.getElementById('cmp-chart-drag'), document.getElementById('cmp-chart-w'));
 const CMP_COLORS = ['#d89b3a', '#3aa0c9', '#c96f9a'];
 let cmpInst = null;
 function renderCmpPanel() {
@@ -515,6 +556,8 @@ function cmpDraw() {
   wrap.classList.add('show');
   document.getElementById('cmp-title').textContent = es.length === 1
     ? `聚焦 · ${es[0].display_name}` : `对比 · ${es.map(e => e.display_name).join(' vs ')}`;
+  document.getElementById('cmp-picked').textContent =
+    ids.length ? `已选 ${ids.length}` : '';
   cmpInst = cmpInst || echarts.init(document.getElementById('cmp-chart'));
   const series = [];
   es.forEach((e, i) => {
