@@ -204,22 +204,30 @@ if (-not $h -or $h.Length -lt 10000) {
   adb -s $Device shell monkey -p com.taobao.idlefish -c android.intent.category.LAUNCHER 1 2>$null | Out-Null
   Start-Sleep 15
 }
+# safe read: dump may be missing when device drops mid-run
+function ReadXmlSafe($name) {
+  $p = "$OutDir\${name}.xml"
+  if (-not (Test-Path $p)) { return "" }
+  try { return [IO.File]::ReadAllText($p, [Text.Encoding]::UTF8) } catch { return "" }
+}
+
 # navigate back to home feed safely (BACK never sends messages)
 $atHome = $false
 for ($j = 1; $j -le 5; $j++) {
   Dump-Uixml "${tag}_nav$j"
-  $navContent = [IO.File]::ReadAllText("$OutDir\${tag}_nav$j.xml")
-  if ($navContent -and ($navContent -match '卖闲置' -or $navContent -match '猜你喜欢')) { $atHome = $true; break }
+  $navContent = ReadXmlSafe "${tag}_nav$j"
+  if (-not $navContent) { Log "DUMP_MISSING (device dropped?), abort round"; break }
+  if ($navContent -match '卖闲置' -or $navContent -match '猜你喜欢') { $atHome = $true; break }
   adb -s $Device shell input keyevent 4; Start-Sleep 2
 }
 if (-not $atHome) {
-  adb -s $Device shell am force-stop com.taobao.idlefish; Start-Sleep 2
-  adb -s $Device shell monkey -p com.taobao.idlefish -c android.intent.category.LAUNCHER 1 2>$null | Out-Null
-  Start-Sleep 12
+  python $LeaseTool release --device $Device --session $SessionId 2>$null | Out-Null
+  Log "DONE $tag (aborted, no home)"
+  exit 0
 }
 # dismiss app-upgrade popup if present (fresh dump)
 Dump-Uixml "${tag}_popupchk"
-$popContent = [IO.File]::ReadAllText("$OutDir\${tag}_popupchk.xml")
+$popContent = ReadXmlSafe "${tag}_popupchk"
 if ($popContent -match '暂不升级') {
   adb -s $Device shell input tap 211 924; Start-Sleep 2
   Log "UPGRADE_POPUP dismissed"

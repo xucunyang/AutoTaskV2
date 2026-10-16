@@ -121,18 +121,32 @@ Start-Sleep 12
 
 Dump-Uixml "${tag}_home"
 
+# safe read: dump may be missing when device drops mid-run
+function ReadXmlSafe($name) {
+  $p = "$OutDir\${name}.xml"
+  if (-not (Test-Path $p)) { return "" }
+  try { return [IO.File]::ReadAllText($p, [Text.Encoding]::UTF8) } catch { return "" }
+}
+
 # navigate to home feed root
 $atHome = $false
 for ($j = 1; $j -le 4; $j++) {
-  $hc = [IO.File]::ReadAllText("$OutDir\${tag}_home.xml", [Text.Encoding]::UTF8)
-  if ($hc -and ($hc -match ([regex]::Unescape("\u5356\u95f2\u90e8")))) { $atHome = $true; break }
+  $hc = ReadXmlSafe "${tag}_home"
+  if (-not $hc) { Log "DUMP_MISSING (device dropped?), abort round"; break }
+  if ($hc -match ([regex]::Unescape("\u5356\u95f2\u90e8"))) { $atHome = $true; break }
   A "input keyevent 4" | Out-Null
   Start-Sleep 2
   Dump-Uixml "${tag}_home"
 }
+if (-not $atHome) {
+  Log "NOT_AT_HOME (dump missing or no feed), abort round"
+  python $LeaseTool release --device $Device --session $SessionId 2>$null | Out-Null
+  Log "DONE $tag (aborted)"
+  exit 0
+}
 
 # dismiss upgrade popup if present
-$hc2 = [IO.File]::ReadAllText("$OutDir\${tag}_home.xml", [Text.Encoding]::UTF8)
+$hc2 = ReadXmlSafe "${tag}_home"
 if ($hc2 -and ($hc2 -match ([regex]::Unescape("\u6682\u4e0d\u5347\u7ea7")))) {
   if (Tap-Text "${tag}_home" ([regex]::Unescape("\u6682\u4e0d\u5347\u7ea7"))) { Log "UPGRADE_POPUP dismissed"; Start-Sleep 2 }
 }
