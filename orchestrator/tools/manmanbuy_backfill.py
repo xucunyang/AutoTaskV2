@@ -453,7 +453,10 @@ def discover_cheap(series: str, spec: str, keyword: str,
                 continue
             seen.add(u)
             t = it.get("title") or ""
-            if _is_host(t):
+            # 整机词只在 match=True（显卡路径）生效：非显卡品类（match=False）
+            # 的标题里「台式机/电脑」是正常描述词（台式机内存条），整机过滤
+            # 靠 reject 正则（2026-10-16 预扫实测：_is_host 误杀全部内存候选）。
+            if match and _is_host(t):
                 continue
             if match and not _match_spec(t, series, spec):
                 continue

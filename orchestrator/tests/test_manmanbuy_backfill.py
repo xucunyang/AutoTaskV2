@@ -328,3 +328,38 @@ def test_registry_accepts_jingfen_key(tmp_path_factory):
     finally:
         mbf.REGISTRY = old
 
+
+def test_discover_cheap_skips_host_filter_when_match_false():
+    """品类路径（match=False）不做整机词过滤：台式机内存是正常标题。
+
+    2026-10-16 预扫实测：_is_host 把 DDR5 5600/6400 全部候选误杀归零。
+    discover_cheap 走 trend 试采（4030 窗口期不可用），这里只断言过滤
+    语义——用 monkeypatched 的 search + trend 构造零网络测试。
+    """
+    import unittest.mock as mock
+
+    rows = [
+        {"title": "金百达48GB(24GBX2)套装 DDR5 5600 台式机内存条",
+         "price": "4099", "sales": "100000", "siteid": "1",
+         "prourl": "https://jingfen.jd.com/detail/abc_3123456.html"},
+        {"title": "联想拯救者原装 16G DDR5 5600 笔记本内存条",
+         "price": "1888", "sales": "20001", "siteid": "1",
+         "prourl": "https://jingfen.jd.com/detail/def_3123457.html"},
+    ]
+    with mock.patch.object(mbf.Mmb, "search", return_value=rows), \
+         mock.patch.object(mbf.Mmb, "trend",
+                           return_value={"datePrice": [[1, 2]] * 60,
+                                         "spName": "x", "currentPrice": 1}), \
+         mock.patch.object(mbf.Mmb, "load_session", return_value=True), \
+         mock.patch("time.sleep", return_value=None):
+        # 品类路径：台式机内存留，笔记本被 reject 拦
+        r = mbf.discover_cheap("DDR5 5600", "16GBx2", "DDR5 5600",
+                               match=False, reject=r"笔记本|服务器",
+                               sleep_range=(0, 0))
+        assert len(r["candidates"]) == 1
+        assert "金百达" in r["candidates"][0]["title"]
+        # 显卡路径：同标题被 _is_host 拦（回归旧行为）
+        r2 = mbf.discover_cheap("DDR5 5600", "16GBx2", "DDR5 5600",
+                                match=True, sleep_range=(0, 0))
+        assert r2["candidates"] == []
+
