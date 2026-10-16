@@ -363,3 +363,15 @@ def test_discover_cheap_skips_host_filter_when_match_false():
                                 match=True, sleep_range=(0, 0))
         assert r2["candidates"] == []
 
+
+def test_fail_label_distinguishes_4030_from_session_expired():
+    """4030 打印窗口限流（别 login），402/未登录打印会话失效。
+
+    2026-10-16 早 06:30 定时回填撞 4030，旧文案一律「会话失效」误导重登。
+    """
+    from tools.manmanbuy_client import SessionExpired
+    assert "等恢复" in mbf._fail_label(SessionExpired("...'4030'"))
+    assert "勿 login" in mbf._fail_label(SessionExpired("...'4030'"))
+    assert "会话失效" in mbf._fail_label(SessionExpired("未登录"))
+    assert "会话失效" in mbf._fail_label(SessionExpired("402"))
+

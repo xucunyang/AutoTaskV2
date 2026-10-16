@@ -73,8 +73,13 @@ def main(argv: list[str] | None = None) -> int:
     if failed:
         name, rc = failed
         tail = (outs[-1][-260:]).replace("\n", " ")
-        hint = ("会话过期：跑 python -m tools.manmanbuy_backfill login 重登"
-                if rc == 2 else f"退出码 {rc}")
+        # 4030 ≠ 会话失效：24h 滚动窗口限流，等恢复，别 login（逆向文档 §1.3）
+        if rc == 2 and "4030" in "\n".join(outs):
+            hint = "窗口限流（24h 滚动）：等恢复，别重新 login"
+        elif rc == 2:
+            hint = "会话过期：跑 python -m tools.manmanbuy_backfill login 重登"
+        else:
+            hint = f"退出码 {rc}"
         winnotify.notify(
             f"每日回填失败：{name}",
             f"{hint} {tail} 日志：{log_path}",

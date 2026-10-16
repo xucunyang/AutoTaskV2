@@ -318,6 +318,15 @@ def _is_host(title: str) -> bool:
     return any(w in t for w in _HOSTWORDS)
 
 
+def _fail_label(e: SessionExpired) -> str:
+    """SessionExpired 文案区分：4030 是 24h 滚动窗口限流（等恢复，别 login），
+    只有 402/未登录才是真会话失效（逆向文档 §1.3：4030 ≠ 402）。
+    2026-10-16 早 06:30 定时回填撞 4030，旧文案「会话失效」会误导用户重登."""
+    if "4030" in str(e):
+        return f"窗口限流等恢复（24h 滚动，勿 login）：{e}"
+    return f"会话失效：{e}"
+
+
 # 锚的 URL 形态（2026-10-14 实测收敛）：搜索结果没有京东数字 SKU
 # （skuid/itemid 都是慢慢买内部编码，gourl/union 链全是客户端 JS 跳转，
 # 服务端解析无解）——而慢慢买曲线的键就是它爬虫认识的 URL 本身
@@ -534,7 +543,7 @@ def main(argv: list[str] | None = None) -> int:
             result = discover(args.series, args.spec, keyword=args.keyword,
                               category=args.category, top_n=args.top_n)
         except SessionExpired as e:
-            print(f"会话失效：{e}")
+            print(_fail_label(e))
             return 2
         out = args.out or str(ROOT / "artifacts" / time.strftime("%Y-%m-%d")
                               / f"backfill_discover_{args.series}_{args.spec}.json".replace(" ", ""))
@@ -550,7 +559,7 @@ def main(argv: list[str] | None = None) -> int:
                    sleep_min=args.sleep_min, sleep_max=args.sleep_max,
                    only=args.only)
     except SessionExpired as e:
-        print(f"会话失效：{e}")
+        print(_fail_label(e))
         return 2
 
 

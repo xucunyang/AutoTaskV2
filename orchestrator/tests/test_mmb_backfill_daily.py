@@ -71,6 +71,20 @@ def test_session_expired_stops_pipeline_with_login_hint(ctx):
     assert (tmp / f"mmb_backfill_{__import__('time').strftime('%Y-%m-%d')}.log").is_file()
 
 
+def test_4030_hints_wait_instead_of_login(ctx):
+    """rc=2 + 输出含 4030 = 窗口限流：提示等恢复、别 login（逆向文档 §1.3）。
+
+    2026-10-16 早 06:30 定时回填撞 4030，旧提示让人重登——错的（等即可）。"""
+    mod, calls, _tmp = ctx
+    calls["fake_result"] = subprocess.CompletedProcess(
+        ["backfill"], 2, "会话失效：tool 接口返回非对象响应：'4030'", "")
+    assert mod.main([]) == 2
+    title, body, kw = calls["notify"][0]
+    assert kw.get("fail") is True
+    assert "login 重登" not in body      # 不许出现"去重登"的指导…
+    assert "等恢复" in body               # …取而代之的是等恢复（"别重新 login"）
+
+
 def test_success_notifies_added_rows(ctx):
     """两步 rc=0：通知正文汇总入库行数，返回 0。"""
     import unittest.mock as mock
