@@ -642,9 +642,15 @@ function makeCard(e) {
   if (nTracks > 1) {
     trackSel = document.createElement('label');
     trackSel.className = 'vsel';
-    trackSel.innerHTML = `<input type="checkbox"> ${nTracks}家对比`;
+    trackSel.innerHTML = `<input type="checkbox" class="tk"> ${nTracks}家对比`;
     hd.appendChild(trackSel);
   }
+
+  const zsel = document.createElement('label');
+  zsel.className = 'vsel';
+  zsel.title = 'Y 轴从 0 开始（默认自动缩放，放大波动）';
+  zsel.innerHTML = `<input type="checkbox" class="z0"> 从0`;
+  hd.appendChild(zsel);
 
   const chartDiv = document.createElement('div');
   chartDiv.className = 'chart';
@@ -660,7 +666,8 @@ function makeCard(e) {
   }
 
   let showTracks = false;
-  const draw = () => drawChart(chartDiv, e, showTracks && nTracks > 1);
+  const draw = () => drawChart(chartDiv, e, showTracks && nTracks > 1,
+    zsel.querySelector('input').checked);
 
   /* 点击图表数据点 = 溯源弹窗；点卡片其余区域 = 放大/缩小。
      （BUG-14：图表点击会冒泡到卡片——chart 区域内不触发 toggle） */
@@ -673,6 +680,7 @@ function makeCard(e) {
   if (trackSel) trackSel.querySelector('input').onchange = ev => {
     showTracks = ev.target.checked; draw();
   };
+  zsel.querySelector('input').onchange = () => draw();
 
   card.dataset.ready = '0';           // initChart 在挂载后执行（BUG-13）
   return card;
@@ -706,8 +714,9 @@ function initChart(e) {
   });
   const entry = { div: chartDiv, inst, e, card };
   entry.draw = () => drawChart(chartDiv, entry.e,
-    card.querySelector('.vsel input')?.checked &&
-    Object.keys(entry.e.tracks).length > 1);
+    card.querySelector('.tk')?.checked &&
+    Object.keys(entry.e.tracks).length > 1,
+    card.querySelector('.z0')?.checked);
   charts.push(entry);
   entry.draw();
 }
@@ -730,7 +739,7 @@ function weeklySeries(daily) {
     .map(([k, b]) => [k, Math.round(b.sum / b.n * 100) / 100]);
 }
 
-function drawChart(div, e, withTracks) {
+function drawChart(div, e, withTracks, fromZero) {
   const inst = charts.find(x => x.div === div).inst;
   const m = e.metrics;
   /* 双曲线（品类采集规则 v1）：主线=销量锚（金色实线）、最低价线=manmanmai
@@ -812,7 +821,9 @@ function drawChart(div, e, withTracks) {
                    '<br><span style="color:#7a8499">点击查看当天原始报价</span>';
                } },
     xAxis: { type: 'time', axisLabel: { fontSize: 11, color: '#7a8499' } },
-    yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 11, color: '#7a8499' },
+    /* 勾「从0」→ min:0 直坐标（看绝对幅度）；默认 scale 自动缩放（放大波动） */
+    yAxis: { type: 'value', scale: !fromZero, min: fromZero ? 0 : null,
+             axisLabel: { fontSize: 11, color: '#7a8499' },
              /* Y 轴贯穿刻度线：细+淡+虚线（多条数据线重叠时网格不抢线） */
              splitLine: { lineStyle: { color: '#e3e7ee', type: 'dashed', width: 0.8 } } },
     series: lines,

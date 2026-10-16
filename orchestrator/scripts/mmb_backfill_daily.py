@@ -49,18 +49,25 @@ def main(argv: list[str] | None = None) -> int:
     log_path = (LOG_DIR or ROOT / "reports") / f"mmb_backfill_{today}.log"
     t0 = time.time()
     steps = [
+        ("fix_url", [sys.executable, "-X", "utf8", "-u",
+                     str(ROOT / "scripts" / "prefill_jingfen.py"), "--fix-url"], True),
+        ("transcribe", [sys.executable, "-X", "utf8", "-u",
+                        str(ROOT / "scripts" / "transcribe_registry.py")], True),
         ("backfill", [sys.executable, "-X", "utf8", "-u",
                       "-m", "tools.manmanbuy_backfill", "run",
-                      "--date-dir", today, *argv]),
+                      "--date-dir", today, *argv], False),
         ("trend_calc", [sys.executable, "-X", "utf8", "-u",
-                        "-m", "tools.trend_calc", "--date", today]),
+                        "-m", "tools.trend_calc", "--date", today], False),
     ]
     outs, failed = [], None
-    for name, cmd in steps:
+    for name, cmd, soft in steps:
         p = _run(cmd)
         outs.append(f"$ {' '.join(cmd)}\n{p.stdout}{p.stderr}"
                     f"[{name}] rc={p.returncode}")
         if p.returncode != 0:
+            if soft:
+                # 软步骤（fix_url/transcribe）：记日志继续——回填不受影响
+                continue
             failed = (name, p.returncode)
             break
     dt = time.time() - t0
