@@ -147,13 +147,47 @@
   .mmb-row button.anchor-price { border-color: var(--fast-drop); color: var(--fast-drop); }
   .mmb-empty { color: var(--sub); padding: 14px 4px; font-size: 13px; }
   .prop-ev { color: var(--sub); font-size: 12px; }
-  .prop-row { flex-wrap: wrap; align-items: center; }
-  .prop-row select { padding: 2px 6px; border: 1px solid var(--line);
-                    border-radius: 6px; font-size: 12px; flex: none; }
-  .prop-row input.vin { width: 110px; padding: 2px 6px; border: 1px solid var(--line);
-                       border-radius: 6px; font-size: 12px; flex: none; }
-  .prop-row button.ok { border-color: var(--stable); color: var(--stable); }
-  .prop-row button.no { border-color: var(--sub); color: var(--sub); }
+  .prop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+               gap: 10px; }
+  .prop-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px;
+               display: flex; flex-direction: column; gap: 7px; font-size: 13px; }
+  .prop-card:hover { border-color: var(--accent); }
+  .prop-card.done { opacity: .5; }
+  .pc-head { display: flex; gap: 9px; align-items: flex-start; }
+  .pc-imgw { position: relative; width: 62px; height: 62px; flex: none;
+             border-radius: 8px; overflow: hidden; background: rgba(127,127,127,.14); }
+  .pc-imgw .ph { position: absolute; inset: 0; display: flex; align-items: center;
+                 justify-content: center; color: var(--sub); font-size: 11px; }
+  .pc-imgw img { position: absolute; inset: 0; width: 100%; height: 100%;
+                 object-fit: cover; }
+  .pc-title { font-size: 13px; line-height: 1.45; color: var(--txt); word-break: break-all;
+              display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+              overflow: hidden; }
+  .pc-title a { color: inherit; text-decoration: none; }
+  .pc-title a:hover { color: var(--accent); }
+  .pc-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center;
+             color: var(--sub); font-size: 12px; }
+  .pc-price { color: #e5a00b; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pc-shop b { color: var(--stable); font-weight: 600; }
+  .pc-ctl { display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+            margin-top: auto; padding-top: 2px; }
+  .pc-ctl select { padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px;
+                   font-size: 12px; }
+  .pc-ctl input.vin { width: 104px; padding: 3px 6px; border: 1px solid var(--line);
+                      border-radius: 6px; font-size: 12px; }
+  .pc-ctl button { border: 1px solid var(--line); background: #fff; border-radius: 6px;
+                   padding: 3px 9px; font-size: 12px; cursor: pointer; }
+  .pc-ctl button.ok { border-color: var(--stable); color: var(--stable); }
+  .pc-ctl button.no { border-color: var(--sub); color: var(--sub); }
+  .pc-ck { flex: none; width: 15px; height: 15px; accent-color: var(--accent);
+           cursor: pointer; margin-top: 2px; }
+  .prop-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+              padding: 8px 2px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+  .prop-bar button { border: 1px solid var(--line); background: #fff; border-radius: 6px;
+                     padding: 4px 12px; font-size: 12.5px; cursor: pointer; }
+  .prop-bar button.primary { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .prop-bar button:disabled { opacity: .45; cursor: not-allowed; }
+  .prop-bar .cnt { color: var(--sub); font-size: 12px; }
   .st-待核 { color: #b0541f; font-size: 11px; border: 1px solid #b0541f;
            border-radius: 4px; padding: 0 4px; flex: none; }
   .st-通过 { color: var(--stable); font-size: 11px; border: 1px solid var(--stable);
@@ -189,11 +223,20 @@
   </div>
   <div id="mmb-rows"></div>
 </div>
-<div class="mmb-panel" id="prop-panel">
+<div class="mmb-panel" id="prop-panel" style="width:min(980px,94vw)">
   <div class="bar">
     <b style="font-size:13.5px;color:var(--txt)">提案审核</b>
-    <span>定渠道（自营/第三方）→ 通过后誊入注册表回填。每条点标题可验商品页。</span>
+    <span>店名可判定的已自动预审；剩下的勾选卡片 → 提交批量通过。点标题验商品页。</span>
     <button class="close" onclick="document.getElementById('prop-panel').classList.remove('show')">收起</button>
+  </div>
+  <div class="prop-bar">
+    <label style="font-size:12.5px;display:flex;align-items:center;gap:4px">
+      <input type="checkbox" id="prop-all" class="pc-ck" onchange="propAll(this.checked)"> 全选待核
+    </label>
+    <span class="cnt" id="prop-sel">已勾 0</span>
+    <button onclick="propAuto()" id="prop-auto-btn">自动预审</button>
+    <button class="primary" id="prop-submit" onclick="propBatch()" disabled>提交勾选</button>
+    <span class="cnt" id="prop-stat"></span>
   </div>
   <div id="prop-rows"></div>
 </div>
@@ -800,38 +843,102 @@ async function propLoad() {
   document.getElementById('prop-panel').classList.add('show');
   document.getElementById('mmb-panel').classList.remove('show');
   rows.innerHTML = '<div class="mmb-empty">加载中…</div>';
-  let items = [];
+  let d = {};
   try {
-    items = (await fetch('/api/mmb/proposals').then(r => r.json())).items || [];
+    d = await fetch('/api/mmb/proposals').then(r => r.json());
   } catch (e) { rows.innerHTML = `<div class="mmb-empty">加载失败：${esc(e)}</div>`; return; }
+  const items = d.items || [];
+  document.getElementById('prop-auto-btn').textContent =
+    `自动预审${d.auto_n ? ` (${d.auto_n})` : ''}`;
   if (!items.length) { rows.innerHTML = '<div class="mmb-empty">暂无提案</div>'; return; }
   const anchorZh = a => (a === 'sales' || a === '销量') ? '销量锚' : '价格锚';
-  rows.innerHTML = items.map((p, i) => {
+  // 待核排前（人工队列），已定的沉底淡化
+  const order = items.map((p, i) => ({ p, i }))
+    .sort((a, b) => ((a.p.status || '待核') === '待核' ? 0 : 1)
+                  - ((b.p.status || '待核') === '待核' ? 0 : 1));
+  rows.innerHTML = `<div class="prop-grid">` + order.map(({ p, i }) => {
     const id = p.identity || {};
     const st = p.status || '待核';
+    const pend = st === '待核';
+    const full = p.sp_name || p.url || '';
+    const img = p.img
+      ? `<img src="${esc(p.img)}" loading="lazy" alt="" onerror="this.remove()">`
+      : '';
+    const shop = p.vendor
+      ? `<span class="pc-shop">店：<b>${esc(p.vendor)}</b>${p.channel && p.channel !== '待核' ? ` · ${esc(p.channel)}` : ''}</span>`
+      : '<span class="pc-shop" style="color:var(--sub)">店：未识别（jingfen 转链）</span>';
     const ev = [p.trial, p.remark].filter(Boolean).map(esc).join(' · ');
-    return `<div class="mmb-row prop-row" data-i="${i}">
-      <span class="st-${esc(st)}">${esc(st)}</span>
-      <span class="m">${esc(id.category || '')} ${esc(id.series || '')} ${esc(id.spec || '')}</span>
-      <span class="m">${anchorZh(p.anchor)}</span>
-      <span class="p">¥${esc(String(p.price ?? '-'))}</span>
-      <span class="t"><a href="${esc(p.url || '')}" target="_blank" rel="noopener"
-          style="color:inherit;text-decoration:none">${esc(p.sp_name || p.url || '')}</a></span>
-      <span class="m">销:${esc(String(p.sales ?? '-'))}</span>
-      <span class="prop-ev">${ev}</span>
-      <select class="ch" title="渠道（自营/官旗/三方店铺）">
-        ${['待核', '自营', '官旗', '三方店铺'].map(c =>
-          `<option ${c === (p.channel || '待核') ? 'selected' : ''}>${c}</option>`).join('')}
-      </select>
-      <input class="vin" placeholder="店铺/备注" value="${esc(p.vendor || '')}">
-      <button class="ok" onclick="propReview(${i},'通过')">通过</button>
-      <button class="no" onclick="propReview(${i},'驳回')">驳回</button>
+    return `<div class="prop-card${pend ? '' : ' done'}" data-i="${i}">
+      <div class="pc-head">
+        ${pend ? `<input type="checkbox" class="pc-ck" onchange="propSelCount()">` : ''}
+        <div class="pc-imgw"><span class="ph">无图</span>${img}</div>
+        <div style="min-width:0">
+          <div class="pc-title" title="${esc(full)}"><a href="${esc(p.url || '')}"
+            target="_blank" rel="noopener">${esc(full)}</a></div>
+          <div class="pc-meta" style="margin-top:4px">
+            <span class="st-${esc(st)}">${esc(st)}</span>
+            <span>${esc(id.category || '')} ${esc(id.series || '')} ${esc(id.spec || '')}</span>
+            <span>${anchorZh(p.anchor)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="pc-meta">
+        <span class="pc-price">¥${esc(String(p.price ?? '-'))}</span>
+        <span>销 ${esc(String(p.sales ?? '-'))}</span>
+        ${shop}
+      </div>
+      ${ev ? `<div class="prop-ev">${ev}</div>` : ''}
+      <div class="pc-ctl">
+        <select class="ch" title="渠道（自营/官旗/三方店铺）">
+          ${['待核', '自营', '官旗', '三方店铺'].map(c =>
+            `<option ${c === (p.channel || '待核') ? 'selected' : ''}>${c}</option>`).join('')}
+        </select>
+        <input class="vin" placeholder="店铺/备注" value="${esc(p.vendor || '')}">
+        <button class="ok" onclick="propReview(${i},'通过')">通过</button>
+        <button class="no" onclick="propReview(${i},'驳回')">驳回</button>
+      </div>
     </div>`;
-  }).join('');
+  }).join('') + `</div>`;
   window._propItems = items;
+  propSelCount();
+}
+function propAll(on) {
+  document.querySelectorAll('#prop-rows .prop-card:not(.done) .pc-ck')
+    .forEach(c => { c.checked = on; });
+  propSelCount();
+}
+function propSelCount() {
+  const n = document.querySelectorAll('#prop-rows .prop-card:not(.done) .pc-ck:checked').length;
+  document.getElementById('prop-sel').textContent = `已勾 ${n}`;
+  document.getElementById('prop-submit').disabled = n === 0;
+  document.getElementById('prop-submit').textContent = `提交勾选 (n=${n})`;
+}
+async function propAuto() {
+  if (!confirm('把店名已判定为「自营/官旗」的待核条目直接批量通过？')) return;
+  const d = await fetch('/api/mmb/review/auto', { method: 'POST' }).then(r => r.json());
+  if (d.ok) { alert(`自动预审：通过 ${d.auto_passed} 条，剩待核 ${d.pending} 条`); propLoad(); propCount(); }
+}
+async function propBatch() {
+  const picks = [...document.querySelectorAll('#prop-rows .prop-card:not(.done)')]
+    .filter(c => c.querySelector('.pc-ck') && c.querySelector('.pc-ck').checked)
+    .map(c => {
+      const p = (window._propItems || [])[+c.dataset.i];
+      return { identity: p.identity, anchor: p.anchor,
+               channel: c.querySelector('.ch').value,
+               vendor: c.querySelector('.vin').value.trim() };
+    });
+  if (!picks.length) return;
+  if (!confirm(`批量通过 ${picks.length} 条（按各卡片所选渠道）？`)) return;
+  const d = await fetch('/api/mmb/review/batch', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items: picks })
+  });
+  const j = await d.json();
+  if (j.ok) { propLoad(); propCount(); }
+  else alert('批量提交失败：' + (j.detail || '?'));
 }
 async function propReview(i, status) {
-  const row = document.querySelector(`.prop-row[data-i="${i}"]`);
+  const row = document.querySelector(`.prop-card[data-i="${i}"]`);
   const p = (window._propItems || [])[i];
   if (!row || !p) return;
   const channel = row.querySelector('.ch').value;

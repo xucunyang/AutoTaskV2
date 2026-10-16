@@ -432,14 +432,158 @@ def api_mmb_propose(payload: dict = Body(...)) -> dict:
     return {"ok": True, "total": len(items)}
 
 
+def _raw_pics() -> dict[str, str]:
+    """identity 归一化键 → 商品图（京东图床 spPic）。
+
+    图源 = 最近一期回填留档 backfill_manmanbuy_raw.json（trend 响应自带
+    spPic，零预算）；提案的转链/直链本身拿不到图，注册表匹配不到的
+    实体前端显示占位块。
+    """
+    import json
+    import re
+
+    pics: dict[str, str] = {}
+    art_root = ROOT / "artifacts"
+    if not art_root.is_dir():
+        return pics
+    for dd in sorted(art_root.iterdir(), reverse=True):
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", dd.name):
+            continue
+        raw = dd / "backfill_manmanbuy_raw.json"
+        if not raw.exists():
+            continue
+        try:
+            data = json.loads(raw.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        def find_pic(o):
+            if isinstance(o, dict):
+                if o.get("spPic"):
+                    return o["spPic"]
+                for v in o.values():
+                    r = find_pic(v)
+                    if r:
+                        return r
+            elif isinstance(o, list):
+                for v in o:
+                    r = find_pic(v)
+                    if r:
+                        return r
+            return None
+
+        for it in data.get("listings", []):
+            pic = find_pic(it.get("trend"))
+            ident = it.get("identity") or {}
+            if pic:
+                key = "|".join(str(ident.get(k) or "").lower()
+                               for k in ("category", "series", "spec"))
+                pics[key] = pic
+        if pics:
+            return pics
+    return {}
+
+
+def _prop_path():
+    return ROOT / "data" / "manmanbuy_proposals.yaml"
+
+
 @app.get("/api/mmb/proposals")
 def api_mmb_proposals() -> dict:
     import yaml
-    path = ROOT / "data" / "manmanbuy_proposals.yaml"
+    path = _prop_path()
     if not path.exists():
-        return {"items": []}
+        return {"items": [], "auto_n": 0}
     cur = yaml.safe_load(path.read_text(encoding="utf-8")) or []
-    return {"items": cur if isinstance(cur, list) else []}
+    items = cur if isinstance(cur, list) else []
+    pics = _raw_pics()
+    for p in items:
+        ident = p.get("identity") or {}
+        key = "|".join(str(ident.get(k) or "").lower()
+                       for k in ("category", "series", "spec"))
+        if pics.get(key):
+            p["img"] = pics[key]
+    # 自动预审候选数：店名已判定为自营/官旗、还挂在待核的
+    auto_n = sum(1 for p in items
+                 if p.get("status", "待核") == "待核"
+                 and p.get("channel") in ("自营", "官旗")
+                 and (p.get("vendor") or "").strip())
+    return {"items": items, "auto_n": auto_n}
+
+
+@app.post("/api/mmb/review/auto")
+def api_mmb_review_auto() -> dict:
+    """自动预审（2026-10-17 用户口径）：渠道预填时店名已判定为
+    「自营/官旗」的待核条目直接通过，不再人工过目；判定不了
+    （jingfen 转链、三方店铺）的留在待核队列。"""
+    import yaml
+    path = _prop_path()
+    if not path.exists():
+        raise HTTPException(404, "暂无提案文件")
+    items = yaml.safe_load(path.read_text(encoding="utf-8")) or []
+    now = datetime.now().isoformat(timespec="seconds")
+    n = 0
+    for p in items:
+        if (p.get("status", "待核") == "待核"
+                and p.get("channel") in ("自营", "官旗")
+                and (p.get("vendor") or "").strip()):
+            p["status"] = "通过"
+            p["reviewed_at"] = now
+            p["remark"] = (f"{p.get('remark')}；自动预审：店名含"
+                           f"{'自营' if p['channel'] == '自营' else '旗舰'}"
+                           if p.get("remark") else
+                           f"自动预审：店名判定{p['channel']}（{p['vendor']}）")
+            n += 1
+    if n:
+        path.write_text(yaml.safe_dump(items, allow_unicode=True, sort_keys=False),
+                        encoding="utf-8")
+    pending = sum(1 for x in items if x.get("status", "待核") == "待核")
+    return {"ok": True, "auto_passed": n, "pending": pending}
+
+
+@app.post("/api/mmb/review/batch")
+def api_mmb_review_batch(payload: dict = Body(...)) -> dict:
+    """批量提交（2026-10-17 用户口径）：看板勾选卡片 → 一键通过。
+
+    body: {items: [{identity, anchor, channel, vendor}]}，status 固定
+    「通过」（驳回仍走单条端点）；一次写盘，条目级校验失败整体 422。"""
+    import yaml
+    rows = payload.get("items") or []
+    if not rows:
+        raise HTTPException(422, "items 为空")
+    for r in rows:
+        ident = r.get("identity") or {}
+        if not ident.get("series") or r.get("anchor") not in _MMB_ANCHOR_NORM:
+            raise HTTPException(422, f"条目缺 identity.series/anchor: {ident}")
+        if r.get("channel") not in _MMB_CHANNELS:
+            raise HTTPException(422, f"channel 非法: {r.get('channel')!r}")
+    path = _prop_path()
+    if not path.exists():
+        raise HTTPException(404, "暂无提案文件")
+    items = yaml.safe_load(path.read_text(encoding="utf-8")) or []
+    now = datetime.now().isoformat(timespec="seconds")
+    hit_n = 0
+    for r in rows:
+        ident = r.get("identity") or {}
+        anchor = _MMB_ANCHOR_NORM[r["anchor"]]
+        hit = None
+        for x in items:
+            xa = _MMB_ANCHOR_NORM.get(x.get("anchor"))
+            if x.get("identity") == ident and xa == anchor:
+                hit = x
+                break
+        if hit is None:
+            raise HTTPException(404, f"提案不存在: {ident.get('series')}")
+        hit["channel"] = r["channel"]
+        if "vendor" in r:
+            hit["vendor"] = r["vendor"] or ""
+        hit["status"] = "通过"
+        hit["reviewed_at"] = now
+        hit_n += 1
+    path.write_text(yaml.safe_dump(items, allow_unicode=True, sort_keys=False),
+                    encoding="utf-8")
+    pending = sum(1 for x in items if x.get("status", "待核") == "待核")
+    return {"ok": True, "passed": hit_n, "total": len(items), "pending": pending}
 
 
 # ---------- 任务流水（控制台风格，2026-10-17）：只读 reports/*.log + 闸门状态 ----------

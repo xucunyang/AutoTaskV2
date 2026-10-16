@@ -251,6 +251,74 @@ def test_review_updates_channel_status_and_preserves_evidence(tmp_path, monkeypa
     assert d2["ok"] and d2["pending"] == 0
 
 
+def test_mmb_review_auto_and_batch(tmp_path, monkeypatch):
+    """自动预审：店名判自营/官旗→直接通过；批量提交：勾选卡片一键通过。"""
+    import yaml
+    _seed_proposals(tmp_path)
+    monkeypatch.setattr(webapp, "ROOT", tmp_path)
+    # 预填 2 条店名可判定的：自营（可自动过）+ 三方店铺（不可自动过，留人工）
+    path = tmp_path / "data" / "manmanbuy_proposals.yaml"
+    items = yaml.safe_load(path.read_text(encoding="utf-8"))
+    items[0]["channel"], items[0]["vendor"] = "自营", "京东自营"
+    items[1]["channel"], items[1]["vendor"] = "三方店铺", "某数码专营店"
+    path.write_text(yaml.safe_dump(items, allow_unicode=True, sort_keys=False),
+                    encoding="utf-8")
+    # proposals 端点报 auto_n=1（只自营/官旗计入）
+    d = webapp.api_mmb_proposals()
+    assert d["auto_n"] == 1
+    # 自动预审：只过自营那条
+    r = webapp.api_mmb_review_auto()
+    assert r["ok"] and r["auto_passed"] == 1 and r["pending"] == 1
+    cur = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert cur[0]["status"] == "通过" and "自动预审" in cur[0]["remark"]
+    assert cur[0]["trial"] == "gwd-verified（101 点）"   # 证据保留
+    assert cur[1]["status"] == "待核"
+    # 再跑一次幂等：没有新可自动过的
+    assert webapp.api_mmb_review_auto()["auto_passed"] == 0
+    # 批量提交：三方那条按卡片所选渠道通过
+    r2 = webapp.api_mmb_review_batch({"items": [{
+        "identity": {"category": "显卡", "series": "RTX 5050", "spec": "8GB"},
+        "anchor": "价格", "channel": "三方店铺", "vendor": "某数码专营店"}]})
+    assert r2["ok"] and r2["passed"] == 1 and r2["pending"] == 0
+    cur = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert cur[1]["status"] == "通过" and cur[1]["channel"] == "三方店铺"
+    # 批量校验：非法渠道整体 422；空 items 422；不存在条目 404
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as e:
+        webapp.api_mmb_review_batch({"items": [{
+            "identity": {"category": "显卡", "series": "RTX 5050", "spec": "8GB"},
+            "anchor": "价格", "channel": "杂牌"}]})
+    assert e.value.status_code == 422
+    with pytest.raises(HTTPException):
+        webapp.api_mmb_review_batch({"items": []})
+    with pytest.raises(HTTPException) as e:
+        webapp.api_mmb_review_batch({"items": [{
+            "identity": {"category": "显卡", "series": "不存在", "spec": ""},
+            "anchor": "价格", "channel": "自营"}]})
+    assert e.value.status_code == 404
+
+
+def test_proposals_enrich_img_from_raw(tmp_path, monkeypatch):
+    """提案列表带回填留档里的 spPic（identity 匹配，零预算）。"""
+    import json
+    _seed_proposals(tmp_path)
+    art = tmp_path / "artifacts" / "2026-10-17"
+    art.mkdir(parents=True)
+    (art / "backfill_manmanbuy_raw.json").write_text(json.dumps({
+        "fetched_at": "x", "listings": [
+            {"identity": {"category": "CPU", "series": "7800X3D", "spec": ""},
+             "url": "https://item.jd.com/1.html", "sp_name": "AMD 7800X3D 盒装",
+             "channel": "自营", "vendor": "",
+             "trend": {"datePrice": [[1, "2549"]], "spPic": "https://img.example/x.jpg"}},
+        ]}, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(webapp, "ROOT", tmp_path)
+    d = webapp.api_mmb_proposals()
+    hit = next(x for x in d["items"] if x["identity"]["series"] == "7800X3D")
+    assert hit["img"] == "https://img.example/x.jpg"
+    other = next(x for x in d["items"] if x["identity"]["series"] == "RTX 5050")
+    assert "img" not in other
+
+
 def test_review_rejects_bad_values(tmp_path, monkeypatch):
     """channel/status 非法值 422；不存在的条目 404。"""
     from fastapi import HTTPException
