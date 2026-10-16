@@ -175,7 +175,7 @@ def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
 
 def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
         dry_run: bool = False, skip_ingest: bool = False,
-        sleep_min: float = 2.0, sleep_max: float = 7.0,
+        sleep_min: float = 5.0, sleep_max: float = 20.0,
         only: str | None = None, gate: "ChannelGate | None" = None) -> int:
     # 契约/注册表属代码资产，固定从模块 ROOT 读；root 只重定向产物
     contract = Contract.load(ROOT, "hardware")
@@ -533,10 +533,10 @@ def main(argv: list[str] | None = None) -> int:
     rn.add_argument("--dry-run", action="store_true")
     rn.add_argument("--skip-ingest", action="store_true")
     rn.add_argument("--only", default=None, help="URL/名称子串过滤")
-    rn.add_argument("--sleep-min", type=float, default=2.0,
-                    help="节流随机下限秒（默认 2）")
-    rn.add_argument("--sleep-max", type=float, default=7.0,
-                    help="节流随机上限秒（默认 7；固定间隔是机器指纹，随机化更像人）")
+    rn.add_argument("--sleep-min", type=float, default=5.0,
+                    help="节流随机下限秒（默认 5）")
+    rn.add_argument("--sleep-max", type=float, default=20.0,
+                    help="节流随机上限秒（默认 20；固定间隔是机器指纹，随机化更像人）")
     dv = sub.add_parser("discover", help="双锚候选发现（search 驱动，产出候选表）")
     dv.add_argument("--series", required=True, help="如 'RTX 5070'")
     dv.add_argument("--spec", required=True, help="如 12GB")
