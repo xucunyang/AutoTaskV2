@@ -586,6 +586,25 @@ def api_mmb_review_batch(payload: dict = Body(...)) -> dict:
     return {"ok": True, "passed": hit_n, "total": len(items), "pending": pending}
 
 
+def _read_log_any(p: Path) -> str:
+    """日志文件编码自适应（2026-10-17 乱码修复）。
+
+    reports/ 下的日志来自三种写法：Python 直写（UTF-8）、PowerShell 5.1
+    Tee-Object/重定向（UTF-16 LE 带 BOM）、GBK 工具。按 BOM → UTF-8 →
+    GBK 顺序探测，谁解得开用谁。"""
+    b = p.read_bytes()
+    if b.startswith(b"\xff\xfe") or b.startswith(b"\xfe\xff"):
+        return b.decode("utf-16")
+    if b.startswith(b"\xef\xbb\xbf"):
+        return b.decode("utf-8-sig")
+    for enc in ("utf-8", "gbk"):
+        try:
+            return b.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return b.decode("utf-8", errors="replace")
+
+
 # ---------- 任务流水（控制台风格，2026-10-17）：只读 reports/*.log + 闸门状态 ----------
 
 @app.get("/api/tasklog")
@@ -603,7 +622,7 @@ def api_tasklog(file: str = "mmb_backfill_run.log", tail: int = 120) -> dict:
     p = ROOT / "reports" / safe
     lines: list[str] = []
     if p.exists():
-        raw = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        raw = _read_log_any(p).splitlines()
         lines = raw[-tail:]
     lock = channel_gate.gate._read_lock("mmb")
     budget = channel_gate.gate.spent_today("mmb")

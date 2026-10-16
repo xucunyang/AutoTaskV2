@@ -319,6 +319,19 @@ def test_proposals_enrich_img_from_raw(tmp_path, monkeypatch):
     assert "img" not in other
 
 
+def test_read_log_any_encodings(tmp_path):
+    """日志编码自适应：UTF-8 / UTF-16(PS Tee-Object) / BOM / GBK 都能解。"""
+    f = tmp_path / "x.log"
+    f.write_bytes("✓ 配对成功：影驰自营".encode("utf-16"))
+    assert "配对成功" in webapp._read_log_any(f)
+    f.write_bytes("✓ 配对成功".encode("utf-8-sig"))
+    assert "配对成功" in webapp._read_log_any(f)
+    f.write_bytes("配对成功-影驰自营".encode("gbk"))
+    assert "配对成功" in webapp._read_log_any(f)
+    f.write_bytes("✓ 配对成功".encode("utf-8"))
+    assert "配对成功" in webapp._read_log_any(f)
+
+
 def test_review_rejects_bad_values(tmp_path, monkeypatch):
     """channel/status 非法值 422；不存在的条目 404。"""
     from fastapi import HTTPException

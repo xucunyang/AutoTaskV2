@@ -643,6 +643,8 @@ function initChart(e) {
   /* BUG-17（用户：点不到那个点，太费劲）：不再依赖精准命中 symbol——
      在绘图区内点任意位置，按像素反解出最近的日期，弹当天原始报价 */
   inst.getZr().on('click', ev => {
+    /* 图例点击（隐藏/显示曲线）也落在 zr 上——只认绘图区内的点（2026-10-17） */
+    if (!inst.containPixel('grid', [ev.offsetX, ev.offsetY])) return;
     const pt = inst.convertFromPixel('grid', [ev.offsetX, ev.offsetY]);
     if (!pt || pt[0] == null || isNaN(pt[0])) return;
     /* time 轴：pt[0] 是毫秒时间戳，在全序列（自采+回填双曲线）里找
