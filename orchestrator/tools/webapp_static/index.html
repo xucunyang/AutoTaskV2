@@ -194,6 +194,30 @@
            border-radius: 4px; padding: 0 4px; flex: none; }
   .st-驳回 { color: var(--sub); font-size: 11px; border: 1px solid var(--sub);
            border-radius: 4px; padding: 0 4px; flex: none; }
+  .cmp-panel { position: fixed; left: 0; top: 130px; width: 216px; max-height: 62vh;
+    background: #fff; border: 1px solid var(--line); border-left: none;
+    border-radius: 0 10px 10px 0; box-shadow: 2px 2px 14px rgba(0,0,0,.08);
+    z-index: 60; display: flex; flex-direction: column; transition: transform .25s; }
+  .cmp-panel.collapsed { transform: translateX(calc(-100% + 26px)); }
+  .cmp-head { padding: 8px 10px; font-size: 12.5px; font-weight: 600; color: var(--txt);
+    border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 6px; }
+  .cmp-fold { margin-left: auto; cursor: pointer; border: none; background: none;
+    color: var(--sub); font-size: 14px; padding: 0 2px; }
+  .cmp-tip { font-size: 11px; color: var(--sub); padding: 6px 10px 2px; }
+  .cmp-list { overflow: auto; padding: 4px 6px 8px; }
+  .cmp-list label { display: flex; align-items: center; gap: 6px; padding: 3px 4px;
+    font-size: 12px; border-radius: 6px; cursor: pointer; color: var(--txt); }
+  .cmp-list label:hover { background: rgba(127,127,127,.08); }
+  .cmp-list input { accent-color: var(--accent); flex: none; }
+  .cmp-chart-w { position: fixed; left: 232px; bottom: 18px; width: min(780px, calc(100vw - 260px));
+    height: 440px; background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 2px 2px 18px rgba(0,0,0,.12); z-index: 55; display: none; flex-direction: column; }
+  .cmp-chart-w.show { display: flex; }
+  .cmp-chart-hd { padding: 8px 12px; font-size: 12.5px; color: var(--txt); display: flex;
+    gap: 8px; align-items: center; border-bottom: 1px solid var(--line); }
+  .cmp-chart-hd .close { margin-left: auto; border: 1px solid var(--line); background: #fff;
+    border-radius: 6px; padding: 2px 10px; cursor: pointer; font-size: 12px; }
+  #cmp-chart { flex: 1; }
 </style>
 </head>
 <body>
@@ -246,6 +270,7 @@
     <span id="tasklog-gate"></span>
     <select id="tasklog-file" style="padding:2px 6px;border:1px solid var(--line);border-radius:6px">
       <option value="mmb_backfill_run.log">mmb_backfill_run.log</option>
+      <option value="prefill_jingfen.log">jingfen 补链</option>
       <option value="mmb_backfill_2026-10-16.log">定时任务 10-16</option>
       <option value="gwd_trial.log">gwd 试采</option>
       <option value="discover_v8.log">发现 runner</option>
@@ -287,6 +312,19 @@
   </div>
 </div>
 
+<div class="cmp-panel" id="cmp-panel">
+  <div class="cmp-head">📈 曲线对比
+    <button class="cmp-fold" title="收起/展开"
+      onclick="document.getElementById('cmp-panel').classList.toggle('collapsed')">‹</button>
+  </div>
+  <div class="cmp-tip">勾 1 条=聚焦大图 · 勾 2~3 条=同图对比（切分组自动刷新列表）</div>
+  <div class="cmp-list" id="cmp-list"></div>
+</div>
+<div class="cmp-chart-w" id="cmp-chart-w">
+  <div class="cmp-chart-hd"><b id="cmp-title" style="font-size:12.5px"></b>
+    <button class="close" onclick="cmpClear()">关闭</button></div>
+  <div id="cmp-chart"></div>
+</div>
 <script>
 const LABELS = {
   fast_drop: ["急跌", "var(--fast-drop)"],
@@ -437,6 +475,84 @@ function renderNavAndWall() {
 
   if (!withData.length)
     wall.innerHTML = '<div class="err">该分组还没有观测数据——先跑对应链的采集任务。</div>';
+  renderCmpPanel();
+}
+
+/* ---------- 侧边曲线对比悬浮窗（2026-10-17）：勾 1 条聚焦 / 2~3 条同图对比 ---------- */
+const CMP_COLORS = ['#d89b3a', '#3aa0c9', '#c96f9a'];
+let cmpInst = null;
+function renderCmpPanel() {
+  const list = document.getElementById('cmp-list');
+  if (!list) return;
+  const es = (state.data.entities || []).filter(
+    e => e.domain === state.domain && e.group === state.group && hasData(e));
+  list.innerHTML = es.length
+    ? es.map(e => `<label title="${esc(e.display_name)}">
+        <input type="checkbox" value="${e.entity_id}" onchange="cmpPick(this)"> ${esc(e.display_name)}</label>`).join('')
+    : '<div class="cmp-tip">本分组暂无数据实体</div>';
+  cmpDraw();
+}
+function cmpPick(box) {
+  const checked = [...document.querySelectorAll('#cmp-list input:checked')];
+  if (checked.length > 3) {          // 最多 3 条：超出的勾不进去
+    box.checked = false;
+    box.closest('label').title = '最多同时对比 3 条';
+    return;
+  }
+  cmpDraw();
+}
+function cmpClear() {
+  document.querySelectorAll('#cmp-list input:checked').forEach(b => { b.checked = false; });
+  cmpDraw();
+}
+function cmpDraw() {
+  const wrap = document.getElementById('cmp-chart-w');
+  const ids = [...document.querySelectorAll('#cmp-list input:checked')].map(b => b.value);
+  if (!ids.length) { wrap.classList.remove('show'); return; }
+  const es = ids.map(id => (state.data.entities || []).find(e => String(e.entity_id) === id))
+    .filter(Boolean);
+  if (!es.length) { wrap.classList.remove('show'); return; }
+  wrap.classList.add('show');
+  document.getElementById('cmp-title').textContent = es.length === 1
+    ? `聚焦 · ${es[0].display_name}` : `对比 · ${es.map(e => e.display_name).join(' vs ')}`;
+  cmpInst = cmpInst || echarts.init(document.getElementById('cmp-chart'));
+  const series = [];
+  es.forEach((e, i) => {
+    const mmb = e.mmb || {};
+    const main = (mmb.sales_main || []).filter(q => q[1] != null && !isNaN(q[1]));
+    const color = CMP_COLORS[i % 3];
+    if (main.length >= 2)
+      series.push({ name: `${e.display_name}·销量锚`, type: 'line', data: main,
+        symbol: 'none', lineStyle: { width: es.length === 1 ? 2.2 : 1.8, color },
+        itemStyle: { color }, emphasis: { disabled: true }, z: 3 });
+    const lowest = (mmb.lowest || []).filter(q => q[1] != null && !isNaN(q[1]));
+    const same = main.length >= 2 && lowest.length === main.length &&
+      lowest.every((q, j) => q[0] === main[j][0] && q[1] === main[j][1]);
+    if (lowest.length >= 2 && !same)
+      series.push({ name: `${e.display_name}·最低`, type: 'line', data: lowest,
+        symbol: 'none', lineStyle: { width: 1.2, type: 'dashed', color },
+        itemStyle: { color }, emphasis: { disabled: true }, z: 2, opacity: .75 });
+  });
+  cmpInst.setOption({
+    animation: false,
+    grid: { left: 66, right: 18, top: 32, bottom: 30 },
+    legend: { top: 2, textStyle: { fontSize: 11, color: '#7a8499' }, selectedMode: false },
+    tooltip: { trigger: 'axis',
+               axisPointer: { type: 'line', lineStyle: { color: '#c3cbd8' } },
+               formatter: ps => {
+                 const pts = ps.filter(q => q.value && q.value[1] != null && !isNaN(q.value[1]));
+                 if (!pts.length) return '';
+                 const d = new Date(pts[0].value[0]);
+                 const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                 return esc(day) + '<br>' +
+                   pts.map(q => `${q.marker}${esc(q.seriesName)} ${money(q.value[1])}`).join('<br>');
+               } },
+    xAxis: { type: 'time', axisLabel: { fontSize: 11, color: '#7a8499' } },
+    yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 11, color: '#7a8499' },
+             splitLine: { lineStyle: { color: '#e3e7ee', type: 'dashed', width: 0.8 } } },
+    series,
+  }, { notMerge: true });
+  setTimeout(() => cmpInst.resize(), 30);
 }
 
 function lastPrice(e) {
@@ -652,7 +768,8 @@ function drawChart(div, e, withTracks) {
                } },
     xAxis: { type: 'time', axisLabel: { fontSize: 11, color: '#7a8499' } },
     yAxis: { type: 'value', scale: true, axisLabel: { fontSize: 11, color: '#7a8499' },
-             splitLine: { lineStyle: { color: '#eef0f4' } } },
+             /* Y 轴贯穿刻度线：细+淡+虚线（多条数据线重叠时网格不抢线） */
+             splitLine: { lineStyle: { color: '#e3e7ee', type: 'dashed', width: 0.8 } } },
     series: lines,
   }, { notMerge: true });
 }
