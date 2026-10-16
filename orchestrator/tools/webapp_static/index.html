@@ -536,7 +536,7 @@ function cmpDraw() {
   cmpInst.setOption({
     animation: false,
     grid: { left: 66, right: 18, top: 32, bottom: 30 },
-    legend: { top: 2, textStyle: { fontSize: 11, color: '#7a8499' }, selectedMode: false },
+    legend: { top: 2, textStyle: { fontSize: 11, color: '#7a8499' } },
     tooltip: { trigger: 'axis',
                axisPointer: { type: 'line', lineStyle: { color: '#c3cbd8' } },
                formatter: ps => {
@@ -752,7 +752,7 @@ function drawChart(div, e, withTracks) {
     animation: false,
     grid: { left: 62, right: 16, top: hasLegend ? 30 : 14, bottom: 26 },
     legend: hasLegend
-      ? { top: 2, textStyle: { fontSize: 11, color: '#7a8499' }, selectedMode: false } : null,
+      ? { top: 2, textStyle: { fontSize: 11, color: '#7a8499' } } : null,
     tooltip: { trigger: 'axis',
                axisPointer: { type: 'line', lineStyle: { color: '#c3cbd8' } },
                formatter: ps => {
