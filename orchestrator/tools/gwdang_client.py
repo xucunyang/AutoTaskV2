@@ -70,14 +70,17 @@ def normalize_trend(payload) -> dict:
 
 
 class Gwdang:
-    def __init__(self):
+    def __init__(self, pacer=None):
         self.cj = http.cookiejar.CookieJar()
         self.op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cj))
         self.op.addheaders = [("User-Agent", UA)]
+        self.pacer = pacer  # tools.human_pace.Pacer：拟人节奏（不传则不节流，测试用）
 
     # ---------- http ----------
     def get(self, url: str, referer: str | None = None, xhr: bool = False,
             timeout: int = 25) -> str:
+        if self.pacer:
+            self.pacer.wait()
         req = urllib.request.Request(url)
         if referer:
             req.add_header("Referer", referer)

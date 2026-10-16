@@ -20,6 +20,13 @@ import yaml
 ROOT = Path(r"E:\code\AutoTaskByMuseSpark1.3\orchestrator")
 sys.path.insert(0, str(ROOT))
 from tools.manmanbuy_backfill import SessionExpired, discover_cheap  # noqa: E402
+from tools import channel_gate  # noqa: E402
+
+# R1 单写者红线（慢慢买操作手册）：整个 runner 生命周期持 mmb 单写者锁；
+# 进程退出（含异常）自动释放，硬杀则留下死 pid 锁、下次自动抢占
+import atexit  # noqa: E402
+_GK = channel_gate.acquire("mmb", "discover_all_v8 全品类锚点发现")
+atexit.register(channel_gate.release, "mmb")
 
 STABLE = "https://item.jd.com/100164458263.html"
 SLOW = (25, 50)

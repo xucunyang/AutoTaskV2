@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT))
 
 import yaml  # noqa: E402
 
+from tools.channel_gate import ChannelGate  # noqa: E402
 from tools.manmanbuy_client import Mmb, SessionExpired  # noqa: E402
 from tools.sku_backfill import append_rows, convert  # noqa: E402
 from tools.sku_db import connect  # noqa: E402
@@ -141,11 +142,18 @@ def dedupe_rows(new_rows: list[dict], existing_rows: list[dict]) -> list[dict]:
     return [r for r in new_rows if key(r) not in seen]
 
 
-def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float]) -> dict:
+def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
+                 gate=None) -> dict:
     dumps = {"fetched_at": datetime.now(timezone.utc).isoformat(),
              "listings": []}
     for i, it in enumerate(registry["listings"]):
-        if i:
+        if gate is not None:
+            # 治理闸门（R1/R2/R4 机制化）：拟人间隔+批间休息+预算扣减，超了 fail-closed
+            gate.wait()
+            if not gate.spend(1, it.get("sp_name", "")):
+                print("  ⛔ 今日预算已尽，停发本批剩余 listing")
+                break
+        elif i:
             # 节流=区间内随机（默认 2~7s）：固定间隔是可被识别的机器指纹，
             # 随机化更像人；区间上限可按需放宽（--sleep-max）
             time.sleep(random.uniform(*sleep_range))
@@ -168,7 +176,7 @@ def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float]) -> 
 def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
         dry_run: bool = False, skip_ingest: bool = False,
         sleep_min: float = 2.0, sleep_max: float = 7.0,
-        only: str | None = None) -> int:
+        only: str | None = None, gate: "ChannelGate | None" = None) -> int:
     # 契约/注册表属代码资产，固定从模块 ROOT 读；root 只重定向产物
     contract = Contract.load(ROOT, "hardware")
     registry = load_registry(contract)
@@ -188,7 +196,7 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
             print("未登录：先执行 python -m tools.manmanbuy_backfill login")
             return 2
         print(f"[fetch] {len(registry['listings'])} listing…")
-        dumps = _fetch_dumps(mmb, registry, (sleep_min, sleep_max))
+        dumps = _fetch_dumps(mmb, registry, (sleep_min, sleep_max), gate=gate)
         cache_path = root / "artifacts" / date_dir / "backfill_manmanbuy_raw.json"
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(json.dumps(dumps, ensure_ascii=False, indent=1),
@@ -538,11 +546,14 @@ def main(argv: list[str] | None = None) -> int:
     dv.add_argument("--out", default=None, help="候选表落盘路径（默认 artifacts/今日/backfill_discover_*.json）")
     args = ap.parse_args(argv)
     if args.cmd == "login":
-        return login(args.user)
+        with ChannelGate("mmb").session("login"):
+            return login(args.user)
     if args.cmd == "discover":
+        gate = ChannelGate("mmb", budget=60)
         try:
-            result = discover(args.series, args.spec, keyword=args.keyword,
-                              category=args.category, top_n=args.top_n)
+            with gate.session("discover"):
+                result = discover(args.series, args.spec, keyword=args.keyword,
+                                  category=args.category, top_n=args.top_n)
         except SessionExpired as e:
             print(_fail_label(e))
             return 2
@@ -554,11 +565,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"候选表 -> {out}（人工核定 channel 后誊入 config/backfill_manmanbuy.yaml）")
         return 0
     root = Path(args.root) if args.root else ROOT
-    try:
+    if args.from_cache:
+        # 离线重放：零 mmb 流量，不占锁不占预算（测试走这里）
         return run(args.date_dir, root=root, from_cache=args.from_cache,
                    dry_run=args.dry_run, skip_ingest=args.skip_ingest,
                    sleep_min=args.sleep_min, sleep_max=args.sleep_max,
                    only=args.only)
+    gate = ChannelGate("mmb", budget=60)   # R2：全接口日总预算（操作手册红线）
+    try:
+        with gate.session("run 采集"):
+            return run(args.date_dir, root=root, from_cache=args.from_cache,
+                       dry_run=args.dry_run, skip_ingest=args.skip_ingest,
+                       sleep_min=args.sleep_min, sleep_max=args.sleep_max,
+                       only=args.only, gate=gate)
     except SessionExpired as e:
         print(_fail_label(e))
         return 2
