@@ -82,7 +82,7 @@ def test_4030_hints_wait_instead_of_login(ctx):
     title, body, kw = calls["notify"][0]
     assert kw.get("fail") is True
     assert "login 重登" not in body      # 不许出现"去重登"的指导…
-    assert "等恢复" in body               # …取而代之的是等恢复（"别重新 login"）
+    assert "联系客服" in body             # …取而代之的是联系客服（风控标记）
 
 
 def test_success_notifies_added_rows(ctx):

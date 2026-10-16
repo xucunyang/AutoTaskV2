@@ -426,7 +426,8 @@ def api_mmb_proposals() -> dict:
 
 _MMB_ANCHOR_NORM = {"sales": "销量", "price": "价格",
                     "销量": "销量", "价格": "价格"}
-_MMB_CHANNELS = ("自营", "第三方", "待核")
+# channel 三线（用户 10-16 定稿：自营/官旗/三方店铺；第三方为旧值，兼容接受）
+_MMB_CHANNELS = ("自营", "官旗", "三方店铺", "第三方", "待核")
 _MMB_STATUS = ("待核", "通过", "驳回")
 
 

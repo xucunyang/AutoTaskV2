@@ -73,9 +73,9 @@ def main(argv: list[str] | None = None) -> int:
     if failed:
         name, rc = failed
         tail = (outs[-1][-260:]).replace("\n", " ")
-        # 4030 ≠ 会话失效：24h 滚动窗口限流，等恢复，别 login（逆向文档 §1.3）
+        # 4030 = 账号风控标记（逆向文档 §1.3 终版）：联系客服解除，等/重登都没用
         if rc == 2 and "4030" in "\n".join(outs):
-            hint = "窗口限流（24h 滚动）：等恢复，别重新 login"
+            hint = "账号风控标记：联系客服解除（慢慢买）；期间走 gwdang 顶班"
         elif rc == 2:
             hint = "会话过期：跑 python -m tools.manmanbuy_backfill login 重登"
         else:

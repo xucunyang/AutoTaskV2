@@ -800,8 +800,8 @@ async function propLoad() {
           style="color:inherit;text-decoration:none">${esc(p.sp_name || p.url || '')}</a></span>
       <span class="m">销:${esc(String(p.sales ?? '-'))}</span>
       <span class="prop-ev">${ev}</span>
-      <select class="ch" title="渠道">
-        ${['待核', '自营', '第三方'].map(c =>
+      <select class="ch" title="渠道（自营/官旗/三方店铺）">
+        ${['待核', '自营', '官旗', '三方店铺'].map(c =>
           `<option ${c === (p.channel || '待核') ? 'selected' : ''}>${c}</option>`).join('')}
       </select>
       <input class="vin" placeholder="店铺/备注" value="${esc(p.vendor || '')}">

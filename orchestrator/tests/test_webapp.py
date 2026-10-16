@@ -243,6 +243,12 @@ def test_review_updates_channel_status_and_preserves_evidence(tmp_path, monkeypa
     assert (hit["channel"], hit["vendor"], hit["status"]) == ("自营", "AMD 旗舰店", "通过")
     assert hit["trial"] == "gwd-verified（101 点）" and hit["remark"] == "盒装"
     assert "reviewed_at" in hit
+    # 三线新值同样接受（用户 10-16 定稿：自营/官旗/三方店铺）
+    d2 = webapp.api_mmb_review({
+        "identity": {"category": "显卡", "series": "RTX 5050", "spec": "8GB"},
+        "anchor": "价格", "channel": "官旗", "vendor": "七彩虹旗舰店",
+        "status": "通过"})
+    assert d2["ok"] and d2["pending"] == 0
 
 
 def test_review_rejects_bad_values(tmp_path, monkeypatch):
