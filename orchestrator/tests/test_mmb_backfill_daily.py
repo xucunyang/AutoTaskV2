@@ -58,12 +58,14 @@ def _ok(cmd, out=""):
 
 
 def test_session_expired_stops_pipeline_with_login_hint(ctx):
-    """rc=2 = 会话过期：trend_calc 不跑，通知带 login 提示，返回 2。"""
+    """rc=2 = 会话过期：软步骤（fix_url/transcribe）失败继续，backfill 失败
+    断链（trend_calc 不跑），通知带 login 提示，返回 2。"""
     mod, calls, tmp = ctx
     calls["fake_result"] = subprocess.CompletedProcess(
         ["backfill"], 2, "未登录：先执行 python -m tools.manmanbuy_backfill login", "")
     assert mod.main([]) == 2
-    assert len(calls["run"]) == 1            # 第二步没跑
+    # 4 步链：fix_url/transcribe 是软步骤（失败继续），backfill 硬失败断链
+    assert len(calls["run"]) == 3            # trend_calc 没跑
     assert len(calls["notify"]) == 1
     title, body, kw = calls["notify"][0]
     assert kw.get("fail") is True
@@ -86,11 +88,13 @@ def test_4030_hints_wait_instead_of_login(ctx):
 
 
 def test_success_notifies_added_rows(ctx):
-    """两步 rc=0：通知正文汇总入库行数，返回 0。"""
+    """四步 rc=0（fix_url/transcribe/backfill/trend_calc）：通知正文汇总入库行数。"""
     import unittest.mock as mock
 
     mod, calls, _tmp = ctx
     queue = [
+        _ok(["fix_url"], "补链成功 0 / 留人工 0"),
+        _ok(["transcribe"], "新增 0 条"),
         _ok(["backfill"], "技嘉卡: +410 行（2024-01-01 ~ 2026-10-15）\n"),
         _ok(["trend"], "snapshot date=2026-10-15 entities=36 contrasts=0"),
     ]
@@ -101,21 +105,27 @@ def test_success_notifies_added_rows(ctx):
 
     with mock.patch.object(mod, "_run", side_effect=fake_run2):
         assert mod.main([]) == 0
-    assert len(calls["run"]) == 2
+    assert len(calls["run"]) == 4
     title, body, kw = calls["notify"][0]
     assert kw.get("fail", False) is False
     assert "新增 410 行" in body
 
 
 def test_argv_passthrough_to_run(ctx):
-    """--only 等参数原样进 backfill 命令行。"""
+    """--only 等参数原样进 backfill 命令行（fix_url/transcribe 不吃 argv）。"""
     import unittest.mock as mock
 
     mod, calls, _tmp = ctx
     with mock.patch.object(
             mod, "_run", return_value=_ok(["x"], "")) as m:
         mod.main(["--only", "9070"])
-        cmd = m.call_args_list[0][0][0]
-    assert "--only" in cmd and "9070" in cmd
-    trend_cmd = m.call_args_list[1][0][0]
+    cmds = [c[0][0] for c in m.call_args_list]
+    assert len(cmds) == 4
+    bf = next(c for c in cmds if any("manmanbuy_backfill" in str(a) for a in c))
+    assert "--only" in bf and "9070" in bf
+    trend_cmd = cmds[-1]
     assert any("trend_calc" in str(a) for a in trend_cmd)
+    # argv 只透传给 backfill——fix_url/transcribe 不带 --only
+    for c in cmds:
+        if c is not bf:
+            assert "--only" not in c
