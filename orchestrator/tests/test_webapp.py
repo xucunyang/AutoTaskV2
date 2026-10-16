@@ -269,3 +269,26 @@ def test_review_rejects_bad_values(tmp_path, monkeypatch):
             "identity": {"category": "CPU", "series": "不存在", "spec": ""},
             "anchor": "销量", "channel": "自营", "status": "通过"})
     assert e.value.status_code == 404
+
+
+def test_mmb_searchbox_gated_lock_held_becomes_429(monkeypatch):
+    """searchbox 走 mmb 闸门（AGENTS §二.13）：渠道被占→429 而不是打过去。"""
+    from contextlib import contextmanager
+    from fastapi import HTTPException
+
+    from channel_gate import LockHeld
+
+    class FakeGate:
+        budget = 60
+
+        @contextmanager
+        def session(self, purpose, force=False):
+            raise LockHeld("mmb", {"pid": 999, "purpose": "backfill",
+                                   "started_at": "x"})
+            yield None                       # pragma: no cover
+
+    monkeypatch.setattr(webapp, "_mmb_gate", lambda: FakeGate())
+    with pytest.raises(HTTPException) as e:
+        webapp.api_mmb_search(q="5060")
+    assert e.value.status_code == 429
+    assert "渠道忙" in e.value.detail

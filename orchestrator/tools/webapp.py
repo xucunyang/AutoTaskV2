@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT))
 from fastapi import Body, FastAPI, HTTPException  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
+from channel_gate import BudgetExhausted, ChannelGate, LockHeld  # noqa: E402
 
 from tools.sku_db import DB_PATH, connect  # noqa: E402
 from tools.trend_calc import (  # noqa: E402
@@ -342,6 +343,13 @@ def _mmb():
     return _mmb_client
 
 
+def _mmb_gate() -> "ChannelGate":
+    """searchbox 走同一把 mmb 闸门（单写者锁+日预算，AGENTS §二.13 红线）。
+    backfill/发现任务持锁期间，看板的慢慢买请求会 429（渠道忙）——这是
+    预期行为：当天窗口只归一个任务。"""
+    return ChannelGate("mmb", budget=60)
+
+
 @app.get("/api/mmb/search")
 def api_mmb_search(q: str, page: int = 1) -> dict:
     """关键词搜全网商品（慢慢买 getsearchkeylist，免登录）。"""
@@ -349,7 +357,12 @@ def api_mmb_search(q: str, page: int = 1) -> dict:
     if not q:
         raise HTTPException(422, "q 为空")
     try:
-        rows = _mmb().search(q, page)
+        with _mmb_gate().session("webapp searchbox"):
+            rows = _mmb().search(q, page)
+    except BudgetExhausted as e:
+        raise HTTPException(429, f"慢慢买今日预算已尽，明天再来：{e}")
+    except LockHeld as e:
+        raise HTTPException(429, f"慢慢买渠道忙（另有任务在跑）：{e}")
     except Exception as e:
         raise HTTPException(502, f"慢慢买搜索失败: {e}")
     from tools.manmanbuy_client import Mmb as _M
@@ -374,7 +387,12 @@ def api_mmb_trend(url: str) -> dict:
     if hit and time.time() - hit[0] < MMB_TREND_TTL:
         return hit[1]
     try:
-        d = _mmb().trend(url)
+        with _mmb_gate().session("webapp trend"):
+            d = _mmb().trend(url)
+    except BudgetExhausted as e:
+        raise HTTPException(429, f"慢慢买今日预算已尽，明天再来：{e}")
+    except LockHeld as e:
+        raise HTTPException(429, f"慢慢买渠道忙（另有任务在跑）：{e}")
     except Exception as e:
         raise HTTPException(502, f"慢慢买趋势失败（会话过期请命令行 login）: {e}")
     pts = d.get("datePrice") or []

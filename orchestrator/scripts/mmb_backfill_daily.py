@@ -73,9 +73,9 @@ def main(argv: list[str] | None = None) -> int:
     if failed:
         name, rc = failed
         tail = (outs[-1][-260:]).replace("\n", " ")
-        # 4030 = 账号风控标记（逆向文档 §1.3 终版）：联系客服解除，等/重登都没用
+        # 4030 = 已封禁（操作手册 §2）：全停+联系客服；勿重试/换 IP/重登
         if rc == 2 and "4030" in "\n".join(outs):
-            hint = "账号风控标记：联系客服解除（慢慢买）；期间走 gwdang 顶班"
+            hint = "⛔ 已触发封禁（4030）：立即停止一切慢慢买流量，联系客服解封（账号 15850730219）"
         elif rc == 2:
             hint = "会话过期：跑 python -m tools.manmanbuy_backfill login 重登"
         else:

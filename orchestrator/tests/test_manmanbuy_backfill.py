@@ -370,8 +370,8 @@ def test_fail_label_distinguishes_4030_from_session_expired():
     2026-10-16 早 06:30 定时回填撞 4030，旧文案一律「会话失效」误导重登。
     """
     from tools.manmanbuy_client import SessionExpired
+    assert "停止一切慢慢买流量" in mbf._fail_label(SessionExpired("...'4030'"))
     assert "联系客服" in mbf._fail_label(SessionExpired("...'4030'"))
-    assert "勿重登" in mbf._fail_label(SessionExpired("...'4030'"))
     assert "会话失效" in mbf._fail_label(SessionExpired("未登录"))
     assert "会话失效" in mbf._fail_label(SessionExpired("402"))
 
