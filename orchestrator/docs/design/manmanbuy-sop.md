@@ -170,7 +170,7 @@ token  = MD5( (SECRET + Σ 排序enc(k)+enc(v) + SECRET).upper() ).upper()   # �
 4. **登录 302 超时**不是失败，Cookie 已生效，捕获异常继续
 5. **频率**：未知限速；实测 1 请求/2秒 无任何封锁。**不要刷短信接口**
 6. 老趋势方法（`getHistoryTrend2021`/`trendJava` 走 sqk/search host）全部返回 `emplety`，是死接口，别浪费时间
-7. **trend 返「合法 JSON 但空数据」先查 URL 完整性**（2026-10-15 R36 定案）：`haveTrend=0, spbh=None, datePrice=[]` 的真凶是 **jingfen 锚 URL 被截断**（必须完整 `…detail/<token>_3<spbh>.html`，截断即静默空数据、不报错）——上会话曾误诊为"账号级配额冷却"，干等 75 分钟。判别顺序：**①核 URL 形状（是否完整）→ ②逐锚体检定位个别/全局 → ③才怀疑接口**。另：tool 接口裸数字 `4030`（非 dict）= **账号风控标记，终版语义以页面 JS 为准**（histroyTrendExtend.js：4030→crawling() 弹 no_access 模态框，官方文案「频繁操作触发风控，请联系客服解除」；403→跳 /aliVal.aspx 阿里云人机验证）。24h/自然日等时间窗假设均被证伪（15 日 12:10 触发，16 日 12:15 零消费仍限）。**解封=联系客服；期间 gwdang 顶班**（gwdang-sop.md）。trend() 已带 5s 重试，但对 4030/403 无效。纪律：trend 日预算 ≤40 发，勿再触发
+7. **trend 返「合法 JSON 但空数据」先查 URL 完整性**（2026-10-15 R36 定案）：`haveTrend=0, spbh=None, datePrice=[]` 的真凶是 **jingfen 锚 URL 被截断**（必须完整 `…detail/<token>_3<spbh>.html`，截断即静默空数据、不报错）——上会话曾误诊为"账号级配额冷却"，干等 75 分钟。判别顺序：**①核 URL 形状（是否完整）→ ②逐锚体检定位个别/全局 → ③才怀疑接口**。另：tool 接口裸数字 `4030`（非 dict）= **账号×PC网页通道级标记（10-16 19:4x 终版：重登新会话/换IP/真Chrome同会话均仍 4030，App 通道独立计数故手机正常），语义以页面 JS 为准**（histroyTrendExtend.js：4030→crawling() 弹 no_access 模态框，官方文案「频繁操作触发风控，请联系客服解除」；403→跳 /aliVal.aspx 阿里云人机验证）。24h/自然日等时间窗假设均被证伪（15 日 12:10 触发，16 日 19:4x 仍限）。**解封=联系客服；期间 gwdang 顶班**（gwdang-sop.md）。trend() 已带 5s 重试，但对 4030/403 无效。纪律：trend 日预算 ≤40 发，勿再触发
 
 ## 6. 逆向资料位置（需要深挖时）
 
