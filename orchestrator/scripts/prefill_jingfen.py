@@ -73,6 +73,16 @@ def match_candidate(rows: list, series: str, spec: str,
     return best
 
 
+def pick_url(row: dict) -> str:
+    """从 search 候选行取可回填的直链：prourl/gourl 含 item.jd.com 优先，
+    否则退化用 skuid 拼（可用性未验证，仅兜底）。"""
+    for k in ("prourl", "gourl"):
+        u = str(row.get(k) or "")
+        if "item.jd.com" in u:
+            return u
+    return f"https://item.jd.com/{row.get('skuid')}.html"
+
+
 def channel_of(shop: str) -> str:
     """渠道三线规则（操作手册/预填同款）：含自营→自营；含旗舰→官旗；其余三方。"""
     if "自营" in shop:
@@ -89,18 +99,28 @@ def main(argv: list[str] | None = None) -> int:
 
     ap = argparse.ArgumentParser(description="jingfen 提案补链（search 配对+店名）")
     ap.add_argument("--limit", type=int, default=0, help="最多处理 N 条（0=全量）")
+    ap.add_argument("--fix-url", action="store_true",
+                    help="只修 URL：已配对但 url 非纯数字直链的提案，重发 search "
+                         "取 prourl（1 发/条，不调 same 不判渠道）")
     a = ap.parse_args(argv)
 
     items = yaml.safe_load(PROP.read_text(encoding="utf-8")) or []
-    todo = [p for p in items
-            if p.get("status") == "通过" and "jingfen" in (p.get("url") or "")]
+    if a.fix_url:
+        todo = [p for p in items
+                if p.get("status") == "通过" and p.get("sku")
+                and "item.jd.com" in (p.get("url") or "")
+                and not re.search(r"item\.jd\.com/\d+\.html", p.get("url") or "")]
+    else:
+        todo = [p for p in items
+                if p.get("status") == "通过" and "jingfen" in (p.get("url") or "")]
     if a.limit:
         todo = todo[:a.limit]
     if not todo:
         _stamp("没有待补链的 jingfen 提案")
         return 0
-    est = len(todo) * 2
-    _stamp(f"待补链 {len(todo)} 条 · 预估 {est} 发（search+same 各半）")
+    est = len(todo) if a.fix_url else len(todo) * 2
+    mode = "只修 url" if a.fix_url else "search+same 各半"
+    _stamp(f"待处理 {len(todo)} 条 · 预估 {est} 发（{mode}）")
 
     mmb = Mmb()
     gate = ChannelGate("mmb", budget=60, log=_stamp)
@@ -124,6 +144,17 @@ def main(argv: list[str] | None = None) -> int:
             best = match_candidate(rows, ident.get("series", ""),
                                    ident.get("spec", ""),
                                    p.get("sp_name", ""), prop_price)
+            if a.fix_url:
+                # 只修 URL：配到同款就取干净直链（prourl 优先），不动渠道/店名
+                if not best:
+                    _stamp(f"✗ {tag} · 无合格候选，url 保持原样")
+                    skipped += 1
+                    continue
+                sim, r = best
+                p["url"] = pick_url(r)
+                done += 1
+                _stamp(f"✓ {tag} · url → {p['url'][:70]}（相似度 {sim:.2f}）")
+                continue
             if not best:
                 _stamp(f"✗ {tag} · 无合格候选（相似度/价格不达标），留人工")
                 skipped += 1
@@ -141,14 +172,17 @@ def main(argv: list[str] | None = None) -> int:
                 skipped += 1
                 continue
             ch = channel_of(shop)
-            p["url"] = f"https://item.jd.com/{skuid}.html"
+            # URL 优先取 search 响应里的 prourl/gourl（慢买吐的是干净
+            # item.jd.com 数字直链）；skuid 是慢买加密 ID，拼的 URL 京东
+            # 认不认未验证——只做 fallback（2026-10-17 教训）。
+            p["url"] = pick_url(r)
             p["sku"] = skuid
             p["vendor"] = shop
             p["channel"] = ch
             p["match_note"] = (f"2026-10-17 search 配对：相似度 {sim:.2f}，"
                                f"店名「{shop}」→ {ch}")
             done += 1
-            _stamp(f"✓ {tag} · {shop} → {ch}（skuid {skuid}，相似度 {sim:.2f}）")
+            _stamp(f"✓ {tag} · {shop} → {ch}（url {p['url'][:60]}，相似度 {sim:.2f}）")
 
     if done:
         PROP.write_text(yaml.safe_dump(items, allow_unicode=True, sort_keys=False),
