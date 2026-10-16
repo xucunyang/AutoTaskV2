@@ -146,6 +146,20 @@
   .mmb-row button.anchor-sales { border-color: #b0541f; color: #b0541f; }
   .mmb-row button.anchor-price { border-color: var(--fast-drop); color: var(--fast-drop); }
   .mmb-empty { color: var(--sub); padding: 14px 4px; font-size: 13px; }
+  .prop-ev { color: var(--sub); font-size: 12px; }
+  .prop-row { flex-wrap: wrap; align-items: center; }
+  .prop-row select { padding: 2px 6px; border: 1px solid var(--line);
+                    border-radius: 6px; font-size: 12px; flex: none; }
+  .prop-row input.vin { width: 110px; padding: 2px 6px; border: 1px solid var(--line);
+                       border-radius: 6px; font-size: 12px; flex: none; }
+  .prop-row button.ok { border-color: var(--stable); color: var(--stable); }
+  .prop-row button.no { border-color: var(--sub); color: var(--sub); }
+  .st-待核 { color: #b0541f; font-size: 11px; border: 1px solid #b0541f;
+           border-radius: 4px; padding: 0 4px; flex: none; }
+  .st-通过 { color: var(--stable); font-size: 11px; border: 1px solid var(--stable);
+           border-radius: 4px; padding: 0 4px; flex: none; }
+  .st-驳回 { color: var(--sub); font-size: 11px; border: 1px solid var(--sub);
+           border-radius: 4px; padding: 0 4px; flex: none; }
 </style>
 </head>
 <body>
@@ -157,6 +171,7 @@
     <div class="mmb-box">
       <input id="mmb-q" placeholder="慢慢买搜全网：显卡 RTX 5070 12G">
       <button id="mmb-go">搜</button>
+      <button id="prop-go" title="审核价格锚提案：定渠道后誊入注册表">提案审核 (<span id="prop-n">…</span>)</button>
     </div>
     <span class="meta" id="meta"></span>
     <label><input type="checkbox" id="vtoggle"> vendor 对比轨</label>
@@ -172,6 +187,14 @@
     <button class="close" onclick="mmbClose()">收起</button>
   </div>
   <div id="mmb-rows"></div>
+</div>
+<div class="mmb-panel" id="prop-panel">
+  <div class="bar">
+    <b style="font-size:13.5px;color:var(--txt)">提案审核</b>
+    <span>定渠道（自营/第三方）→ 通过后誊入注册表回填。每条点标题可验商品页。</span>
+    <button class="close" onclick="document.getElementById('prop-panel').classList.remove('show')">收起</button>
+  </div>
+  <div id="prop-rows"></div>
 </div>
 <div class="modal hidden" id="mmb-modal">
   <div class="modal-box" style="width:min(880px,96vw)">
@@ -740,6 +763,67 @@ async function mmbPropose(anchor, idx) {
   } else {
     alert('提案失败：' + (d.detail || '?'));
   }
+}
+
+// ---------- 提案审核（2026-10-16）：点选 channel/状态，不手改 YAML ----------
+document.getElementById('prop-go').addEventListener('click', propLoad);
+async function propCount() {
+  try {
+    const d = await fetch('/api/mmb/proposals').then(r => r.json());
+    const items = d.items || [];
+    const n = items.filter(x => (x.status || '待核') === '待核').length;
+    document.getElementById('prop-n').textContent = `${n}/${items.length}`;
+  } catch (e) { document.getElementById('prop-n').textContent = '?'; }
+}
+propCount();
+async function propLoad() {
+  const rows = document.getElementById('prop-rows');
+  document.getElementById('prop-panel').classList.add('show');
+  document.getElementById('mmb-panel').classList.remove('show');
+  rows.innerHTML = '<div class="mmb-empty">加载中…</div>';
+  let items = [];
+  try {
+    items = (await fetch('/api/mmb/proposals').then(r => r.json())).items || [];
+  } catch (e) { rows.innerHTML = `<div class="mmb-empty">加载失败：${esc(e)}</div>`; return; }
+  if (!items.length) { rows.innerHTML = '<div class="mmb-empty">暂无提案</div>'; return; }
+  const anchorZh = a => (a === 'sales' || a === '销量') ? '销量锚' : '价格锚';
+  rows.innerHTML = items.map((p, i) => {
+    const id = p.identity || {};
+    const st = p.status || '待核';
+    const ev = [p.trial, p.remark].filter(Boolean).map(esc).join(' · ');
+    return `<div class="mmb-row prop-row" data-i="${i}">
+      <span class="st-${esc(st)}">${esc(st)}</span>
+      <span class="m">${esc(id.category || '')} ${esc(id.series || '')} ${esc(id.spec || '')}</span>
+      <span class="m">${anchorZh(p.anchor)}</span>
+      <span class="p">¥${esc(String(p.price ?? '-'))}</span>
+      <span class="t"><a href="${esc(p.url || '')}" target="_blank" rel="noopener"
+          style="color:inherit;text-decoration:none">${esc(p.sp_name || p.url || '')}</a></span>
+      <span class="m">销:${esc(String(p.sales ?? '-'))}</span>
+      <span class="prop-ev">${ev}</span>
+      <select class="ch" title="渠道">
+        ${['待核', '自营', '第三方'].map(c =>
+          `<option ${c === (p.channel || '待核') ? 'selected' : ''}>${c}</option>`).join('')}
+      </select>
+      <input class="vin" placeholder="店铺/备注" value="${esc(p.vendor || '')}">
+      <button class="ok" onclick="propReview(${i},'通过')">通过</button>
+      <button class="no" onclick="propReview(${i},'驳回')">驳回</button>
+    </div>`;
+  }).join('');
+  window._propItems = items;
+}
+async function propReview(i, status) {
+  const row = document.querySelector(`.prop-row[data-i="${i}"]`);
+  const p = (window._propItems || [])[i];
+  if (!row || !p) return;
+  const channel = row.querySelector('.ch').value;
+  const vendor = row.querySelector('.vin').value.trim();
+  const resp = await fetch('/api/mmb/review', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identity: p.identity, anchor: p.anchor, channel, vendor, status })
+  });
+  const d = await resp.json();
+  if (d.ok) { propLoad(); propCount(); }
+  else alert('审核失败：' + (d.detail || '?'));
 }
 </script>
 </body>

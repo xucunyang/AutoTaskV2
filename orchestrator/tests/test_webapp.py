@@ -204,3 +204,62 @@ def test_latest_json_picks_newest(tmp_path):
     assert webapp._latest_json(tmp_path, "trend_snapshot.json")["date"] == \
         "2026-10-12"
     assert webapp._latest_json(tmp_path, "hw_recommend.json") is None
+
+
+def _seed_proposals(root: Path):
+    """提案审核测试夹具：2 条待核（含遴选证据字段 trial/remark）。"""
+    import yaml
+    p = root / "data"
+    p.mkdir(parents=True, exist_ok=True)
+    (p / "manmanbuy_proposals.yaml").write_text(yaml.safe_dump([
+        {"proposed_at": "2026-10-16T10:00:00",
+         "identity": {"category": "CPU", "series": "7800X3D", "spec": ""},
+         "anchor": "销量", "url": "https://item.jd.com/1.html",
+         "sp_name": "AMD 7800X3D 盒装", "vendor": "", "channel": "待核",
+         "price": "2549", "sales": "20001",
+         "trial": "gwd-verified（101 点）", "remark": "盒装", "status": "待核"},
+        {"proposed_at": "2026-10-16T10:00:00",
+         "identity": {"category": "显卡", "series": "RTX 5050", "spec": "8GB"},
+         "anchor": "价格", "url": "https://item.jd.com/2.html",
+         "sp_name": "七彩虹 5050", "vendor": "", "channel": "待核",
+         "price": "3249", "sales": "5000", "status": "待核"},
+    ], allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+
+def test_review_updates_channel_status_and_preserves_evidence(tmp_path, monkeypatch):
+    """审核只改 channel/vendor/status(+reviewed_at)，trial/remark 等证据保留。"""
+    _seed_proposals(tmp_path)
+    monkeypatch.setattr(webapp, "ROOT", tmp_path)
+    d = webapp.api_mmb_review({
+        "identity": {"category": "CPU", "series": "7800X3D", "spec": ""},
+        "anchor": "sales", "channel": "自营", "vendor": "AMD 旗舰店",
+        "status": "通过"})
+    assert d["ok"] and d["pending"] == 1 and d["total"] == 2
+    import yaml
+    items = yaml.safe_load((tmp_path / "data" / "manmanbuy_proposals.yaml")
+                           .read_text(encoding="utf-8"))
+    hit = next(x for x in items
+               if x["identity"]["series"] == "7800X3D")
+    assert (hit["channel"], hit["vendor"], hit["status"]) == ("自营", "AMD 旗舰店", "通过")
+    assert hit["trial"] == "gwd-verified（101 点）" and hit["remark"] == "盒装"
+    assert "reviewed_at" in hit
+
+
+def test_review_rejects_bad_values(tmp_path, monkeypatch):
+    """channel/status 非法值 422；不存在的条目 404。"""
+    from fastapi import HTTPException
+    _seed_proposals(tmp_path)
+    monkeypatch.setattr(webapp, "ROOT", tmp_path)
+    base = {"identity": {"category": "CPU", "series": "7800X3D", "spec": ""},
+            "anchor": "销量"}
+    with pytest.raises(HTTPException) as e:
+        webapp.api_mmb_review({**base, "channel": "拼多多", "status": "通过"})
+    assert e.value.status_code == 422
+    with pytest.raises(HTTPException) as e:
+        webapp.api_mmb_review({**base, "channel": "自营", "status": "随便"})
+    assert e.value.status_code == 422
+    with pytest.raises(HTTPException) as e:
+        webapp.api_mmb_review({
+            "identity": {"category": "CPU", "series": "不存在", "spec": ""},
+            "anchor": "销量", "channel": "自营", "status": "通过"})
+    assert e.value.status_code == 404

@@ -424,6 +424,54 @@ def api_mmb_proposals() -> dict:
     return {"items": cur if isinstance(cur, list) else []}
 
 
+_MMB_ANCHOR_NORM = {"sales": "销量", "price": "价格",
+                    "销量": "销量", "价格": "价格"}
+_MMB_CHANNELS = ("自营", "第三方", "待核")
+_MMB_STATUS = ("待核", "通过", "驳回")
+
+
+@app.post("/api/mmb/review")
+def api_mmb_review(payload: dict = Body(...)) -> dict:
+    """提案审核（2026-10-16）：用户在看板点选 channel/状态，不再手改 YAML。
+
+    只写提案文件（gitignore 内的工作文件，与 /api/mmb/propose 同级；
+    Web 依然不写库、不写 config）。identity+anchor 定位条目，其余字段
+    原样保留；status=通过 的条目由人工/脚本誊入注册表。
+    """
+    import yaml
+    ident = payload.get("identity") or {}
+    anchor = _MMB_ANCHOR_NORM.get(payload.get("anchor"))
+    if not ident.get("series") or anchor is None:
+        raise HTTPException(422, "identity.series / anchor 必填")
+    channel = payload.get("channel", "待核")
+    status = payload.get("status", "待核")
+    if channel not in _MMB_CHANNELS:
+        raise HTTPException(422, f"channel 只能是 {'/'.join(_MMB_CHANNELS)}")
+    if status not in _MMB_STATUS:
+        raise HTTPException(422, f"status 只能是 {'/'.join(_MMB_STATUS)}")
+    path = ROOT / "data" / "manmanbuy_proposals.yaml"
+    if not path.exists():
+        raise HTTPException(404, "暂无提案文件")
+    items = yaml.safe_load(path.read_text(encoding="utf-8")) or []
+    hit = None
+    for x in items:
+        xa = _MMB_ANCHOR_NORM.get(x.get("anchor"))
+        if x.get("identity") == ident and xa == anchor:
+            hit = x
+            break
+    if hit is None:
+        raise HTTPException(404, "提案条目不存在（先 searchbox 提案或等遴选）")
+    hit["channel"] = channel
+    if "vendor" in payload:
+        hit["vendor"] = payload["vendor"] or ""
+    hit["status"] = status
+    hit["reviewed_at"] = datetime.now().isoformat(timespec="seconds")
+    path.write_text(yaml.safe_dump(items, allow_unicode=True, sort_keys=False),
+                    encoding="utf-8")
+    pending = sum(1 for x in items if x.get("status", "待核") == "待核")
+    return {"ok": True, "total": len(items), "pending": pending}
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
