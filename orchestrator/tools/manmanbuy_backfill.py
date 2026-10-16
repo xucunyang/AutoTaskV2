@@ -35,7 +35,7 @@ sys.path.insert(0, str(ROOT))
 
 import yaml  # noqa: E402
 
-from tools.channel_gate import ChannelGate  # noqa: E402
+from channel_gate import ChannelGate  # 独立包（pip install -e E:\code\channel-gate）  # noqa: E402
 from tools.manmanbuy_client import Mmb, SessionExpired  # noqa: E402
 from tools.sku_backfill import append_rows, convert  # noqa: E402
 from tools.sku_db import connect  # noqa: E402
