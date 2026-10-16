@@ -442,6 +442,38 @@ def api_mmb_proposals() -> dict:
     return {"items": cur if isinstance(cur, list) else []}
 
 
+# ---------- 任务流水（控制台风格，2026-10-17）：只读 reports/*.log + 闸门状态 ----------
+
+@app.get("/api/tasklog")
+def api_tasklog(file: str = "mmb_backfill_run.log", tail: int = 120) -> dict:
+    """任务执行流水：reports/ 下的 .log 尾部 + 渠道闸门实时状态。
+
+    只读、白名单（reports/*.log，拒绝路径穿越）；闸门状态来自
+    channel-gate 的锁/预算台账（零缓冲，实时）。"""
+    import channel_gate
+
+    tail = max(10, min(int(tail), 500))
+    safe = Path(file).name
+    if not safe.endswith(".log"):
+        raise HTTPException(422, "只允许 .log")
+    p = ROOT / "reports" / safe
+    lines: list[str] = []
+    if p.exists():
+        raw = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = raw[-tail:]
+    lock = channel_gate.gate._read_lock("mmb")
+    budget = channel_gate.gate.spent_today("mmb")
+    return {
+        "file": safe, "exists": p.exists(),
+        "mtime": (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(p.stat().st_mtime))
+                  if p.exists() else ""),
+        "lines": lines,
+        "gate": {"locked_by": (f"pid {lock['pid']} · {lock.get('purpose')}"
+                               if lock else None),
+                 "budget_used_today": budget},
+    }
+
+
 _MMB_ANCHOR_NORM = {"sales": "销量", "price": "价格",
                     "销量": "销量", "价格": "价格"}
 # channel 三线（用户 10-16 定稿：自营/官旗/三方店铺；第三方为旧值，兼容接受）

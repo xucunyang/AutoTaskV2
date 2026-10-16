@@ -172,6 +172,7 @@
       <input id="mmb-q" placeholder="慢慢买搜全网：显卡 RTX 5070 12G">
       <button id="mmb-go">搜</button>
       <button id="prop-go" title="审核价格锚提案：定渠道后誊入注册表">提案审核 (<span id="prop-n">…</span>)</button>
+      <button id="tasklog-go" title="任务执行流水（reports/*.log + 闸门状态）">任务流水</button>
     </div>
     <span class="meta" id="meta"></span>
     <label><input type="checkbox" id="vtoggle"> vendor 对比轨</label>
@@ -195,6 +196,24 @@
     <button class="close" onclick="document.getElementById('prop-panel').classList.remove('show')">收起</button>
   </div>
   <div id="prop-rows"></div>
+</div>
+<div class="mmb-panel" id="tasklog-panel" style="width:min(860px,94vw)">
+  <div class="bar">
+    <b style="font-size:13.5px;color:var(--txt)">任务流水</b>
+    <span id="tasklog-gate"></span>
+    <select id="tasklog-file" style="padding:2px 6px;border:1px solid var(--line);border-radius:6px">
+      <option value="mmb_backfill_run.log">mmb_backfill_run.log</option>
+      <option value="mmb_backfill_2026-10-16.log">定时任务 10-16</option>
+      <option value="gwd_trial.log">gwd 试采</option>
+      <option value="discover_v8.log">发现 runner</option>
+      <option value="prefill_channel.log">渠道预填</option>
+    </select>
+    <label style="font-size:12px"><input type="checkbox" id="tasklog-follow" checked> 自动刷新</label>
+    <button class="close" onclick="document.getElementById('tasklog-panel').classList.remove('show');tasklogStop()">收起</button>
+  </div>
+  <pre id="tasklog-body" style="margin:6px 0 0;background:#0d1117;color:#c9d1d9;border-radius:8px;
+    padding:10px 12px;font:12px/1.55 Consolas,'Cascadia Mono',monospace;max-height:56vh;
+    overflow:auto;white-space:pre-wrap;word-break:break-all">加载中…</pre>
 </div>
 <div class="modal hidden" id="mmb-modal">
   <div class="modal-box" style="width:min(880px,96vw)">
@@ -824,6 +843,38 @@ async function propReview(i, status) {
   const d = await resp.json();
   if (d.ok) { propLoad(); propCount(); }
   else alert('审核失败：' + (d.detail || '?'));
+}
+
+// ---------- 任务流水（控制台风格，2s 自刷新） ----------
+let tasklogTimer = null;
+document.getElementById('tasklog-go').addEventListener('click', () => {
+  document.getElementById('tasklog-panel').classList.add('show');
+  document.getElementById('mmb-panel').classList.remove('show');
+  document.getElementById('prop-panel').classList.remove('show');
+  tasklogLoad();
+  tasklogStop(); tasklogTimer = setInterval(tasklogLoad, 2000);
+});
+function tasklogStop() { if (tasklogTimer) { clearInterval(tasklogTimer); tasklogTimer = null; } }
+document.getElementById('tasklog-file').addEventListener('change', tasklogLoad);
+async function tasklogLoad() {
+  const f = document.getElementById('tasklog-file').value;
+  const body = document.getElementById('tasklog-body');
+  try {
+    const d = await fetch(`/api/tasklog?file=${encodeURIComponent(f)}&tail=200`).then(r => r.json());
+    const g = d.gate || {};
+    document.getElementById('tasklog-gate').textContent =
+      `mmb 闸门：今日 ${g.budget_used_today ?? '?'} 发 · ` +
+      (g.locked_by ? `🔒 ${g.locked_by}` : '渠道空闲');
+    const text = d.exists
+      ? d.lines.join('\n')
+      : `（${f} 尚未产生输出——管道缓冲中或任务未跑）`;
+    const atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 30;
+    body.textContent = text + `\n\n—— 最后更新 ${new Date().toLocaleTimeString('zh-CN',{hour12:false})}` +
+      (d.mtime ? ` · 文件 mtime ${d.mtime}` : '');
+    if (atBottom) body.scrollTop = body.scrollHeight;
+  } catch (e) {
+    body.textContent = '加载失败：' + e;
+  }
 }
 </script>
 </body>
