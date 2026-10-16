@@ -49,10 +49,10 @@ def main(argv: list[str] | None = None) -> int:
     log_path = (LOG_DIR or ROOT / "reports") / f"mmb_backfill_{today}.log"
     t0 = time.time()
     steps = [
-        ("backfill", [sys.executable, "-X", "utf8",
+        ("backfill", [sys.executable, "-X", "utf8", "-u",
                       "-m", "tools.manmanbuy_backfill", "run",
                       "--date-dir", today, *argv]),
-        ("trend_calc", [sys.executable, "-X", "utf8",
+        ("trend_calc", [sys.executable, "-X", "utf8", "-u",
                         "-m", "tools.trend_calc", "--date", today]),
     ]
     outs, failed = [], None
