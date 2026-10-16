@@ -658,3 +658,29 @@
 - 10-15 15:53:59 AUTO-R35: HONOR: adb.exe: device 'AADEGL4701000138' not found
 - 10-15 15:54:01 R35: DEVICE_STALE, recovering...
 - 10-15 13:05 R31: 追补 3 台三件套(P11/P12/P13)，报告 reports/R31_1015-1305_追补3台.md；输入法已还原；租约已释放
+- 10-16 14:49:02 AUTO-R36: START round 36 (1016-1449)
+- 10-16 14:49:04 PAD R36: LEASE_OK
+- 10-16 14:49:04 AUTO-R36: PAD: LEASE_OK
+- 10-16 14:49:05 PAD R36: DEVICE_STALE, recovering...
+- 10-16 14:49:36 PAD R36: DEVICE_LOST
+- 10-16 14:49:57 PAD R36: DEVICE_STALE, recovering...
+- 10-16 14:50:28 PAD R36: DEVICE_LOST
+- 10-16 14:50:31 AUTO-R36: PAD: 使用“2”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\pad36_1
+- 10-16 14:50:32 AUTO-R36: PAD: 016_1449_home.xml”。”
+- 10-16 14:50:32 AUTO-R36: PAD: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_pad.ps1:127 字符: 3
+- 10-16 14:50:32 AUTO-R36: PAD: +   $hc = [IO.File]::ReadAllText("$OutDir\${tag}_home.xml", [Text.Encod ...
+- 10-16 14:50:32 AUTO-R36: PAD: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-16 14:50:32 AUTO-R36: PAD:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-16 14:50:32 AUTO-R36: PAD:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-16 14:50:32 AUTO-R36: PAD:  
+- 10-16 14:50:34 PAD R36: DEVICE_STALE, recovering...
+- 10-16 14:51:00 PAD R36: DEVICE_LOST
+- 10-16 14:51:03 AUTO-R36: PAD: 使用“2”个参数调用“ReadAllText”时发生异常:“未能找到文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scans\pad36_1
+- 10-16 14:51:03 AUTO-R36: PAD: 016_1449_home.xml”。”
+- 10-16 14:51:03 AUTO-R36: PAD: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_pad.ps1:127 字符: 3
+- 10-16 14:51:03 AUTO-R36: PAD: +   $hc = [IO.File]::ReadAllText("$OutDir\${tag}_home.xml", [Text.Encod ...
+- 10-16 14:51:04 AUTO-R36: PAD: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-16 14:51:04 AUTO-R36: PAD:     + CategoryInfo          : NotSpecified: (:) [], MethodInvocationException
+- 10-16 14:51:04 AUTO-R36: PAD:     + FullyQualifiedErrorId : FileNotFoundException
+- 10-16 14:51:04 AUTO-R36: PAD:
+- 10-16 15:32:37 R37: 荣耀单机扫 4 词（平板全程掉线）；净新增 2 台三件套（¥9800 清新的果蹦 / ¥9888 DonaldTrp）+ 1 批发价锚点 + ¥10600 降价 99 元情报；发现闲鱼内存筛选器最高 32GB 无 64G 选项；报告 reports/R37_1016-1530_荣耀单机扫描.md
