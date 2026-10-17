@@ -347,10 +347,12 @@ def _mmb():
 
 
 def _mmb_gate() -> "ChannelGate":
-    """searchbox 走同一把 mmb 闸门（单写者锁+日预算，AGENTS §二.13 红线）。
+    """searchbox 走同一把 mmb 闸门锁（单写者串行），但 **免预算**
+    （2026-10-17 用户口径：人工逐条操作自带节流，上限只管无人值守
+    批量；budget=None → session 不做预算检查）。
     backfill/发现任务持锁期间，看板的慢慢买请求会 429（渠道忙）——这是
     预期行为：当天窗口只归一个任务。"""
-    return ChannelGate("mmb", budget=60)
+    return ChannelGate("mmb", budget=None)
 
 
 @app.get("/api/mmb/search")
