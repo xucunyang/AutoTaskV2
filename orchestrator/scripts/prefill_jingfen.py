@@ -154,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
                                    ident.get("spec", ""),
                                    p.get("sp_name", ""), prop_price)
             if a.fix_url:
-                # 只修 URL：配到同款就取干净直链（prourl 优先），不动渠道/店名
+                # 只修 URL：配到同款就取纯数字直链（siteSpuid 优先）
                 if not best:
                     _stamp(f"✗ {tag} · 无合格候选，url 保持原样")
                     skipped += 1
@@ -181,10 +181,14 @@ def main(argv: list[str] | None = None) -> int:
                 skipped += 1
                 continue
             ch = channel_of(shop)
-            # URL 优先取 search 响应里的 prourl/gourl（慢买吐的是干净
-            # item.jd.com 数字直链）；skuid 是慢买加密 ID，拼的 URL 京东
-            # 认不认未验证——只做 fallback（2026-10-17 教训）。
-            p["url"] = pick_url(r)
+            # URL 取纯数字京东直链：same 响应的 siteSpuid = 来源站（京东）
+            # 数字 SKU——加密 skuid 拼的 URL 京东/gwdang/慢买 trend 三不认
+            # （10-17 双渠道实测）。siteSpuid 缺失才退化 pick_url。
+            jd_sku = str(same[0].get("siteSpuid") or "").strip()
+            if jd_sku.isdigit():
+                p["url"] = f"https://item.jd.com/{jd_sku}.html"
+            else:
+                p["url"] = pick_url(r)
             p["sku"] = skuid
             p["vendor"] = shop
             p["channel"] = ch

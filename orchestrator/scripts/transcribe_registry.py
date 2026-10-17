@@ -70,6 +70,9 @@ def main(argv: list[str] | None = None) -> int:
             "anchor": p.get("anchor") or "销量",
             "verified": now,
         }
+        # 补链锚（jingfen 出身）慢买多半 0 点——直接走 gwdang 顶班轨（免费）
+        if "search 配对" in (p.get("match_note") or ""):
+            listing["source"] = "gwdang"
         hit = have.get(url)
         if hit is not None:
             # 同 URL 已在表：只升级 vendor/channel（历史行曾以店名落 vendor）
