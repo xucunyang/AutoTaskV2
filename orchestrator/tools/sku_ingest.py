@@ -178,20 +178,15 @@ def _match_entity(con: sqlite3.Connection, contract: Contract,
                   hint: dict) -> sqlite3.Row | None:
     """identity_hint → entity。三级匹配：
 
-    1. 精确匹配（键序一致的 identity_json）；
+    1. 精确匹配（**键序无关**：dict 相等——hint 经 validate_row 按契约键序
+       重构，但历史实体行的 identity_json 键序不保证一致，10-17 金士顿
+       64GB 84 行 no_entity 实证：文本比较因键序差异漏配）；
     2. 别名兜底（契约 aliases 数组归一化后命中 series 或 series+spec）；
     3. series-only 兜底（hint.series 归一后与实体 identity.series 相等，
        且该 series 下**只有一个**活跃实体——唯一即可归属，多个则隔离
        待收编；v3.3 实测：模型的 spec 天然带品牌/系列后缀，精确匹配
        太苛刻，16 行能隔离 14 行）。
     """
-    ident = json.dumps(hint, ensure_ascii=False)
-    row = con.execute(
-        "SELECT * FROM entity WHERE domain=? AND identity_json=?",
-        (contract.domain, ident)).fetchone()
-    if row:
-        return row
-
     norm_series = normalize_name(hint.get("series") or "")
     norm_full = normalize_name(
         f"{hint.get('series') or ''} {hint.get('spec') or ''}")
@@ -201,6 +196,9 @@ def _match_entity(con: sqlite3.Connection, contract: Contract,
             "SELECT * FROM entity WHERE domain=? AND active=1",
             (contract.domain,)):
         ident_d = json.loads(ent["identity_json"] or "{}")
+        # 精确匹配（键序无关）：dict 相等即同一天
+        if ident_d == hint:
+            return ent
         ent_series = normalize_name(ident_d.get("series") or "")
         ent_full = normalize_name(f"{ent_series} {ident_d.get('spec') or ''}")
         # 别名兜底
@@ -217,6 +215,15 @@ def _match_entity(con: sqlite3.Connection, contract: Contract,
 
     if len(series_hits) == 1:
         return series_hits[0]
+    if len(series_hits) > 1:
+        # 同 series 多实体（内存 DDR5 6400 16G/64G 是常态）：spec 细化唯一归属
+        # （hint 值已 normalize，实体 spec 同规约比较；10-17 金士顿 84 行实证）
+        spec = normalize_name(hint.get("spec") or "")
+        if spec:
+            spec_hits = [e for e in series_hits
+                         if normalize_name(json.loads(e["identity_json"]).get("spec") or "") == spec]
+            if len(spec_hits) == 1:
+                return spec_hits[0]
     return None   # 0 个或多个候选 → 隔离区（收编闭环裁决）
 
 
