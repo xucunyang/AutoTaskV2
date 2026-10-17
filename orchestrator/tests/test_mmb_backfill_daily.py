@@ -37,6 +37,7 @@ def _load_wrapper():
 def ctx(tmp_path, monkeypatch):
     mod = _load_wrapper()
     monkeypatch.setattr(mod, "LOG_DIR", tmp_path)
+    monkeypatch.setenv("TASKBOARD_FILE", str(tmp_path / "taskboard.json"))
     calls = {"run": [], "notify": []}
 
     def fake_run(cmd):

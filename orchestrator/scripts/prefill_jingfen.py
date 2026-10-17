@@ -126,10 +126,18 @@ def main(argv: list[str] | None = None) -> int:
     mmb = Mmb()
     gate = ChannelGate("mmb", budget=60, log=_stamp)
     done = skipped = 0
+    # 任务台账（看板「任务流水」整体把控）：单步骤，子进度 n/N
+    from tools import taskboard
+    tb_id = taskboard.start("jingfen 补链" + ("·修URL" if a.fix_url else ""),
+                            ["search+same 配对"])
+    total = len(todo)
+    taskboard.step(tb_id, "search+same 配对", "running", progress=f"0/{total}")
     with gate.session("jingfen 补链"):
-        for p in todo:
+        for idx, p in enumerate(todo, 1):
             ident = p.get("identity") or {}
             tag = f"[{ident.get('category')}] {ident.get('series')} {ident.get('spec')}".strip()
+            taskboard.step(tb_id, "search+same 配对", "running",
+                           detail=tag, progress=f"{idx - 1}/{total}")
             kw = f"{ident.get('series', '')} {ident.get('spec', '')}".strip() or p.get("sp_name", "")
             prop_price = Mmb._num(p.get("price"))
             gate.wait()
@@ -188,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     if done:
         PROP.write_text(yaml.safe_dump(items, allow_unicode=True, sort_keys=False),
                         encoding="utf-8")
+    taskboard.finish(tb_id, "ok", f"成功 {done} / 留人工 {skipped} · 预算 {gate.spent()}/{gate.budget}")
     _stamp(f"{'─' * 20} 总结 {'─' * 20}")
     _stamp(f"补链成功 {done} / 留人工 {skipped} ｜ 预算 {gate.spent()}/{gate.budget}")
     return 0

@@ -60,9 +60,17 @@ def main(argv: list[str] | None = None) -> int:
         ("trend_calc", [sys.executable, "-X", "utf8", "-u",
                         "-m", "tools.trend_calc", "--date", today], False),
     ]
+    # 任务台账（看板「任务流水」的整体把控视图）
+    from tools import taskboard
+    tb_id = taskboard.start(f"每日回填+快照 {today}", [s[0] for s in steps])
     outs, failed = [], None
     for name, cmd, soft in steps:
+        taskboard.step(tb_id, name, "running")
+        t1 = time.time()
         p = _run(cmd)
+        taskboard.step(tb_id, name, "ok" if p.returncode == 0 else "fail",
+                       detail=(p.stderr or p.stdout or "")[-200:],
+                       rc=p.returncode, seconds=time.time() - t1)
         outs.append(f"$ {' '.join(cmd)}\n{p.stdout}{p.stderr}"
                     f"[{name}] rc={p.returncode}")
         if p.returncode != 0:
@@ -80,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     from core import winnotify
     if failed:
         name, rc = failed
+        taskboard.finish(tb_id, "fail", f"失败于 {name}（rc={rc}）")
         tail = (outs[-1][-260:]).replace("\n", " ")
         # 4030 = 已封禁（操作手册 §2）：全停+联系客服；勿重试/换 IP/重登
         if rc == 2 and "4030" in "\n".join(outs):
@@ -95,6 +104,9 @@ def main(argv: list[str] | None = None) -> int:
         return rc or 1
 
     added = sum(int(m) for m in re.findall(r"\+(\d+) 行", "\n".join(outs)))
+    taskboard.finish(tb_id, "ok" if not failed else "fail",
+                     f"新增 {added} 行 · 耗时 {dt:.0f}s"
+                     + (f" · 失败于 {failed[0]}" if failed else ""))
     winnotify.notify(
         "慢慢买每日回填完成",
         f"新增 {added} 行，L1 快照已刷新（{today}，耗时 {dt:.0f}s）",

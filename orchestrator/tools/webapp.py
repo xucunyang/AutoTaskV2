@@ -332,6 +332,8 @@ def api_recommend() -> dict:
 _mmb_client = None
 _mmb_trend_cache: dict[str, tuple[float, dict]] = {}
 MMB_TREND_TTL = 600
+_gwd_trend_cache: dict[str, tuple[float, dict]] = {}
+GWD_TREND_TTL = 1800
 
 
 def _mmb():
@@ -404,6 +406,37 @@ def api_mmb_trend(url: str) -> dict:
                    for p in pts],
     }
     _mmb_trend_cache[url] = (time.time(), out)
+    return out
+
+
+@app.get("/api/gwd/trend")
+def api_gwd_trend(url: str) -> dict:
+    """购物党单商品曲线预览（gwdang 顶班渠道，与 /api/mmb/trend 输出同构）。
+
+    免登录态、不占慢买预算与锁；结果缓存 30 分钟。"""
+    import json as _json
+
+    from tools.gwdang_client import Gwdang
+    hit = _gwd_trend_cache.get(url)
+    if hit and time.time() - hit[0] < GWD_TREND_TTL:
+        return hit[1]
+    g = Gwdang(pacer=None)        # 预览是人工单发，不需要 Pacer
+    if g.load_session():
+        pass                       # 有会话最好；匿名也能走 url_to_dp
+    try:
+        d = g.trend(url)
+    except Exception as e:
+        raise HTTPException(502, f"购物党趋势失败: {e}")
+    pts = d.get("datePrice") or []
+    out = {
+        "url": url, "spName": d.get("spName"), "siteName": "购物党",
+        "currentPrice": d.get("currentPrice"), "lowerPrice": d.get("lowerPrice"),
+        "higherPrice": d.get("higherPrice"), "avgPrice60": None,
+        "points": [[time.strftime("%Y-%m-%d", time.localtime(p[0] / 1000)), p[1]]
+                   for p in pts],
+        "raw_json": _json.dumps(d.get("raw") or {}, ensure_ascii=False)[:2000],
+    }
+    _gwd_trend_cache[url] = (time.time(), out)
     return out
 
 
@@ -626,6 +659,7 @@ def api_tasklog(file: str = "mmb_backfill_run.log", tail: int = 120) -> dict:
         lines = raw[-tail:]
     lock = channel_gate.gate._read_lock("mmb")
     budget = channel_gate.gate.spent_today("mmb")
+    from tools import taskboard
     return {
         "file": safe, "exists": p.exists(),
         "mtime": (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(p.stat().st_mtime))
@@ -634,6 +668,7 @@ def api_tasklog(file: str = "mmb_backfill_run.log", tail: int = 120) -> dict:
         "gate": {"locked_by": (f"pid {lock['pid']} · {lock.get('purpose')}"
                                if lock else None),
                  "budget_used_today": budget},
+        "tasks": taskboard.snapshot(),
     }
 
 

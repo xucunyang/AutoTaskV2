@@ -226,6 +226,10 @@
   .cmp-chart-hd .close { margin-left: auto; border: 1px solid var(--line); background: #fff;
     border-radius: 6px; padding: 2px 10px; cursor: pointer; font-size: 12px; }
   #cmp-chart { flex: 1; }
+  .tk-row { display: flex; align-items: center; gap: 7px; padding: 4px 2px;
+            font-size: 12.5px; color: var(--txt); flex-wrap: wrap; }
+  .tk-row b { font-weight: 600; }
+  .tk-meta { color: var(--sub); font-size: 11.5px; }
 </style>
 </head>
 <body>
@@ -287,6 +291,7 @@
     <label style="font-size:12px"><input type="checkbox" id="tasklog-follow" checked> 自动刷新</label>
     <button class="close" onclick="document.getElementById('tasklog-panel').classList.remove('show');tasklogStop()">收起</button>
   </div>
+  <div id="tasklog-tasks" style="padding:6px 2px 2px"></div>
   <pre id="tasklog-body" style="margin:6px 0 0;background:#0d1117;color:#c9d1d9;border-radius:8px;
     padding:10px 12px;font:12px/1.55 Consolas,'Cascadia Mono',monospace;max-height:56vh;
     overflow:auto;white-space:pre-wrap;word-break:break-all">加载中…</pre>
@@ -298,6 +303,12 @@
       <button class="modal-x" onclick="mmbModalClose()">✕</button>
     </div>
     <div class="modal-body">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+        <span style="font-size:11px;color:var(--sub)">曲线源：</span>
+        <button onclick="mmbTrend(window._mmbTrendIdx,'mmb')" style="border:1px solid var(--line);background:#fff;border-radius:6px;padding:1px 8px;font-size:11.5px;cursor:pointer">慢买</button>
+        <button onclick="mmbTrend(window._mmbTrendIdx,'gwd')" style="border:1px solid var(--line);background:#fff;border-radius:6px;padding:1px 8px;font-size:11.5px;cursor:pointer">购物党</button>
+        <span style="font-size:11px;color:var(--sub)">慢买 0 点的 SKU 换购物党常有曲线</span>
+      </div>
       <div id="mmb-trend-meta" style="color:var(--sub);font-size:12.5px;margin-bottom:4px"></div>
       <div id="mmb-trend-chart" style="width:100%;height:420px"></div>
     </div>
@@ -949,17 +960,21 @@ async function mmbSearch() {
   }
 }
 
-async function mmbTrend(idx) {
+async function mmbTrend(idx, src = 'mmb') {
   const r = (window._mmbLast || [])[idx];
   if (!r) return;
+  window._mmbTrendIdx = idx;
   document.getElementById('mmb-modal').classList.remove('hidden');
   document.getElementById('mmb-trend-title').textContent = (r.title || '').slice(0, 44);
-  document.getElementById('mmb-trend-meta').textContent = '加载中…';
-  const d = await fetch(`/api/mmb/trend?url=${encodeURIComponent(r.url)}`).then(x => x.json());
+  document.getElementById('mmb-trend-meta').textContent =
+    src === 'gwd' ? '购物党加载中…' : '加载中…';
+  const api = src === 'gwd' ? '/api/gwd/trend' : '/api/mmb/trend';
+  const d = await fetch(`${api}?url=${encodeURIComponent(r.url)}`).then(x => x.json());
   if (d.detail) { document.getElementById('mmb-trend-meta').textContent = d.detail; return; }
   document.getElementById('mmb-trend-meta').textContent =
-    `现价 ${d.currentPrice} · 历史最低 ${d.lowerPrice}（${(d.lowerDate || '').slice(0, 10)}）` +
-    ` · 60日均价 ${d.avgPrice60} · ${d.points.length} 点`;
+    `【${src === 'gwd' ? '购物党' : '慢买'}】现价 ${d.currentPrice ?? '—'} · 历史最低 ${d.lowerPrice ?? '—'}` +
+    (d.lowerDate ? `（${String(d.lowerDate).slice(0, 10)}）` : '') +
+    ` · ${d.points.length} 点`;
   mmbChart = mmbChart || echarts.init(document.getElementById('mmb-trend-chart'));
   mmbChart.setOption({
     tooltip: { trigger: 'axis' },
@@ -1145,6 +1160,20 @@ async function tasklogLoad() {
     document.getElementById('tasklog-gate').textContent =
       `mmb 闸门：今日 ${g.budget_used_today ?? '?'} 发 · ` +
       (g.locked_by ? `🔒 ${g.locked_by}` : '渠道空闲');
+    const tasks = d.tasks || [];
+    document.getElementById('tasklog-tasks').innerHTML = tasks.length
+      ? tasks.map(t => {
+          const okn = t.steps.filter(s => s.status === 'ok').length;
+          const cur = t.steps.find(s => s.status === 'running');
+          const icon = { running: '🟢', ok: '✅', fail: '❌', killed: '☠️' }[t.status] || '·';
+          const meta = t.status === 'running'
+            ? `步骤 ${okn}/${t.steps.length} · ${cur ? cur.name : (t.current || '—')}` +
+              (t.progress ? ` (${t.progress})` : '')
+            : (t.summary || t.finished_at || '');
+          return `<div class="tk-row">${icon} <b>${esc(t.name)}</b>` +
+                 ` <span class="tk-meta">${esc(meta)}</span></div>`;
+        }).join('')
+      : '<div class="tk-row" style="color:var(--sub)">暂无登记任务</div>';
     const text = d.exists
       ? d.lines.join('\n')
       : `（${f} 尚未产生输出——管道缓冲中或任务未跑）`;
