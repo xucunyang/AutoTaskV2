@@ -680,6 +680,35 @@ _MMB_CHANNELS = ("自营", "官旗", "三方店铺", "第三方", "待核")
 _MMB_STATUS = ("待核", "通过", "驳回")
 
 
+@app.post("/api/mmb/auto-anchor")
+def api_mmb_auto_anchor() -> dict:
+    """一键补锚开关（2026-10-17 用户口径：缺锚实体不用手搜）。
+
+    子进程拉起 scripts/auto_anchor.py：零观测实体 → search 配对 →
+    siteSpuid 纯数字直链 → 生成待核提案（审核卡勾选把关型号配对）。
+    进度写任务台账，「任务流水」面板实时可见；预算尽 fail-closed。"""
+    import subprocess
+
+    import channel_gate
+    from tools import taskboard
+    running = [t for t in taskboard.snapshot()
+               if t.get("status") == "running"
+               and str(t.get("name", "")).startswith("一键补锚")]
+    if running:
+        raise HTTPException(409, f"已在跑（{running[0]['name']}），看任务流水进度")
+    used = channel_gate.gate.spent_today("mmb")
+    if used >= 80:      # R2 上限（10-17 实验后口径）；脚本内闸门仍 fail-closed
+        raise HTTPException(429, f"今日慢买预算已用尽（{used}/80），0 点重置后再点")
+    script = ROOT / "scripts" / "auto_anchor.py"
+    logf = (ROOT / "reports" / "auto_anchor.log").open("ab")
+    subprocess.Popen(
+        [sys.executable, "-X", "utf8", "-u", str(script)],
+        cwd=str(ROOT), stdout=logf, stderr=subprocess.STDOUT,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    return {"ok": True,
+            "msg": "已启动：进度看「任务流水」，跑完在提案审核卡勾选"}
+
+
 @app.post("/api/mmb/review")
 def api_mmb_review(payload: dict = Body(...)) -> dict:
     """提案审核（2026-10-16）：用户在看板点选 channel/状态，不再手改 YAML。

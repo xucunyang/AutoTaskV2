@@ -271,6 +271,7 @@
     </label>
     <span class="cnt" id="prop-sel">已勾 0</span>
     <button onclick="propAuto()" id="prop-auto-btn">自动预审</button>
+    <button onclick="autoAnchor(this)" title="为 0 数据实体批量搜索配对生成提案（慢买预算内）">⚡一键补锚</button>
     <button class="primary" id="prop-submit" onclick="propBatch()" disabled>提交勾选</button>
     <span class="cnt" id="prop-stat"></span>
   </div>
@@ -1105,6 +1106,17 @@ async function propAuto() {
   if (!confirm('把店名已判定为「自营/官旗」的待核条目直接批量通过？')) return;
   const d = await fetch('/api/mmb/review/auto', { method: 'POST' }).then(r => r.json());
   if (d.ok) { alert(`自动预审：通过 ${d.auto_passed} 条，剩待核 ${d.pending} 条`); propLoad(); propCount(); }
+}
+async function autoAnchor(btn) {
+  if (!confirm('为所有 0 数据实体批量搜索配对、生成待核提案？\n每实体约 2 发慢买预算，进度看「任务流水」面板。')) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/mmb/auto-anchor', { method: 'POST' });
+    const d = await r.json();
+    if (r.ok) alert(d.msg || '已启动');
+    else alert('没跑起来：' + (d.detail || '?'));
+  } catch (e) { alert('请求失败：' + e); }
+  btn.disabled = false;
 }
 async function propBatch() {
   const picks = [...document.querySelectorAll('#prop-rows .prop-card:not(.done)')]

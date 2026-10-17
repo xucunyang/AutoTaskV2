@@ -425,6 +425,8 @@ listings:
   anchor: 价格
   verified: 2026-10-17 12:43
   source: gwdang
+  retired: '2026-10-17'
+  retired_reason: 5090D V2 双渠道0点
 - identity:
     category: 显卡
     series: RX 9060 XT
@@ -491,6 +493,8 @@ listings:
   anchor: 销量
   verified: 2026-10-17 12:43
   source: gwdang
+  retired: '2026-10-17'
+  retired_reason: 三星990EVO 双渠道0点
 - identity:
     category: 固态硬盘
     series: 宏碁掠夺者
@@ -502,6 +506,8 @@ listings:
   anchor: 销量
   verified: 2026-10-17 12:43
   source: gwdang
+  retired: '2026-10-17'
+  retired_reason: 宏碁掠夺者2TB 双渠道0点
 - identity:
     category: 主板
     series: B850M
@@ -535,6 +541,8 @@ listings:
   anchor: 销量
   verified: 2026-10-17 12:43
   source: gwdang
+  retired: '2026-10-17'
+  retired_reason: 映泰Z890 双渠道0点
 - identity:
     category: 主板
     series: Z890 Pacific
@@ -546,7 +554,7 @@ listings:
   anchor: 销量
   verified: 2026-10-17 12:43
   source: gwdang
-  retired: '2026-10-17'   # URL 与 Vertex 撞同一 siteSpuid，归属不明，等 gwdang 曲线商品名核实
+  retired: '2026-10-17'
 - identity:
     category: 主板
     series: Z890 Vertex
@@ -558,7 +566,7 @@ listings:
   anchor: 销量
   verified: 2026-10-17 12:43
   source: gwdang
-  retired: '2026-10-17'   # URL 与 Pacific 撞同一 siteSpuid，归属不明，等 gwdang 曲线商品名核实
+  retired: '2026-10-17'
 - identity:
     category: 主板
     series: Z890 GAMING X
@@ -570,3 +578,5 @@ listings:
   anchor: 销量
   verified: 2026-10-17 12:43
   source: gwdang
+  retired: '2026-10-17'
+  retired_reason: 技嘉Z890 GX 双渠道0点
