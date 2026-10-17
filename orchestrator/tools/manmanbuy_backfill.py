@@ -249,10 +249,12 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
         dumps = json.loads(Path(from_cache).read_text(encoding="utf-8"))
         print(f"[cache] {from_cache}（{len(dumps['listings'])} listing）")
     else:
-        mmb = Mmb()
-        if not mmb.load_session():
-            print("未登录：先执行 python -m tools.manmanbuy_backfill login")
-            return 2
+        mmb = None
+        if not gwd_only:
+            mmb = Mmb()
+            if not mmb.load_session():
+                print("未登录：先执行 python -m tools.manmanbuy_backfill login")
+                return 2
         print(f"[{_ts()}] ▶ 开始采集（{len(registry['listings'])} 锚）")
         dumps = _fetch_dumps(mmb, registry, (sleep_min, sleep_max), gate=gate)
         cache_path = root / "artifacts" / date_dir / "backfill_manmanbuy_raw.json"
@@ -611,6 +613,8 @@ def main(argv: list[str] | None = None) -> int:
     rn.add_argument("--only", default=None, help="URL/名称子串过滤")
     rn.add_argument("--gwd-only", action="store_true",
                     help="只采 gwdang 顶班锚（source=gwdang，不占慢买预算）")
+    rn.add_argument("--budget", type=int, default=60,
+                    help="今日慢买预算上限（默认 60；风控实验期可临时放宽）")
     rn.add_argument("--sleep-min", type=float, default=5.0,
                     help="节流随机下限秒（默认 5）")
     rn.add_argument("--sleep-max", type=float, default=20.0,
@@ -649,7 +653,13 @@ def main(argv: list[str] | None = None) -> int:
                    dry_run=args.dry_run, skip_ingest=args.skip_ingest,
                    sleep_min=args.sleep_min, sleep_max=args.sleep_max,
                    only=args.only, gwd_only=args.gwd_only)
-    gate = ChannelGate("mmb", budget=60, log=_stamp)   # R2：全接口日总预算（操作手册红线）
+    if args.gwd_only:
+        # gwd 独立管线：不碰慢买锁/预算——跨渠道允许并行（串行只限平台内）
+        return run(args.date_dir, root=root, from_cache=args.from_cache,
+                   dry_run=args.dry_run, skip_ingest=args.skip_ingest,
+                   sleep_min=args.sleep_min, sleep_max=args.sleep_max,
+                   only=args.only, gwd_only=args.gwd_only)
+    gate = ChannelGate("mmb", budget=args.budget, log=_stamp)   # R2：全接口日总预算（操作手册红线）
     try:
         with gate.session("run 采集"):
             return run(args.date_dir, root=root, from_cache=args.from_cache,

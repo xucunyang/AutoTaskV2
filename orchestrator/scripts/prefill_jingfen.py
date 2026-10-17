@@ -100,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
 
     ap = argparse.ArgumentParser(description="jingfen 提案补链（search 配对+店名）")
     ap.add_argument("--limit", type=int, default=0, help="最多处理 N 条（0=全量）")
+    ap.add_argument("--budget", type=int, default=60,
+                    help="今日慢买预算上限（默认 60；风控实验期可临时放宽）")
     ap.add_argument("--fix-url", action="store_true",
                     help="只修 URL：已配对但 url 非纯数字直链的提案，重发 search "
                          "取 prourl（1 发/条，不调 same 不判渠道）")
@@ -120,11 +122,11 @@ def main(argv: list[str] | None = None) -> int:
         _stamp("没有待补链的 jingfen 提案")
         return 0
     est = len(todo) if a.fix_url else len(todo) * 2
-    mode = "只修 url" if a.fix_url else "search+same 各半"
+    mode = "只修 url（same→siteSpuid）" if a.fix_url else "search+same 各半"
     _stamp(f"待处理 {len(todo)} 条 · 预估 {est} 发（{mode}）")
 
     mmb = Mmb()
-    gate = ChannelGate("mmb", budget=60, log=_stamp)
+    gate = ChannelGate("mmb", budget=a.budget, log=_stamp)
     done = skipped = 0
     # 任务台账（看板「任务流水」整体把控）：单步骤，子进度 n/N
     from tools import taskboard
@@ -138,6 +140,28 @@ def main(argv: list[str] | None = None) -> int:
             tag = f"[{ident.get('category')}] {ident.get('series')} {ident.get('spec')}".strip()
             taskboard.step(tb_id, "search+same 配对", "running",
                            detail=tag, progress=f"{idx - 1}/{total}")
+            if a.fix_url:
+                # v2（10-17）：sku 已存（配对过同款）——直接 same 取
+                # siteSpuid（京东数字 SKU）拼纯数字直链，无需 search，1 发/条
+                sku = str(p.get("sku") or "")
+                if not sku:
+                    _stamp(f"✗ {tag} · 无存量 sku，留人工")
+                    skipped += 1
+                    continue
+                gate.wait()
+                if not gate.spend(1, f"same {sku[:20]}"):
+                    _stamp("⛔ 预算尽，停发（剩余条目下次跑）")
+                    break
+                same = mmb.same_by_spbh(f"1|{sku}")
+                jd = str((same[0].get("siteSpuid") or "")).strip() if same else ""
+                if jd.isdigit():
+                    p["url"] = f"https://item.jd.com/{jd}.html"
+                    done += 1
+                    _stamp(f"✓ {tag} · url → {p['url']}")
+                else:
+                    _stamp(f"✗ {tag} · siteSpuid 未返回（{jd[:20]!r}），留人工")
+                    skipped += 1
+                continue
             kw = f"{ident.get('series', '')} {ident.get('spec', '')}".strip() or p.get("sp_name", "")
             prop_price = Mmb._num(p.get("price"))
             gate.wait()
