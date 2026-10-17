@@ -43,7 +43,9 @@ attr_value_maps:
 aggregate_rule: min        # 序列点=当日最低价
 aggregate_scope:           # v3.3 M1/M2：切轨维度与主序列过滤
   group_by: [condition, source]
-  default_filter: {condition: 全新, source: 自采}
+  # 自采双平台（2026-10-17）：慢买 manmanmai + 购物党顶班 gwdang 都算自采，
+  # 旧「自采」值保留兼容（历史手工行）；trend_calc/webapp SQL 同步 IN 口径
+  default_filter: {condition: 全新, source: [自采, manmanmai, gwdang]}
 metrics:
   price:
     unit: CNY

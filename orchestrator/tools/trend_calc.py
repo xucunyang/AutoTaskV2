@@ -29,10 +29,11 @@ from tools.stab_risk import stab_risk  # noqa: E402
 
 def _aggregate_series(con: sqlite3.Connection, entity_id: int,
                      date: str) -> list[tuple[str, float]]:
-    """取某实体当日的（entity_id, source=自采, condition=全新）聚合序列点。
+    """取某实体当日的（entity_id, 自采双平台, condition=全新）聚合序列点。
 
-    契约默认过滤（aggregate_scope.default_filter）已在入库阶段保证 source
-    和 condition 在 attrs_json 里——SQL 用 json_extract 取。
+    自采 = 慢买（manmanmai）+ 购物党顶班（gwdang）两条自采渠道都算——
+    2026-10-17 修复：CPU/内存全 gwdang 行导致看板 0 点。契约
+    aggregate_scope.default_filter 同步（daily MIN 跨平台取低）。
     序列点 = 该日 default_filter 内观测的 low_price min。
     """
     rows = con.execute(
@@ -40,7 +41,8 @@ def _aggregate_series(con: sqlite3.Connection, entity_id: int,
         SELECT obs_date, MIN(low_price)
           FROM observation
          WHERE entity_id = ?
-           AND json_extract(attrs_json, '$.source') = '自采'
+           AND json_extract(attrs_json, '$.source') IN
+               ('自采', 'manmanmai', 'gwdang')
            AND json_extract(attrs_json, '$.condition') = '全新'
            AND obs_date <= ?
          GROUP BY obs_date
@@ -190,16 +192,27 @@ def contrast(con: sqlite3.Connection, entity_id: int, date: str,
 
 def _series_with_attrs(con: sqlite3.Connection, entity_id: int, date: str,
                        attrs_filter: dict) -> list[tuple[str, float]]:
-    """按 attrs 过滤后取聚合序列（min low_price per obs_date）。"""
-    json_filters = " AND ".join(
-        f"json_extract(attrs_json, '$.{k}') = ?" for k in attrs_filter)
-    params = [entity_id, date] + list(attrs_filter.values())
+    """按 attrs 过滤后取聚合序列（min low_price per obs_date）。
+
+    过滤值支持标量（=）和列表（IN）——自采双平台口径用 IN。
+    """
+    clauses, params = [], []
+    for k, v in attrs_filter.items():
+        if isinstance(v, (list, tuple, set)):
+            vals = list(v)
+            clauses.append("json_extract(attrs_json, '$.%s') IN (%s)"
+                           % (k, ",".join("?" * len(vals))))
+            params.extend(vals)
+        else:
+            clauses.append(f"json_extract(attrs_json, '$.{k}') = ?")
+            params.append(v)
+    json_filters = " AND ".join(clauses)
     rows = con.execute(
         f"""
         SELECT obs_date, MIN(low_price) FROM observation
          WHERE entity_id = ? AND obs_date <= ? AND {json_filters}
          GROUP BY obs_date ORDER BY obs_date
-        """, params).fetchall()
+        """, [entity_id, date] + params).fetchall()
     return [(r[0], float(r[1])) for r in rows]
 
 

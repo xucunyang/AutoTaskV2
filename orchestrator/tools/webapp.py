@@ -98,7 +98,8 @@ def _entity_tracks(con: sqlite3.Connection, entity_id: int,
     tracks = {}
     for v in vendors:
         rows = series_with_attrs(con, entity_id, as_of,
-                                 {"condition": "全新", "source": "自采",
+                                 {"condition": "全新",
+                                  "source": ["自采", "manmanmai", "gwdang"],
                                   "vendor": v})
         if rows:
             tracks[v] = [[d, p] for d, p in rows]
