@@ -392,3 +392,181 @@ listings:
   sp_name: 华硕TX GAMING B760M WIFI D4 天选主板 支持 CPU 14700K/14600KF/12600KF(Intel B760/LGA 1700)
   anchor: 销量
   verified: 2026-10-16 23:58
+- identity:
+    category: 显卡
+    series: RTX 5060
+    spec: 8GB
+  vendor: 耕升
+  channel: 自营
+  url: https://item.jd.com/100168010743.html
+  sp_name: 耕升GeForce RTX 5060 踏雪 OC 8G游戏显卡 DLSS 4.5 NVIDIA 英伟达 电竞游戏/设计剪辑/AI本地部署
+  anchor: 价格
+  verified: 2026-10-17 12:43
+  source: gwdang
+- identity:
+    category: 显卡
+    series: RTX 5070
+    spec: 12GB
+  vendor: 微星
+  channel: 自营
+  url: https://item.jd.com/100156380405.html
+  sp_name: 微星(MSI)白魔龙 GeForce RTX 5070 12G GAMING TRIO OC WHITE 游戏设计剪辑OpenClaw本地部署显卡
+  anchor: 价格
+  verified: 2026-10-17 12:43
+  source: gwdang
+- identity:
+    category: 显卡
+    series: RTX 5090D V2
+    spec: 24GB
+  vendor: 映众
+  channel: 官旗
+  url: https://item.jd.com/10032748544586.html
+  sp_name: 电竞叛客RTX 5090 D V2 X3W OC 24G 显卡 曜夜/超级冰龙 电竞游戏直播Ai运算训练学习设计渲染台式电脑显卡 映众5090D V2 X3 24GB 超级冰龙
+  anchor: 价格
+  verified: 2026-10-17 12:43
+  source: gwdang
+- identity:
+    category: 显卡
+    series: RX 9060 XT
+    spec: 16GB
+  vendor: AMD
+  channel: 自营
+  url: https://item.jd.com/100285107582.html
+  sp_name: 盈通(yeston)AMD RADEON RX 9060 XT 16G 樱瞳花嫁 OC 人工智能AI学习OpenClaw直播设计电竞游戏独立显卡
+  anchor: 价格
+  verified: 2026-10-17 12:43
+  source: gwdang
+- identity:
+    category: 显卡
+    series: RX 9060 XT
+    spec: 8GB
+  vendor: AMD
+  channel: 自营
+  url: https://item.jd.com/100177371563.html
+  sp_name: 盈通(yeston)AMD RADEON RX 9060 XT 8G 游戏高手 人工智能AI学习OpenClaw直播设计电竞游戏独立显卡
+  anchor: 价格
+  verified: 2026-10-17 12:43
+  source: gwdang
+- identity:
+    category: 显卡
+    series: RX 9070
+    spec: 16GB
+  vendor: 技嘉
+  channel: 自营
+  url: https://item.jd.com/100153096049.html
+  sp_name: 技嘉(GIGABYTE)9070显卡 魔鹰 AMD Radeon RX 9070 GAMING OC 16G AI游戏设计剪辑OpenClaw本地部署显卡
+  anchor: 价格
+  verified: 2026-10-17 12:43
+  source: gwdang
+- identity:
+    category: CPU
+    series: 9950X3D
+    spec: ''
+  vendor: AMD
+  channel: 自营
+  url: https://item.jd.com/100149071725.html
+  sp_name: AMD锐龙9 9950X3D处理器16核32线程144MB缓存至高5.7GHz盒装CPU生产力 千帧电竞畅玩打瓦/三角洲/CSGO
+  anchor: 销量
+  verified: 2026-10-17 12:43
+  source: gwdang
+- identity:
+    category: 内存
+    series: DDR5 7200
+    spec: 32GB(16G×2)
+  vendor: 雷克沙
+  channel: 自营
+  url: https://item.jd.com/100281328440.html
+  sp_name: 雷克沙(Lexar)DDR5 7200 32GB(16GB×2)套条 电竞RGB灯条台式内存条 CL38 国产颗粒 Thor雷神之刃二代 黑色
+  anchor: 销量
+  verified: 2026-10-17 12:43
+  source: gwdang
+- identity:
+    category: 固态硬盘
+    series: 三星 990 EVO
+    spec: 1TB PCIe4.0 NVMe
+  vendor: 三星
+  channel: 三方店铺
+  url: https://item.jd.com/10027536799801.html
+  sp_name: 三星(SAMSUNG)1TB SSD固态硬盘 M.2接口(NVMe协议PCIe4.0*4/5.0*2)读速7150MB/S 990 EVO Plus
+  anchor: 销量
+  verified: 2026-10-17 12:43
+  source: gwdang
+- identity:
+    category: 固态硬盘
+    series: 宏碁掠夺者
+    spec: 2TB PCIe4.0 NVMe
+  vendor: 宏碁掠夺者
+  channel: 三方店铺
+  url: https://item.jd.com/10033867301126.html
+  sp_name: 宏碁掠夺者(PREDATOR)SSD固态硬盘 M.2接口 (GM7000 NVMe PCIe 4.0协议) GM7000 2TB
+  anchor: 销量
+  verified: 2026-10-17 12:43
+  source: gwdang
+- identity:
+    category: 主板
+    series: B850M
+    spec: AM5
+  vendor: 微星
+  channel: 自营
+  url: https://item.jd.com/100235602587.html
+  sp_name: 微星(MSI)B850M GAMING PLUS WIFI7小白龙主板 支持CPU 9800X3D/9850X3D/9700X/9600X/(AMD B850/AM5接口)
+  anchor: 销量
+  verified: 2026-10-17 12:43
+  source: gwdang
+- identity:
+    category: 主板
+    series: X870E
+    spec: AM5
+  vendor: 微星
+  channel: 自营
+  url: https://item.jd.com/100314747284.html
+  sp_name: 微星(MSI)MPG X870E EDGE TI WIFI 刀锋钛主板 支持CPU 9850X3D/9950X3D2/9800X3D(AMD X870E/AM5接口)
+  anchor: 销量
+  verified: 2026-10-17 12:43
+  source: gwdang
+- identity:
+    category: 主板
+    series: Z890
+    spec: LGA1851
+  vendor: 华硕
+  channel: 官旗
+  url: https://item.jd.com/10028006208527.html
+  sp_name: 映泰 (BIOSTAR)Z890A-SILVER主板WiFi7 支持 CPU 285K/265K/265KF/245KF (Intel Z890/LGA 1851)
+  anchor: 销量
+  verified: 2026-10-17 12:43
+  source: gwdang
+- identity:
+    category: 主板
+    series: Z890 Pacific
+    spec: LGA1851
+  vendor: 铭瑄
+  channel: 自营
+  url: https://item.jd.com/100007577811.html
+  sp_name: 铭瑄(MAXSUN)MS-iCraft Z890 Pacific 电竞之心游戏主板支持DDR5 CPU 270K/265KF/250K(Intel Z890/LGA 1851)
+  anchor: 销量
+  verified: 2026-10-17 12:43
+  source: gwdang
+  retired: '2026-10-17'   # URL 与 Vertex 撞同一 siteSpuid，归属不明，等 gwdang 曲线商品名核实
+- identity:
+    category: 主板
+    series: Z890 Vertex
+    spec: LGA1851
+  vendor: 铭瑄
+  channel: 自营
+  url: https://item.jd.com/100007577811.html
+  sp_name: 铭瑄(MAXSUN)MS-iCraft Z890 Vertex 电竞之心游戏主板 支持DDR5 CPU 270K/265KF/250K(Intel Z890/LGA 1851)
+  anchor: 销量
+  verified: 2026-10-17 12:43
+  source: gwdang
+  retired: '2026-10-17'   # URL 与 Pacific 撞同一 siteSpuid，归属不明，等 gwdang 曲线商品名核实
+- identity:
+    category: 主板
+    series: Z890 GAMING X
+    spec: LGA1851
+  vendor: 技嘉
+  channel: 官旗
+  url: https://item.jd.com/10026926109337.html
+  sp_name: 技嘉(GIGABYTE)魔鹰X Z890 GAMING X WIFI7 DDR5主板Ultra intel 265K 285K 270K PLUS LGA 1851
+  anchor: 销量
+  verified: 2026-10-17 12:43
+  source: gwdang
