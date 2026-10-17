@@ -378,6 +378,7 @@ def api_mmb_search(q: str, page: int = 1) -> dict:
         "siteid": str(r.get("siteid") or ""),
         "sales": r.get("sales"),
         "monthComment": r.get("monthComment"),
+        "skuid": str(r.get("skuid") or ""),   # 加锚直用（same→siteSpuid 转直链）
         "url": r.get("prourl") or r.get("gourl") or "",
         "is_jd": str(r.get("siteid")) == "1",
     } for r in rows]
@@ -441,6 +442,135 @@ def api_gwd_trend(url: str) -> dict:
     }
     _gwd_trend_cache[url] = (time.time(), out)
     return out
+
+
+REG_PATH = ROOT / "config" / "backfill_manmanbuy.yaml"
+
+
+def _reg_load() -> dict:
+    import yaml
+    return yaml.safe_load(REG_PATH.read_text(encoding="utf-8")) or {}
+
+
+def _reg_save(reg: dict) -> None:
+    """保头部注释写盘（transcribe 同款：只重写 listings 段）。"""
+    import yaml
+    old = REG_PATH.read_text(encoding="utf-8")
+    head = old.split("\nlistings:", 1)[0].rstrip("\n")
+    body = yaml.safe_dump({"listings": reg.get("listings") or []},
+                          allow_unicode=True, sort_keys=False, width=100,
+                          default_flow_style=False).split("\n", 1)[1]
+    REG_PATH.write_text(head + "\nlistings:\n" + body, encoding="utf-8")
+
+
+def _channel_of(shop: str) -> str:
+    """渠道三线规则（prefill_jingfen.channel_of 同款）。"""
+    if "自营" in shop:
+        return "自营"
+    if "旗舰" in shop:
+        return "官旗"
+    return "三方店铺"
+
+
+@app.get("/api/entity-options")
+def api_entity_options() -> dict:
+    """轻量实体清单（加锚下拉用）。"""
+    con = ro_connect()
+    rows = con.execute(
+        "SELECT entity_id, display_name FROM entity "
+        "WHERE domain='hardware' AND active=1 ORDER BY display_name").fetchall()
+    return {"items": [{"id": r["entity_id"], "name": r["display_name"]}
+                      for r in rows]}
+
+
+@app.post("/api/mmb/add-anchor")
+def api_mmb_add_anchor(payload: dict = Body(...)) -> dict:
+    """搜索结果 → 直接入注册表（C of CRUD，2026-10-17 用户口径）。
+
+    人工确认商品后一键加锚：same_by_spbh 取 siteSpuid 拼纯数字京东
+    直链（jingfen/加密链三渠道不认，10-17 实证），店名判定渠道，
+    identity 取自所选实体。人工操作免预算，占单写者锁串行。"""
+    skuid = str(payload.get("skuid") or "").strip()
+    eid = int(payload.get("entity_id") or 0)
+    anchor = payload.get("anchor") or "销量"
+    title = str(payload.get("title") or "")[:120]
+    if not skuid or not eid:
+        raise HTTPException(422, "skuid / entity_id 必填")
+    if anchor not in ("销量", "价格"):
+        raise HTTPException(422, "anchor 只能是 销量/价格")
+    con = ro_connect()
+    erow = con.execute("SELECT identity_json, display_name FROM entity "
+                       "WHERE entity_id=?", (eid,)).fetchone()
+    if not erow:
+        raise HTTPException(404, f"实体 {eid} 不存在")
+    identity = json.loads(erow["identity_json"] or "{}")
+
+    with _mmb_gate().session("webapp 加锚"):
+        same = _mmb().same_by_spbh(f"1|{skuid}")
+    shop = (same[0].get("shopName") or "").strip() if same else ""
+    jd = str((same[0].get("siteSpuid") or "")).strip() if same else ""
+    if not jd.isdigit():
+        raise HTTPException(502, "该候选转不出纯数字京东直链（siteSpuid 缺失），换一个候选")
+    url = f"https://item.jd.com/{jd}.html"
+
+    reg = _reg_load()
+    listings = reg.get("listings") or []
+    if any(it.get("url") == url and not it.get("retired") for it in listings):
+        raise HTTPException(409, f"该商品已在注册表（active）：{url}")
+    listings.append({
+        "identity": identity,
+        "vendor": shop,
+        "channel": _channel_of(shop),
+        "url": url,
+        "sp_name": title or shop,
+        "anchor": anchor,
+        "verified": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "source": "manmanmai",
+    })
+    reg["listings"] = listings
+    _reg_save(reg)
+    return {"ok": True, "url": url, "vendor": shop,
+            "channel": _channel_of(shop), "entity": erow["display_name"]}
+
+
+@app.get("/api/anchors")
+def api_anchors() -> dict:
+    """注册表全量 listing + 实体名解析（锚管理面板，R of CRUD）。"""
+    con = ro_connect()
+    ents = [(json.loads(r["identity_json"] or "{}"), r["display_name"])
+            for r in con.execute("SELECT identity_json, display_name FROM entity "
+                                 "WHERE domain='hardware' AND active=1")]
+    items = []
+    for it in _reg_load().get("listings") or []:
+        ident = it.get("identity") or {}
+        name = next((dn for ed, dn in ents if ed == ident), "")
+        items.append({
+            "url": it.get("url"), "sp_name": (it.get("sp_name") or "")[:60],
+            "vendor": it.get("vendor"), "channel": it.get("channel"),
+            "source": it.get("source") or "manmanmai",
+            "anchor": it.get("anchor"), "retired": it.get("retired"),
+            "retired_reason": it.get("retired_reason"),
+            "entity": name or json.dumps(ident, ensure_ascii=False),
+        })
+    active = sum(1 for x in items if not x["retired"])
+    return {"items": items, "active": active}
+
+
+@app.post("/api/anchors/retire")
+def api_anchors_retire(payload: dict = Body(...)) -> dict:
+    """下线锚（D of CRUD；手册纪律：retire 保留审计行，不物理删除）。"""
+    url = str(payload.get("url") or "")
+    reg = _reg_load()
+    hit = None
+    for it in reg.get("listings") or []:
+        if it.get("url") == url and not it.get("retired"):
+            it["retired"] = datetime.now().strftime("%Y-%m-%d")
+            it["retired_reason"] = str(payload.get("reason") or "人工下线")
+            hit = it
+    if not hit:
+        raise HTTPException(404, f"未找到 active 的该 URL：{url}")
+    _reg_save(reg)
+    return {"ok": True, "url": url}
 
 
 @app.post("/api/mmb/propose")

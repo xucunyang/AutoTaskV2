@@ -242,6 +242,7 @@
       <input id="mmb-q" placeholder="慢慢买搜全网：显卡 RTX 5070 12G">
       <button id="mmb-go">搜</button>
       <button id="prop-go" title="审核价格锚提案：定渠道后誊入注册表">提案审核 (<span id="prop-n">…</span>)</button>
+      <button id="anchors-go" title="注册表锚 CRUD：查看/下线">锚管理</button>
       <button id="tasklog-go" title="任务执行流水（reports/*.log + 闸门状态）">任务流水</button>
     </div>
     <span class="meta" id="meta"></span>
@@ -254,10 +255,43 @@
     <b id="mmb-title" style="font-size:13.5px;color:var(--txt)">搜索结果</b>
     <span>锚实体 →</span>
     <select id="mmb-entity"></select>
-    <span>销量锚=市场主流成交价 · 价格锚=全网最低地板（仅京东/天猫正规链接）。提案进 data/manmanbuy_proposals.yaml，人工核定 channel 后誊入注册表</span>
+    <select id="mmb-sort" onchange="mmbRender()">
+      <option value="price">价格↑</option>
+      <option value="pdesc">价格↓</option>
+      <option value="sales">销量↓</option>
+    </select>
+    <input id="mmb-filter" placeholder="结果内过滤…" oninput="mmbRender()"
+           style="width:110px;font-size:12px">
+    <span>销量锚=市场主流成交价 · 价格锚=全网最低地板（仅京东/天猫正规链接）</span>
     <button class="close" onclick="mmbClose()">收起</button>
   </div>
   <div id="mmb-rows"></div>
+</div>
+<div class="mmb-panel" id="anchor-add-panel" style="width:min(560px,92vw)">
+  <div class="bar">
+    <b style="font-size:13.5px;color:var(--txt)">⚡加为锚（直入注册表）</b>
+    <button class="close" onclick="document.getElementById('anchor-add-panel').classList.remove('show')">收起</button>
+  </div>
+  <div style="padding:10px 14px;display:flex;flex-direction:column;gap:8px;font-size:12.5px">
+    <div id="aa-info" style="color:var(--sub)"></div>
+    <label>归属实体：<select id="aa-entity" style="max-width:100%"></select></label>
+    <label>锚类型：<select id="aa-anchor">
+      <option value="销量">销量锚（市场主流成交价）</option>
+      <option value="价格">价格锚（全网最低地板）</option>
+    </select></label>
+    <div style="color:var(--sub);font-size:11.5px">自动：same→siteSpuid 纯数字直链 · 店名判定渠道 · URL 重复会拒绝</div>
+    <button class="primary" onclick="anchorAddConfirm()">确认加入注册表</button>
+    <div id="aa-status" style="color:var(--sub)"></div>
+  </div>
+</div>
+<div class="mmb-panel" id="anchors-panel" style="width:min(1080px,95vw)">
+  <div class="bar">
+    <b style="font-size:13.5px;color:var(--txt)">锚管理</b>
+    <span id="anchors-stat" style="color:var(--sub);font-size:12px"></span>
+    <label style="font-size:12px"><input type="checkbox" id="anchors-show-retired" onchange="anchorsLoad()"> 显示已下线</label>
+    <button class="close" onclick="document.getElementById('anchors-panel').classList.remove('show')">收起</button>
+  </div>
+  <div id="anchors-rows" style="overflow:auto;max-height:80vh;font-size:12.5px"></div>
 </div>
 <div class="mmb-panel" id="prop-panel" style="width:min(980px,94vw)">
   <div class="bar">
@@ -942,8 +976,33 @@ async function mmbSearch() {
     const d = await fetch(`/api/mmb/search?q=${encodeURIComponent(q)}`).then(r => r.json());
     if (d.detail) { rows.innerHTML = `<div class="mmb-empty">${d.detail}</div>`; return; }
     window._mmbLast = d.results || [];
-    document.getElementById('mmb-title').textContent = `「${q}」${window._mmbLast.length} 条`;
-    rows.innerHTML = window._mmbLast.length ? window._mmbLast.map((r, i) => `
+    window._mmbQ = q;
+    mmbRender();
+  } catch (e) {
+    rows.innerHTML = `<div class="mmb-empty">搜索失败：${e}</div>`;
+  }
+}
+
+const salesNum = s => {
+  if (s == null || s === '') return 0;
+  const m = String(s).replace(/[,+\s人付款收货]/g, '').match(/^([\d.]+)(万)?$/);
+  return m ? parseFloat(m[1]) * (m[2] ? 10000 : 1) : (parseFloat(s) || 0);
+};
+
+function mmbRender() {
+  const rows = document.getElementById('mmb-rows');
+  const all = window._mmbLast || [];
+  const ft = (document.getElementById('mmb-filter').value || '').trim().toLowerCase();
+  const mode = document.getElementById('mmb-sort').value;
+  let list = all.map((r, i) => ({ r, i }))
+    .filter(({ r }) => !ft || `${r.title || ''}${r.mall || ''}`.toLowerCase().includes(ft));
+  list.sort((a, b) =>
+    mode === 'sales' ? salesNum(b.r.sales) - salesNum(a.r.sales)
+    : mode === 'pdesc' ? (b.r.price || 0) - (a.r.price || 0)
+    : (a.r.price || 9e9) - (b.r.price || 9e9));
+  document.getElementById('mmb-title').textContent =
+    `「${window._mmbQ || ''}」${list.length}${ft ? `/${all.length}` : ''} 条`;
+  rows.innerHTML = list.length ? list.map(({ r, i }) => `
       <div class="mmb-row">
         <span class="p">¥${r.price || '-'}</span>
         <span class="t"><a href="${r.url}" target="_blank"
@@ -954,11 +1013,84 @@ async function mmbSearch() {
         <button onclick="mmbTrend(${i})">曲线</button>
         ${r.is_jd ? `
           <button class="anchor-sales" onclick="mmbPropose('sales',${i})">销量锚</button>
-          <button class="anchor-price" onclick="mmbPropose('price',${i})">价格锚</button>` : ''}
-      </div>`).join('') : '<div class="mmb-empty">无结果</div>';
-  } catch (e) {
-    rows.innerHTML = `<div class="mmb-empty">搜索失败：${e}</div>`;
+          <button class="anchor-price" onclick="mmbPropose('price',${i})">价格锚</button>
+          <button title="跳过提案流程，确认商品后直入注册表" onclick="anchorAddModal(${i})">⚡直加锚</button>` : ''}
+      </div>`).join('') : '<div class="mmb-empty">无结果（过滤条件太严？）</div>';
+}
+
+async function anchorAddModal(idx) {
+  const r = (window._mmbLast || [])[idx];
+  if (!r || !r.skuid) { alert('该行没有 skuid，无法转直链'); return; }
+  window._aaRow = r;
+  document.getElementById('aa-info').textContent =
+    `¥${r.price || '?'} · 销:${r.sales || '-'} · ${(r.title || '').slice(0, 64)}`;
+  if (!window._entOpts) {
+    try {
+      window._entOpts = await fetch('/api/entity-options').then(x => x.json());
+      document.getElementById('aa-entity').innerHTML =
+        window._entOpts.items.map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+    } catch (e) { document.getElementById('aa-info').textContent = '实体清单加载失败：' + e; return; }
   }
+  document.getElementById('aa-status').textContent = '';
+  document.getElementById('anchor-add-panel').classList.add('show');
+}
+
+async function anchorAddConfirm() {
+  const r = window._aaRow;
+  if (!r) return;
+  const st = document.getElementById('aa-status');
+  st.textContent = '提交中…';
+  try {
+    const resp = await fetch('/api/mmb/add-anchor', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skuid: r.skuid, title: r.title,
+                             entity_id: +document.getElementById('aa-entity').value,
+                             anchor: document.getElementById('aa-anchor').value })
+    });
+    const d = await resp.json();
+    st.textContent = resp.ok
+      ? `✅ 已入注册表：${d.entity} ← ${d.vendor || '店名待定'}（${d.channel}）`
+      : `❌ ${d.detail || '?'}`;
+    if (resp.ok) anchorsLoad();
+  } catch (e) { st.textContent = '请求失败：' + e; }
+}
+
+async function anchorsLoad() {
+  document.getElementById('anchors-panel').classList.add('show');
+  const box = document.getElementById('anchors-rows');
+  box.innerHTML = '<div class="mmb-empty">加载中…</div>';
+  let d = {};
+  try { d = await fetch('/api/anchors').then(r => r.json()); }
+  catch (e) { box.innerHTML = `<div class="mmb-empty">加载失败：${esc(e)}</div>`; return; }
+  const showRetired = document.getElementById('anchors-show-retired').checked;
+  const items = (d.items || []).filter(x => showRetired || !x.retired);
+  document.getElementById('anchors-stat').textContent =
+    `active ${d.active} / 共 ${d.items.length}`;
+  if (!items.length) { box.innerHTML = '<div class="mmb-empty">空</div>'; return; }
+  box.innerHTML = items.map(x => `
+    <div class="mmb-row" style="${x.retired ? 'opacity:.45' : ''}">
+      <span class="jd" style="${x.retired ? '' : 'background:#16a34a'}">${x.retired ? '已下线' : '在册'}</span>
+      <span class="t" style="max-width:200px">${esc(x.entity)}</span>
+      <span class="m">${esc(x.vendor || '-')}</span>
+      <span class="m">${esc(x.channel || '-')}</span>
+      <span class="m">${esc(x.source)}</span>
+      <span class="m">${x.anchor === '价格' ? '价格锚' : '销量锚'}</span>
+      <span class="t" style="max-width:280px"><a href="${x.url}" target="_blank"
+          style="color:inherit;text-decoration:none">${esc(x.sp_name || x.url)}</a></span>
+      ${x.retired ? `<span class="m" title="${esc(x.retired_reason || '')}">${esc(x.retired || '')}</span>`
+                  : `<button onclick="anchorsRetire('${x.url}')">下线</button>`}
+    </div>`).join('');
+}
+
+async function anchorsRetire(url) {
+  if (!confirm('下线这条锚？（保留审计行，不再采集）')) return;
+  const resp = await fetch('/api/anchors/retire', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, reason: '人工下线' })
+  });
+  const d = await resp.json();
+  if (d.ok) anchorsLoad();
+  else alert('失败：' + (d.detail || '?'));
 }
 
 async function mmbTrend(idx, src = 'mmb') {
@@ -1018,6 +1150,7 @@ async function mmbPropose(anchor, idx) {
 
 // ---------- 提案审核（2026-10-16）：点选 channel/状态，不手改 YAML ----------
 document.getElementById('prop-go').addEventListener('click', propLoad);
+document.getElementById('anchors-go').addEventListener('click', anchorsLoad);
 async function propCount() {
   try {
     const d = await fetch('/api/mmb/proposals').then(r => r.json());
