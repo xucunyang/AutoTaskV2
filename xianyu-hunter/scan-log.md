@@ -1013,3 +1013,47 @@
 - 10-17 22:53:40 AUTO-R43: PARSED total=0 fresh=0
 - 10-17 22:53:40 AUTO-R43: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R43_1017-2249_auto.md
 - 10-17 22:53:41 AUTO-R43: IME restored + sdcard cleaned
+- 10-17 22:53:43 AUTO-R43: DONE round 43
+- 10-17 23:19:02 AUTO-R44: START round 44 (1017-2319)
+- 10-17 23:19:03 PAD R44: LEASE_OK
+- 10-17 23:19:03 AUTO-R44: PAD: LEASE_OK
+- 10-17 23:19:03 PAD R44: DEVICE_STALE, recovering...
+- 10-17 23:19:29 PAD R44: DEVICE_LOST
+- 10-17 23:19:46 PAD R44: DEVICE_STALE, recovering...
+- 10-17 23:20:12 PAD R44: DEVICE_LOST
+- 10-17 23:20:15 PAD R44: DUMP_MISSING (device dropped?), abort round
+- 10-17 23:20:15 PAD R44: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-17 23:20:16 AUTO-R44: PAD: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-17 23:20:16 PAD R44: DONE pad44_1017_2319 (aborted)
+- 10-17 23:20:16 AUTO-R44: PAD: DONE pad44_1017_2319 (aborted)
+- 10-17 23:20:17 R44: LEASE_OK
+- 10-17 23:20:17 AUTO-R44: HONOR: LEASE_OK
+- 10-17 23:20:17 AUTO-R44: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-17 23:20:17 AUTO-R44: HONOR: 件。
+- 10-17 23:20:17 AUTO-R44: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-17 23:20:17 AUTO-R44: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-17 23:20:17 AUTO-R44: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-17 23:20:17 AUTO-R44: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-17 23:20:18 AUTO-R44: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-17 23:20:18 AUTO-R44: HONOR:  
+- 10-17 23:20:49 R44: DEVICE_LOST
+- 10-17 23:20:50 AUTO-R44: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-17 23:20:51 AUTO-R44: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-17 23:21:05 R44: DEVICE_STALE, recovering...
+- 10-17 23:21:37 R44: DEVICE_LOST
+- 10-17 23:21:41 R44: DEVICE_STALE, recovering...
+- 10-17 23:22:13 R44: DEVICE_LOST
+- 10-17 23:22:13 AUTO-R44: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-17 23:22:32 R44: DEVICE_STALE, recovering...
+- 10-17 23:22:45 R44: SWITCHED to wifi device
+- 10-17 23:22:48 R44: DEVICE_STALE, recovering...
+- 10-17 23:22:53 R44: SWITCHED to wifi device
+- 10-17 23:22:54 R44: DUMP_MISSING (device dropped?), abort round
+- 10-17 23:22:54 AUTO-R44: HONOR: DUMP_MISSING (device dropped?), abort round
+- 10-17 23:22:54 R44: DONE round44_1017_2320 (aborted, no home)
+- 10-17 23:22:54 AUTO-R44: HONOR: DONE round44_1017_2320 (aborted, no home)
+- 10-17 23:22:54 AUTO-R44: pad: no scans, skip
+- 10-17 23:22:54 AUTO-R44: honor: no scans, skip
+- 10-17 23:22:54 AUTO-R44: PARSED total=0 fresh=0
+- 10-17 23:22:54 AUTO-R44: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R44_1017-2319_auto.md
+- 10-17 23:22:56 AUTO-R44: IME restored + sdcard cleaned
