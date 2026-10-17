@@ -815,3 +815,46 @@
 - 10-17 20:53:54 AUTO-R39: PARSED total=0 fresh=0
 - 10-17 20:53:54 AUTO-R39: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R39_1017-2049_auto.md
 - 10-17 20:53:55 AUTO-R39: IME restored + sdcard cleaned
+- 10-17 20:53:58 AUTO-R39: DONE round 39
+- 10-17 21:19:03 AUTO-R40: START round 40 (1017-2119)
+- 10-17 21:19:05 PAD R40: LEASE_OK
+- 10-17 21:19:05 AUTO-R40: PAD: LEASE_OK
+- 10-17 21:19:05 PAD R40: DEVICE_STALE, recovering...
+- 10-17 21:19:32 PAD R40: DEVICE_LOST
+- 10-17 21:19:48 PAD R40: DEVICE_STALE, recovering...
+- 10-17 21:20:14 PAD R40: DEVICE_LOST
+- 10-17 21:20:18 PAD R40: DUMP_MISSING (device dropped?), abort round
+- 10-17 21:20:18 PAD R40: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-17 21:20:18 AUTO-R40: PAD: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-17 21:20:18 PAD R40: DONE pad40_1017_2119 (aborted)
+- 10-17 21:20:18 AUTO-R40: PAD: DONE pad40_1017_2119 (aborted)
+- 10-17 21:20:19 R40: LEASE_OK
+- 10-17 21:20:19 AUTO-R40: HONOR: LEASE_OK
+- 10-17 21:20:19 AUTO-R40: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文件。
+- 10-17 21:20:20 AUTO-R40: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-17 21:20:20 AUTO-R40: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-17 21:20:20 AUTO-R40: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-17 21:20:20 AUTO-R40: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-17 21:20:20 AUTO-R40: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-17 21:20:20 AUTO-R40: HONOR:  
+- 10-17 21:20:52 R40: DEVICE_LOST
+- 10-17 21:20:52 AUTO-R40: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-17 21:20:53 AUTO-R40: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-17 21:21:07 R40: DEVICE_STALE, recovering...
+- 10-17 21:21:40 R40: DEVICE_LOST
+- 10-17 21:21:43 R40: DEVICE_STALE, recovering...
+- 10-17 21:22:15 R40: DEVICE_LOST
+- 10-17 21:22:16 AUTO-R40: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-17 21:22:34 R40: DEVICE_STALE, recovering...
+- 10-17 21:23:07 R40: DEVICE_LOST
+- 10-17 21:23:10 R40: DEVICE_STALE, recovering...
+- 10-17 21:23:42 R40: DEVICE_LOST
+- 10-17 21:23:43 R40: DUMP_MISSING (device dropped?), abort round
+- 10-17 21:23:43 AUTO-R40: HONOR: DUMP_MISSING (device dropped?), abort round
+- 10-17 21:23:43 R40: DONE round40_1017_2120 (aborted, no home)
+- 10-17 21:23:43 AUTO-R40: HONOR: DONE round40_1017_2120 (aborted, no home)
+- 10-17 21:23:43 AUTO-R40: pad: no scans, skip
+- 10-17 21:23:43 AUTO-R40: honor: no scans, skip
+- 10-17 21:23:43 AUTO-R40: PARSED total=0 fresh=0
+- 10-17 21:23:43 AUTO-R40: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R40_1017-2119_auto.md
+- 10-17 21:23:44 AUTO-R40: IME restored + sdcard cleaned
