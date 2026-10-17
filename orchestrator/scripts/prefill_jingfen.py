@@ -18,6 +18,7 @@ match_note），一次写盘。
 from __future__ import annotations
 
 import difflib
+import re
 import sys
 from datetime import datetime
 from pathlib import Path

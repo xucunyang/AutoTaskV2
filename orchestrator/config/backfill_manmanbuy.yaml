@@ -220,6 +220,7 @@ listings:
   shop_url: https://apph5.manmanbuy.com/redirectjd.aspx?skuid=3XCylg3WotmGpIJt2q!!110001000101100&otherFrom=price
   sp_name: 微星（MSI）魔龙 GeForce RTX 5060 Ti 16G GAMING
   verified: 2026-10-15 00:36
+  retired: '2026-10-17'
 - identity:
     category: 显卡
     series: RX 9070
@@ -229,6 +230,7 @@ listings:
   url: https://jingfen.jd.com/detail/2W983jp3GnsF8PgLsKGUs2mLqvHlQ_3rtcvZYknf98aEMsaU.html
   sp_name: 讯景（XFX）AMD RADEON RX 9070 雪狼 16GB 白
   verified: 2026-10-15 09:3x
+  retired: '2026-10-17'
 - identity:
     category: CPU
     series: 7800X3D
@@ -239,6 +241,7 @@ listings:
   sp_name: AMD锐龙7 7800X3D游戏处理器8核16线程104MB游戏缓存 加速频率至高5GHz盒装CPU 畅玩打瓦/三角洲/CSGO
   anchor: 销量
   verified: 2026-10-16 23:58
+  source: gwdang
 - identity:
     category: CPU
     series: 12600KF
@@ -249,6 +252,7 @@ listings:
   sp_name: 英特尔(Intel)酷睿12代 i5处理器12600KF 10核16线程 单核睿频至高可达4.9Ghz 20M三级缓存 盒装CPU
   anchor: 销量
   verified: 2026-10-16 23:58
+  source: gwdang
 - identity:
     category: CPU
     series: 14700K
@@ -259,6 +263,7 @@ listings:
   sp_name: 英特尔(Intel)酷睿14代 i7处理器14700KF 20核28线程 五年质保 盒装台式机CPU 畅玩三角洲行动/无畏契约
   anchor: 销量
   verified: 2026-10-16 23:58
+  source: gwdang
 - identity:
     category: CPU
     series: 14900K
@@ -269,6 +274,7 @@ listings:
   sp_name: 英特尔(Intel)酷睿14代 i9处理器14900K 24核32线程 五年质保 盒装台式机CPU 畅玩三角洲行动/无畏契约
   anchor: 销量
   verified: 2026-10-16 23:58
+  source: gwdang
 - identity:
     category: CPU
     series: Core i5-14600KF
@@ -279,6 +285,7 @@ listings:
   sp_name: 英特尔(Intel)酷睿14代 i5处理器14600KF 14核20线程 24M三级缓存 盒装台式机CPU 畅玩三角洲行动/无畏契约
   anchor: 销量
   verified: 2026-10-16 23:58
+  source: gwdang
 - identity:
     category: CPU
     series: Ryzen 5 9600X
@@ -289,6 +296,7 @@ listings:
   sp_name: AMD锐龙 5 9600X处理器(R5) 4nm 6核12线程 加速频率至高5.4GHz 盒装CPU 畅玩打瓦/三角洲/CSGO
   anchor: 销量
   verified: 2026-10-16 23:58
+  source: gwdang
 - identity:
     category: CPU
     series: Ryzen 7 9700X
@@ -299,6 +307,7 @@ listings:
   sp_name: AMD锐龙 7 9700X 处理器(R7) 4nm 8核16线程 加速频率至高5.5GHz 盒装CPU 畅玩打瓦/三角洲/CSGO
   anchor: 销量
   verified: 2026-10-16 23:58
+  source: gwdang
 - identity:
     category: 内存
     series: DDR5 5600
@@ -309,6 +318,7 @@ listings:
   sp_name: 美商海盗船 (USCORSAIR) 32GB(16Gx2)套装 DDR5 5600 台式机内存条 复仇者系列 游戏条
   anchor: 销量
   verified: 2026-10-16 23:58
+  source: gwdang
 - identity:
     category: 内存
     series: DDR5 6000
@@ -319,6 +329,7 @@ listings:
   sp_name: 光威(Gloway)16GB DDR5 6000 台式机内存条 天策 马甲条 精选颗粒 CL46 皓月白 AI电脑配件升级
   anchor: 销量
   verified: 2026-10-16 23:58
+  source: gwdang
 - identity:
     category: 内存
     series: DDR5 6400
@@ -329,6 +340,7 @@ listings:
   sp_name: G.SKILL芝奇(G.SKILL)32GB(16Gx2)套装 DDR5 6400频率 台式机内存条-幻锋戟RGB灯条(黯雾黑)/C32
   anchor: 销量
   verified: 2026-10-16 23:58
+  source: gwdang
 - identity:
     category: 内存
     series: DDR5 6400
@@ -339,6 +351,7 @@ listings:
   sp_name: 金士顿(Kingston)FURY 64GB(32G×2)套装 DDR5 6400 台式机内存条 Beast超级野兽 RGB 海A-die CL32 支持XMP&EXPO
   anchor: 销量
   verified: 2026-10-16 23:58
+  source: gwdang
 - identity:
     category: 固态硬盘
     series: 致态 TiPlus7100

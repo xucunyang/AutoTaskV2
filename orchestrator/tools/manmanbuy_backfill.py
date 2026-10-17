@@ -85,6 +85,9 @@ def load_registry(contract: Contract | None = None) -> dict:
             raise ValueError(f"listings[{i}] url 非京东详情页: {it.get('url')!r}")
         if it.get("channel") not in contract.attrs["channel"]["values"]:
             raise ValueError(f"listings[{i}] channel={it.get('channel')!r} 不合法")
+        # per-listing 数据源（10-17 gwdang 顶班）：缺省 manmanmai
+        if it.get("source", "manmanmai") not in contract.attrs["source"]["values"]:
+            raise ValueError(f"listings[{i}] source={it.get('source')!r} 不合法")
         vendor = it.get("vendor")
         if vendor and vendor not in contract.attrs["vendor"]["values"]:
             raise ValueError(f"listings[{i}] vendor={vendor!r} 不合法")
@@ -127,7 +130,9 @@ def trend_to_series(trend: dict, listing: dict, source: str) -> dict:
         "shop": {"name": listing["sp_name"], "platform": "京东",
                  # 溯源优先显式 shop_url（如 redirectjd 跳转页），否则采集键
                  "url": listing.get("shop_url") or listing["url"]},
-        "source_url": SOURCE_URL,
+        # 数据来源页：慢买 tool 页 / 购物党趋势页（gwdang 顶班轨）
+        "source_url": (SOURCE_URL if source == "manmanmai"
+                       else "https://www.gwdang.com/trend"),
         "_source_track": source,
     }
 
@@ -153,14 +158,38 @@ def _stamp(msg: str) -> None:
     print(f"[{_ts()}] {msg}", flush=True)
 
 
+_GWD = None   # gwdang 客户端单例（_gwd() 惰性初始化）
+
+
+def _gwd():
+    """gwdang 客户端（惰性单例）：慢买 0 点锚的顶班数据源。
+
+    节流走 gwdang 预置档（Pacer 4~12s/每 8 发歇 5~15 分钟），不占 mmb
+    闸门预算——两渠道两本账（操作手册 §7）。"""
+    global _GWD
+    if _GWD is None:
+        from tools.gwdang_client import Gwdang
+        from channel_gate import Pacer
+        _GWD = Gwdang(pacer=Pacer.for_channel("gwdang"))
+        _GWD.load_session()   # 无会话匿名跑：url_to_dp 可用，data_www 可能 403
+    return _GWD
+
+
 def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
                  gate=None) -> dict:
-    print(f"── 采集 {len(registry['listings'])} 锚 · {len(registry['listings'])} 发预算内逐条打 ──")
+    n_gwd = sum(1 for x in registry["listings"]
+                if (x.get("source") or "manmanmai") == "gwdang")
+    print(f"── 采集 {len(registry['listings'])} 锚"
+          f"（慢买 {len(registry['listings']) - n_gwd} / gwdang 顶班 {n_gwd}）──")
     dumps = {"fetched_at": datetime.now(timezone.utc).isoformat(),
              "listings": []}
     stopped = 0
     for i, it in enumerate(registry["listings"]):
-        if gate is not None:
+        src = it.get("source") or "manmanmai"
+        if src == "gwdang":
+            # gwdang 轨：自己的 Pacer 节流，不占 mmb 预算（单写者按渠道分账）
+            _gwd().pacer.wait()
+        elif gate is not None:
             # 治理闸门（R1/R2/R4 机制化）：拟人间隔+批间休息+预算扣减，超了 fail-closed
             gate.wait()
             if not gate.spend(1, it.get("sp_name", "")):
@@ -173,7 +202,8 @@ def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
             time.sleep(random.uniform(*sleep_range))
         name = it["sp_name"][:30]
         try:
-            trend = mmb.trend(it["url"])
+            trend = (_gwd().trend(it["url"]) if src == "gwdang"
+                     else mmb.trend(it["url"]))
         except SessionExpired:
             raise   # 全局会话死，整批无意义，交上层提示人工 login
         except Exception as e:
@@ -184,9 +214,10 @@ def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
         dumps["listings"].append({
             "identity": it["identity"], "url": it["url"],
             "sp_name": it["sp_name"], "channel": it["channel"],
-            "vendor": it.get("vendor") or "", "trend": trend})
+            "vendor": it.get("vendor") or "", "source": src,
+            "trend": trend})
         if n:
-            print(f"[{_ts()}] ✓ {name} · {n} 点")
+            print(f"[{_ts()}] ✓ {name} · {n} 点{'（gwdang）' if src == 'gwdang' else ''}")
         else:
             print(f"[{_ts()}] ✗ {name} · 0 点（listing 疑似失效，跳过）")
     return dumps
@@ -195,10 +226,18 @@ def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
 def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
         dry_run: bool = False, skip_ingest: bool = False,
         sleep_min: float = 5.0, sleep_max: float = 20.0,
-        only: str | None = None, gate: "ChannelGate | None" = None) -> int:
+        only: str | None = None, gate: "ChannelGate | None" = None,
+        gwd_only: bool = False) -> int:
     # 契约/注册表属代码资产，固定从模块 ROOT 读；root 只重定向产物
     contract = Contract.load(ROOT, "hardware")
     registry = load_registry(contract)
+    if gwd_only:
+        # 只采 gwdang 顶班锚（不占慢买预算，10-17 重放用）
+        registry["listings"] = [it for it in registry["listings"]
+                                if (it.get("source") or "manmanmai") == "gwdang"]
+        if not registry["listings"]:
+            print("--gwd-only 未命中任何 gwdang listing")
+            return 2
     if only:
         registry["listings"] = [it for it in registry["listings"]
                                 if only in it["url"] or only in it["sp_name"]]
@@ -230,15 +269,17 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
     for it in dumps["listings"]:
         reg = reg_by_url.get(it["url"]) or {}
         it = {**it, **{k: v for k, v in reg.items() if v and not it.get(k)}}
+        # per-listing 数据源（gwdang 顶班轨优先，缺省慢买）
+        src = it.get("source") or registry["source"]
         try:
-            series = trend_to_series(it["trend"], it, registry["source"])
+            series = trend_to_series(it["trend"], it, src)
         except ValueError as e:
             print(f"[{_ts()}] − {it['sp_name'][:28]} · 无价格点未入库（{e}）")
             continue
         extra = ({"vendor": it["vendor"]} if it.get("vendor") else {}) \
             | ({"anchor": it["anchor"]} if it.get("anchor") else {})
         rows = convert(series, entity_hint=it["identity"],
-                       source=registry["source"], channel=it["channel"],
+                       source=src, channel=it["channel"],
                        extra_attrs=extra)
         # 促销事件逐日判定（convert 是批量口径，逐行覆写 optional 维度）
         for row, remark in zip(rows, series["remarks"]):
@@ -568,6 +609,8 @@ def main(argv: list[str] | None = None) -> int:
     rn.add_argument("--dry-run", action="store_true")
     rn.add_argument("--skip-ingest", action="store_true")
     rn.add_argument("--only", default=None, help="URL/名称子串过滤")
+    rn.add_argument("--gwd-only", action="store_true",
+                    help="只采 gwdang 顶班锚（source=gwdang，不占慢买预算）")
     rn.add_argument("--sleep-min", type=float, default=5.0,
                     help="节流随机下限秒（默认 5）")
     rn.add_argument("--sleep-max", type=float, default=20.0,
@@ -605,14 +648,14 @@ def main(argv: list[str] | None = None) -> int:
         return run(args.date_dir, root=root, from_cache=args.from_cache,
                    dry_run=args.dry_run, skip_ingest=args.skip_ingest,
                    sleep_min=args.sleep_min, sleep_max=args.sleep_max,
-                   only=args.only)
+                   only=args.only, gwd_only=args.gwd_only)
     gate = ChannelGate("mmb", budget=60, log=_stamp)   # R2：全接口日总预算（操作手册红线）
     try:
         with gate.session("run 采集"):
             return run(args.date_dir, root=root, from_cache=args.from_cache,
                        dry_run=args.dry_run, skip_ingest=args.skip_ingest,
                        sleep_min=args.sleep_min, sleep_max=args.sleep_max,
-                       only=args.only, gate=gate)
+                       only=args.only, gate=gate, gwd_only=args.gwd_only)
     except SessionExpired as e:
         print(_fail_label(e))
         return 2
