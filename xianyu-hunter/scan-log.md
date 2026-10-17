@@ -684,3 +684,46 @@
 - 10-16 14:51:04 AUTO-R36: PAD:     + FullyQualifiedErrorId : FileNotFoundException
 - 10-16 14:51:04 AUTO-R36: PAD:
 - 10-16 15:32:37 R37: 荣耀单机扫 4 词（平板全程掉线）；净新增 2 台三件套（¥9800 清新的果蹦 / ¥9888 DonaldTrp）+ 1 批发价锚点 + ¥10600 降价 99 元情报；发现闲鱼内存筛选器最高 32GB 无 64G 选项；报告 reports/R37_1016-1530_荣耀单机扫描.md
+- 10-17 19:49:09 AUTO-R37: START round 37 (1017-1949)
+- 10-17 19:49:12 PAD R37: LEASE_OK
+- 10-17 19:49:12 AUTO-R37: PAD: LEASE_OK
+- 10-17 19:49:12 PAD R37: DEVICE_STALE, recovering...
+- 10-17 19:49:38 PAD R37: DEVICE_LOST
+- 10-17 19:49:55 PAD R37: DEVICE_STALE, recovering...
+- 10-17 19:50:22 PAD R37: DEVICE_LOST
+- 10-17 19:50:26 PAD R37: DUMP_MISSING (device dropped?), abort round
+- 10-17 19:50:26 PAD R37: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-17 19:50:27 AUTO-R37: PAD: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-17 19:50:27 PAD R37: DONE pad37_1017_1949 (aborted)
+- 10-17 19:50:27 AUTO-R37: PAD: DONE pad37_1017_1949 (aborted)
+- 10-17 19:50:29 R37: LEASE_OK
+- 10-17 19:50:29 AUTO-R37: HONOR: LEASE_OK
+- 10-17 19:50:29 AUTO-R37: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-17 19:50:29 AUTO-R37: HONOR: 件。
+- 10-17 19:50:29 AUTO-R37: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-17 19:50:29 AUTO-R37: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-17 19:50:29 AUTO-R37: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-17 19:50:29 AUTO-R37: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-17 19:50:29 AUTO-R37: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-17 19:50:30 AUTO-R37: HONOR:  
+- 10-17 19:51:01 R37: DEVICE_LOST
+- 10-17 19:51:01 AUTO-R37: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-17 19:51:02 AUTO-R37: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-17 19:51:17 R37: DEVICE_STALE, recovering...
+- 10-17 19:51:49 R37: DEVICE_LOST
+- 10-17 19:51:53 R37: DEVICE_STALE, recovering...
+- 10-17 19:52:25 R37: DEVICE_LOST
+- 10-17 19:52:26 AUTO-R37: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-17 19:52:45 R37: DEVICE_STALE, recovering...
+- 10-17 19:53:17 R37: DEVICE_LOST
+- 10-17 19:53:21 R37: DEVICE_STALE, recovering...
+- 10-17 19:53:54 R37: DEVICE_LOST
+- 10-17 19:53:55 R37: DUMP_MISSING (device dropped?), abort round
+- 10-17 19:53:55 AUTO-R37: HONOR: DUMP_MISSING (device dropped?), abort round
+- 10-17 19:53:56 R37: DONE round37_1017_1950 (aborted, no home)
+- 10-17 19:53:56 AUTO-R37: HONOR: DONE round37_1017_1950 (aborted, no home)
+- 10-17 19:53:56 AUTO-R37: pad: no scans, skip
+- 10-17 19:53:56 AUTO-R37: honor: no scans, skip
+- 10-17 19:53:56 AUTO-R37: PARSED total=0 fresh=0
+- 10-17 19:53:56 AUTO-R37: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R37_1017-1949_auto.md
+- 10-17 19:53:57 AUTO-R37: IME restored + sdcard cleaned
