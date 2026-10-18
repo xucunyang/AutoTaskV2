@@ -588,6 +588,10 @@ def api_anchors_upsert(payload: dict = Body(...)) -> dict:
     anchor = payload.get("anchor") or "销量"
     if not url or not eid:
         raise HTTPException(422, "url / entity_id 必填")
+    sp_name = str(payload.get("sp_name") or "").strip()
+    if not sp_name:
+        raise HTTPException(422, "商品名（sp_name）必填——锚管理列表与提案卡显示用，"
+                                 "填慢买/京东商品标题")
     if not re.search(r"item\.jd\.com/\d+\.html$", url):
         raise HTTPException(422, "URL 必须是纯数字京东直链 item.jd.com/<数字>.html"
                                  "（jingfen/加密串三渠道不认，10-17 实证）")
@@ -628,7 +632,7 @@ def api_anchors_upsert(payload: dict = Body(...)) -> dict:
             "vendor": str(payload.get("vendor") or "").strip(),
             "channel": str(payload.get("channel") or "待核").strip(),
             "url": url,
-            "sp_name": str(payload.get("sp_name") or "")[:120],
+            "sp_name": sp_name[:120],
             "anchor": anchor,
             "verified": now,
             "source": "manmanmai",

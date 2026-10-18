@@ -580,3 +580,40 @@ listings:
   source: gwdang
   retired: '2026-10-17'
   retired_reason: 技嘉Z890 GX 双渠道0点
+- identity:
+    category: 显卡
+    series: RTX 5090
+    spec: 32GB
+  vendor: 七彩虹京东自营旗舰店
+  channel: 自营
+  url: https://item.jd.com/100193851132.html
+  sp_name: 七彩虹(Colorful)iGame GeForce RTX 5070 Advanced OC 柒小希首发纪念版 12GB 电竞光追游戏设计电脑显卡
+  anchor: 销量
+  verified: 2026-10-17 22:30
+  source: manmanmai
+  retired: '2026-10-17'
+  retired_reason: E2E 测试后撤销
+- identity:
+    category: 显卡
+    series: RTX 5090
+    spec: 32GB
+  vendor: 测试店改
+  channel: 官旗
+  url: https://item.jd.com/100193851132.html
+  sp_name: E2E 测试锚
+  anchor: 销量
+  verified: 2026-10-18 09:22
+  source: manmanmai
+  retired: '2026-10-18'
+  retired_reason: E2E 后清理
+- identity:
+    category: CPU
+    series: 270K
+    spec: ''
+  vendor: 英特尔京东自营
+  channel: 自营
+  url: https://item.jd.com/10213988708349.html
+  sp_name: 英特尔酷睿 Ultra 7 270K Plus
+  anchor: 销量
+  verified: 2026-10-18 21:09
+  source: manmanmai

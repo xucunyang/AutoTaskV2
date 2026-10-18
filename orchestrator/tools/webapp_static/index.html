@@ -1153,7 +1153,7 @@ async function anchorsLoad() {
       <span class="t" style="max-width:280px"><a href="${x.url}" target="_blank"
           style="color:inherit;text-decoration:none">${esc(x.sp_name || x.url)}</a></span>
       ${x.retired ? `<span class="m" title="${esc(x.retired_reason || '')}">${esc(x.retired || '')}</span>`
-                  : `<button onclick="anchorFormEdit('${x.url}')">✏️ 改</button>
+                  : `<button onclick="anchorFormOpen('${x.url}')">✏️ 改</button>
                      <button onclick="anchorsRetire('${x.url}')">下线</button>`}
     </div>`).join('');
 }
@@ -1195,7 +1195,12 @@ async function anchorFormOpen(originalUrl) {
 async function anchorSave() {
   const url = document.getElementById('af-url').value.trim();
   const eid = +document.getElementById('af-entity').value;
-  if (!url || !eid) { document.getElementById('af-status').textContent = 'URL 和实体必填'; return; }
+  const spn = document.getElementById('af-spname').value.trim();
+  if (!url || !eid || !spn) {
+    document.getElementById('af-status').textContent =
+      !url || !eid ? 'URL 和实体必填' : '商品名必填（锚管理/提案卡显示用）';
+    return;
+  }
   const payload = {
     url, entity_id: eid,
     vendor: document.getElementById('af-vendor').value.trim(),
