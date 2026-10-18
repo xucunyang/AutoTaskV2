@@ -346,6 +346,48 @@ elif page == PAGES[2]:
 # ---------------------------------------------------------------- 搜索加锚
 elif page == PAGES[3]:
     st.title("🔍 搜索加锚（人工免预算）")
+    with st.expander("🧬 新建实体（没有想要的 SKU 时先建它）"):
+        cc1, cc2 = st.columns(2)
+        nc_cat = cc1.selectbox("品类", ["显卡", "CPU", "主板", "内存", "固态硬盘"],
+                               key="nc-cat")
+        nc_series = cc2.text_input("系列", key="nc-series",
+                                   placeholder="RTX 5090D V2")
+        nc_spec = st.text_input("规格", key="nc-spec", placeholder="24GB")
+        nc_disp = st.text_input("显示名（可空，缺省=系列 规格）", key="nc-display")
+        if st.button("创建实体"):
+            if not nc_series.strip() or not nc_spec.strip():
+                st.error("系列 / 规格必填")
+            else:
+                ident = {"category": nc_cat, "series": nc_series.strip(),
+                         "spec": nc_spec.strip()}
+                ident_json = json.dumps(ident, ensure_ascii=False)
+                con = ro()
+                dup = con.execute(
+                    "SELECT entity_id FROM entity WHERE identity_json=? AND active=1",
+                    (ident_json,)).fetchone()
+                con.close()
+                if dup:
+                    st.warning(f"已存在（entity_id {dup[0]}），直接选用即可")
+                else:
+                    from tools.sku_db import connect
+                    display = nc_disp.strip() or f"{ident['series']} {ident['spec']}"
+                    con = connect(DB)
+                    con.execute(
+                        "INSERT INTO entity (domain, identity_json, display_name, "
+                        "aliases, active, created_at, updated_at) VALUES "
+                        "('hardware', ?, ?, '[]', 1, datetime('now'), datetime('now'))",
+                        (ident_json, display))
+                    con.commit()
+                    con.close()
+                    seed_path = ROOT / "config" / "contracts" / "hardware_entities.yaml"
+                    seed = yaml.safe_load(seed_path.read_text(encoding="utf-8")) or {}
+                    seed.setdefault("entities", []).append(
+                        {"identity": ident, "display_name": display, "aliases": []})
+                    seed_path.write_text(
+                        yaml.safe_dump(seed, allow_unicode=True, sort_keys=False),
+                        encoding="utf-8")
+                    st.cache_data.clear()
+                    st.success(f"✅ 已创建：{display}（下拉里选它）")
     q = st.text_input("慢慢买搜全网", placeholder="例：RTX 5070 12G")
     if st.button("搜") and q:
         with st.spinner("搜索中…"):

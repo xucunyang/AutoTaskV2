@@ -1,150 +1,325 @@
-# 硬件域首发实体种子清单（Q7 拍板：~30 个主流 SKU，P0 建库时导入）。
-# identity 键序 = 契约声明序 [category, series, spec]。
-# perf_anchor 留空：Q14 拍板用手机看京东/天猫官方旗舰店销量定基底
-# （同代销量最大者=1.0），P0 骨架完成后采集时顺带定，不在此猜。
 domain: hardware
 entities:
-  # ---- NVIDIA 50 系（已发售全型号，R30 核对于 2026-10-11）----
-  - identity: {category: 显卡, series: RTX 5090, spec: 32GB}
-    display_name: RTX 5090 32GB
-    aliases: ["5090", "RTX5090"]
-  - identity: {category: 显卡, series: RTX 5090D, spec: 32GB}
-    display_name: RTX 5090D 32GB
-    aliases: ["5090D", "5090 D"]
-  - identity: {category: 显卡, series: RTX 5090D V2, spec: 24GB}
-    display_name: RTX 5090D V2 24GB
-    aliases: ["5090D V2", "5090Dv2", "5090 D v2"]
-  - identity: {category: 显卡, series: RTX 5080, spec: 16GB}
-    display_name: RTX 5080 16GB
-  - identity: {category: 显卡, series: RTX 5070 Ti, spec: 16GB}
-    display_name: RTX 5070 Ti 16GB
-  - identity: {category: 显卡, series: RTX 5070, spec: 12GB}
-    display_name: RTX 5070 12GB
-  - identity: {category: 显卡, series: RTX 5060 Ti, spec: 16GB}
-    display_name: RTX 5060 Ti 16GB
-  - identity: {category: 显卡, series: RTX 5060 Ti, spec: 8GB}
-    display_name: RTX 5060 Ti 8GB
-    aliases: ["5060Ti 8G", "5060 TI 8GB"]
-  - identity: {category: 显卡, series: RTX 5060, spec: 8GB}
-    display_name: RTX 5060 8GB
-  - identity: {category: 显卡, series: RTX 5050, spec: 8GB}
-    display_name: RTX 5050 8GB
-  # ---- AMD RX 9000 系 ----
-  - identity: {category: 显卡, series: RX 9070 XT, spec: 16GB}
-    display_name: RX 9070 XT 16GB
-  - identity: {category: 显卡, series: RX 9070, spec: 16GB}
-    display_name: RX 9070 16GB
-  - identity: {category: 显卡, series: RX 9070 GRE, spec: 12GB}
-    display_name: RX 9070 GRE 12GB
-    aliases: ["9070 GRE", "9070GRE"]
-  - identity: {category: 显卡, series: RX 9060 XT, spec: 16GB}
-    display_name: RX 9060 XT 16GB
-  - identity: {category: 显卡, series: RX 9060 XT, spec: 8GB}
-    display_name: RX 9060 XT 8GB
-  - identity: {category: 显卡, series: RX 9050, spec: 8GB}
-    display_name: RX 9050 8GB
-  # ---- Intel Arc B 系 ----
-  - identity: {category: 显卡, series: Arc B580, spec: 12GB}
-    display_name: Arc B580 12GB
-    aliases: ["B580", "b580"]
-  - identity: {category: 显卡, series: Arc B570, spec: 10GB}
-    display_name: Arc B570 10GB
-    aliases: ["B570"]
-  # ---- 40 系过渡款（清仓期仍在售）----
-  - identity: {category: 显卡, series: RTX 4070 Super, spec: 12GB}
-    display_name: RTX 4070 Super 12GB
-  - identity: {category: 显卡, series: RTX 4060 Ti, spec: 16GB}
-    display_name: RTX 4060 Ti 16GB
-  - identity: {category: 显卡, series: RTX 4060 Ti, spec: 8GB}
-    display_name: RTX 4060 Ti 8GB
-  - identity: {category: 显卡, series: RTX 4060, spec: 8GB}
-    display_name: RTX 4060 8GB
-  # 观察名单（未发售不入库，发售即加）：
-  #   RTX 50 SUPER 系列（5060S 12G / 5070S 18G / 5070TiS 24G / 5080S 24G，
-  #   传闻 2026 末-2027 初）；5070 官方无 16G 版（16G 是 5070 Ti）。
-  # ---- CPU ----
-  - identity: {category: CPU, series: Ryzen 7 9800X3D, spec: ""}
-    display_name: Ryzen 7 9800X3D
-    aliases: ["9800X3D", "R7 9800X3D"]
-  - identity: {category: CPU, series: Ryzen 7 9700X, spec: ""}
-    display_name: Ryzen 7 9700X
-  - identity: {category: CPU, series: Ryzen 5 9600X, spec: ""}
-    display_name: Ryzen 5 9600X
-  - identity: {category: CPU, series: Core i5-14600KF, spec: ""}
-    display_name: Core i5-14600KF
-    aliases: ["14600KF", "i5 14600KF"]
-  - identity: {category: CPU, series: Core Ultra 7 265K, spec: ""}
-    display_name: Core Ultra 7 265K
-    aliases: ["265K", "Ultra7 265K"]
-  # ---- 主板 ----
-  - identity: {category: 主板, series: B650M, spec: AM5}
-    display_name: B650M (AM5)
-  - identity: {category: 主板, series: Z890, spec: LGA1851}
-    display_name: Z890 (LGA1851)
-  - identity: {category: 主板, series: B760M, spec: LGA1700}
-    display_name: B760M (LGA1700)
-  # ---- 内存 ----
-  - identity: {category: 内存, series: DDR5 6000, spec: 16GB×2}
-    display_name: DDR5 6000 16GB×2
-  - identity: {category: 内存, series: DDR5 6400, spec: 16GB×2}
-    display_name: DDR5 6400 16GB×2
-  - identity: {category: 内存, series: DDR5 5600, spec: 16GB×2}
-    display_name: DDR5 5600 16GB×2
-  # ---- 固态硬盘 ----
-  # R28：spec 必须含接口/协议（PCIe/NVMe 影响价格，只写容量=比价失真）
-  - identity: {category: 固态硬盘, series: 致态 TiPlus7100, spec: 1TB PCIe4.0 NVMe}
-    display_name: 致态 TiPlus7100 1TB PCIe4.0
-  - identity: {category: 固态硬盘, series: 三星 990 EVO, spec: 1TB PCIe4.0 NVMe}
-    display_name: 三星 990 EVO 1TB
-  - identity: {category: 固态硬盘, series: WD SN770, spec: 1TB}
-    display_name: WD SN770 1TB
-
-  # ---- CPU 扩充（2026-10-15 用户圈定：主流在售补齐）----
-  # K/KF 合并跟踪（同一型号数字， 价差小）；series=标题稳定 token
-  - identity: {category: CPU, series: 7800X3D, spec: ''}
-    display_name: Ryzen 7 7800X3D
-    aliases: ["R7 7800X3D", "锐龙7 7800X3D"]
-  - identity: {category: CPU, series: 9950X3D, spec: ''}
-    display_name: Ryzen 9 9950X3D
-    aliases: ["R9 9950X3D"]
-  - identity: {category: CPU, series: 12600KF, spec: ''}
-    display_name: Core i5-12600KF
-    aliases: ["12600K", "i5 12600KF"]
-  - identity: {category: CPU, series: 14700K, spec: ''}
-    display_name: Core i7-14700K
-    aliases: ["14700KF", "i7 14700K"]
-  - identity: {category: CPU, series: 14900K, spec: ''}
-    display_name: Core i9-14900K
-    aliases: ["14900KF", "i9 14900K"]
-  - identity: {category: CPU, series: 245K, spec: ''}
-    display_name: Core Ultra 5 245K
-    aliases: ["245KF", "Ultra5 245K"]
-  - identity: {category: CPU, series: 270K, spec: ''}
-    display_name: Core Ultra 7 270K
-    aliases: ["270KF", "Ultra7 270K"]
-  - identity: {category: CPU, series: 285K, spec: ''}
-    display_name: Core Ultra 9 285K
-    aliases: ["285KF", "Ultra9 285K"]
-  # ---- 内存扩充（2026-10-15：高频段 + 大容量）----
-  - identity: {category: 内存, series: DDR5 7200, spec: 32GB(16G×2)}
-    display_name: DDR5 7200 32GB(16G×2)
-  - identity: {category: 内存, series: DDR5 8000, spec: 32GB(16G×2)}
-    display_name: DDR5 8000 32GB(16G×2)
-  - identity: {category: 内存, series: DDR5 6400, spec: 64GB(32G×2)}
-    display_name: DDR5 6400 64GB(32G×2)
-  # ---- 固态扩充（2026-10-15：512G 段 + 2TB 甜点）----
-  - identity: {category: 固态硬盘, series: 致态 Ti600s, spec: 512GB PCIe4.0 NVMe}
-    display_name: 致态 Ti600s 512GB
-  - identity: {category: 固态硬盘, series: 宏碁掠夺者, spec: 2TB PCIe4.0 NVMe}
-    display_name: 宏碁掠夺者 2TB NVMe
-  # ---- 主板扩充（2026-10-15：AM5/Z890 低中高三档）----
-  - identity: {category: 主板, series: B850M, spec: AM5}
-    display_name: B850M (AM5 中端)
-  - identity: {category: 主板, series: X870E, spec: AM5}
-    display_name: X870E (AM5 高端)
-  - identity: {category: 主板, series: Z890 Pacific, spec: LGA1851}
-    display_name: Z890 Pacific (入门)
-  - identity: {category: 主板, series: Z890 Vertex, spec: LGA1851}
-    display_name: Z890 Vertex (中端)
-  - identity: {category: 主板, series: Z890 GAMING X, spec: LGA1851}
-    display_name: Z890 GAMING X (高端)
+- identity:
+    category: 显卡
+    series: RTX 5090
+    spec: 32GB
+  display_name: RTX 5090 32GB
+  aliases:
+  - '5090'
+  - RTX5090
+- identity:
+    category: 显卡
+    series: RTX 5090D
+    spec: 32GB
+  display_name: RTX 5090D 32GB
+  aliases:
+  - 5090D
+  - 5090 D
+- identity:
+    category: 显卡
+    series: RTX 5090D V2
+    spec: 24GB
+  display_name: RTX 5090D V2 24GB
+  aliases:
+  - 5090D V2
+  - 5090Dv2
+  - 5090 D v2
+- identity:
+    category: 显卡
+    series: RTX 5080
+    spec: 16GB
+  display_name: RTX 5080 16GB
+- identity:
+    category: 显卡
+    series: RTX 5070 Ti
+    spec: 16GB
+  display_name: RTX 5070 Ti 16GB
+- identity:
+    category: 显卡
+    series: RTX 5070
+    spec: 12GB
+  display_name: RTX 5070 12GB
+- identity:
+    category: 显卡
+    series: RTX 5060 Ti
+    spec: 16GB
+  display_name: RTX 5060 Ti 16GB
+- identity:
+    category: 显卡
+    series: RTX 5060 Ti
+    spec: 8GB
+  display_name: RTX 5060 Ti 8GB
+  aliases:
+  - 5060Ti 8G
+  - 5060 TI 8GB
+- identity:
+    category: 显卡
+    series: RTX 5060
+    spec: 8GB
+  display_name: RTX 5060 8GB
+- identity:
+    category: 显卡
+    series: RTX 5050
+    spec: 8GB
+  display_name: RTX 5050 8GB
+- identity:
+    category: 显卡
+    series: RX 9070 XT
+    spec: 16GB
+  display_name: RX 9070 XT 16GB
+- identity:
+    category: 显卡
+    series: RX 9070
+    spec: 16GB
+  display_name: RX 9070 16GB
+- identity:
+    category: 显卡
+    series: RX 9070 GRE
+    spec: 12GB
+  display_name: RX 9070 GRE 12GB
+  aliases:
+  - 9070 GRE
+  - 9070GRE
+- identity:
+    category: 显卡
+    series: RX 9060 XT
+    spec: 16GB
+  display_name: RX 9060 XT 16GB
+- identity:
+    category: 显卡
+    series: RX 9060 XT
+    spec: 8GB
+  display_name: RX 9060 XT 8GB
+- identity:
+    category: 显卡
+    series: RX 9050
+    spec: 8GB
+  display_name: RX 9050 8GB
+- identity:
+    category: 显卡
+    series: Arc B580
+    spec: 12GB
+  display_name: Arc B580 12GB
+  aliases:
+  - B580
+  - b580
+- identity:
+    category: 显卡
+    series: Arc B570
+    spec: 10GB
+  display_name: Arc B570 10GB
+  aliases:
+  - B570
+- identity:
+    category: 显卡
+    series: RTX 4070 Super
+    spec: 12GB
+  display_name: RTX 4070 Super 12GB
+- identity:
+    category: 显卡
+    series: RTX 4060 Ti
+    spec: 16GB
+  display_name: RTX 4060 Ti 16GB
+- identity:
+    category: 显卡
+    series: RTX 4060 Ti
+    spec: 8GB
+  display_name: RTX 4060 Ti 8GB
+- identity:
+    category: 显卡
+    series: RTX 4060
+    spec: 8GB
+  display_name: RTX 4060 8GB
+- identity:
+    category: CPU
+    series: Ryzen 7 9800X3D
+    spec: ''
+  display_name: Ryzen 7 9800X3D
+  aliases:
+  - 9800X3D
+  - R7 9800X3D
+- identity:
+    category: CPU
+    series: Ryzen 7 9700X
+    spec: ''
+  display_name: Ryzen 7 9700X
+- identity:
+    category: CPU
+    series: Ryzen 5 9600X
+    spec: ''
+  display_name: Ryzen 5 9600X
+- identity:
+    category: CPU
+    series: Core i5-14600KF
+    spec: ''
+  display_name: Core i5-14600KF
+  aliases:
+  - 14600KF
+  - i5 14600KF
+- identity:
+    category: CPU
+    series: Core Ultra 7 265K
+    spec: ''
+  display_name: Core Ultra 7 265K
+  aliases:
+  - 265K
+  - Ultra7 265K
+- identity:
+    category: 主板
+    series: B650M
+    spec: AM5
+  display_name: B650M (AM5)
+- identity:
+    category: 主板
+    series: Z890
+    spec: LGA1851
+  display_name: Z890 (LGA1851)
+- identity:
+    category: 主板
+    series: B760M
+    spec: LGA1700
+  display_name: B760M (LGA1700)
+- identity:
+    category: 内存
+    series: DDR5 6000
+    spec: 16GB×2
+  display_name: DDR5 6000 16GB×2
+- identity:
+    category: 内存
+    series: DDR5 6400
+    spec: 16GB×2
+  display_name: DDR5 6400 16GB×2
+- identity:
+    category: 内存
+    series: DDR5 5600
+    spec: 16GB×2
+  display_name: DDR5 5600 16GB×2
+- identity:
+    category: 固态硬盘
+    series: 致态 TiPlus7100
+    spec: 1TB PCIe4.0 NVMe
+  display_name: 致态 TiPlus7100 1TB PCIe4.0
+- identity:
+    category: 固态硬盘
+    series: 三星 990 EVO
+    spec: 1TB PCIe4.0 NVMe
+  display_name: 三星 990 EVO 1TB
+- identity:
+    category: 固态硬盘
+    series: WD SN770
+    spec: 1TB
+  display_name: WD SN770 1TB
+- identity:
+    category: CPU
+    series: 7800X3D
+    spec: ''
+  display_name: Ryzen 7 7800X3D
+  aliases:
+  - R7 7800X3D
+  - 锐龙7 7800X3D
+- identity:
+    category: CPU
+    series: 9950X3D
+    spec: ''
+  display_name: Ryzen 9 9950X3D
+  aliases:
+  - R9 9950X3D
+- identity:
+    category: CPU
+    series: 12600KF
+    spec: ''
+  display_name: Core i5-12600KF
+  aliases:
+  - 12600K
+  - i5 12600KF
+- identity:
+    category: CPU
+    series: 14700K
+    spec: ''
+  display_name: Core i7-14700K
+  aliases:
+  - 14700KF
+  - i7 14700K
+- identity:
+    category: CPU
+    series: 14900K
+    spec: ''
+  display_name: Core i9-14900K
+  aliases:
+  - 14900KF
+  - i9 14900K
+- identity:
+    category: CPU
+    series: 245K
+    spec: ''
+  display_name: Core Ultra 5 245K
+  aliases:
+  - 245KF
+  - Ultra5 245K
+- identity:
+    category: CPU
+    series: 270K
+    spec: ''
+  display_name: Core Ultra 7 270K
+  aliases:
+  - 270KF
+  - Ultra7 270K
+- identity:
+    category: CPU
+    series: 285K
+    spec: ''
+  display_name: Core Ultra 9 285K
+  aliases:
+  - 285KF
+  - Ultra9 285K
+- identity:
+    category: 内存
+    series: DDR5 7200
+    spec: 32GB(16G×2)
+  display_name: DDR5 7200 32GB(16G×2)
+- identity:
+    category: 内存
+    series: DDR5 8000
+    spec: 32GB(16G×2)
+  display_name: DDR5 8000 32GB(16G×2)
+- identity:
+    category: 内存
+    series: DDR5 6400
+    spec: 64GB(32G×2)
+  display_name: DDR5 6400 64GB(32G×2)
+- identity:
+    category: 固态硬盘
+    series: 致态 Ti600s
+    spec: 512GB PCIe4.0 NVMe
+  display_name: 致态 Ti600s 512GB
+- identity:
+    category: 固态硬盘
+    series: 宏碁掠夺者
+    spec: 2TB PCIe4.0 NVMe
+  display_name: 宏碁掠夺者 2TB NVMe
+- identity:
+    category: 主板
+    series: B850M
+    spec: AM5
+  display_name: B850M (AM5 中端)
+- identity:
+    category: 主板
+    series: X870E
+    spec: AM5
+  display_name: X870E (AM5 高端)
+- identity:
+    category: 主板
+    series: Z890 Pacific
+    spec: LGA1851
+  display_name: Z890 Pacific (入门)
+- identity:
+    category: 主板
+    series: Z890 Vertex
+    spec: LGA1851
+  display_name: Z890 Vertex (中端)
+- identity:
+    category: 主板
+    series: Z890 GAMING X
+    spec: LGA1851
+  display_name: Z890 GAMING X (高端)

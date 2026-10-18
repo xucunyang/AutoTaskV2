@@ -274,7 +274,8 @@
   </div>
   <div style="padding:10px 14px;display:flex;flex-direction:column;gap:8px;font-size:12.5px">
     <div id="aa-info" style="color:var(--sub)"></div>
-    <label>归属实体：<select id="aa-entity" style="max-width:100%"></select></label>
+    <label>归属实体：<select id="aa-entity" style="max-width:100%"></select>
+      <a href="#" onclick="entityPanelOpen();return false" style="font-size:11.5px">🧬新建/管理实体</a></label>
     <label>锚类型：<select id="aa-anchor">
       <option value="销量">销量锚（市场主流成交价）</option>
       <option value="价格">价格锚（全网最低地板）</option>
@@ -295,6 +296,7 @@
   <div id="anchors-form" style="display:none;padding:8px 2px;border-bottom:1px solid var(--line);flex-wrap:wrap">
     <input id="af-url" placeholder="https://item.jd.com/纯数字.html" style="flex:2;min-width:200px;font-size:12px">
     <select id="af-entity" style="max-width:200px;font-size:12px"></select>
+    <button title="新建/修改/停用实体" onclick="entityPanelOpen(document.getElementById('af-entity')?.selectedOptions?.[0]?.text)">🧬实体管理</button>
     <input id="af-vendor" placeholder="店名(可空)" style="width:130px;font-size:12px">
     <select id="af-channel" style="font-size:12px">
       <option>自营</option><option>官旗</option><option>三方店铺</option><option>待核</option>
@@ -305,6 +307,39 @@
     <span id="af-status" style="font-size:11.5px;color:var(--sub)"></span>
   </div>
   <div id="anchors-rows" style="overflow:auto;max-height:80vh;font-size:12.5px"></div>
+</div>
+<div class="mmb-panel" id="entity-panel" style="width:min(560px,92vw)">
+  <div class="bar">
+    <b style="font-size:13.5px;color:var(--txt)">实体管理（SKU CRUD）</b>
+    <button class="close" onclick="document.getElementById('entity-panel').classList.remove('show')">收起</button>
+  </div>
+  <div style="padding:10px 14px;display:flex;flex-direction:column;gap:10px;font-size:12.5px">
+    <div>
+      <b>➕ 新建实体</b>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center">
+        <select id="ec-cat"><option>显卡</option><option>CPU</option><option>主板</option><option>内存</option><option>固态硬盘</option></select>
+        <input id="ec-series" placeholder="系列，如 RTX 5090D V2" style="flex:1;min-width:150px;font-size:12px">
+        <input id="ec-spec" placeholder="规格，如 24GB" style="width:110px;font-size:12px">
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+        <input id="ec-display" placeholder="显示名（可空，缺省=系列 规格）" style="flex:1;font-size:12px">
+        <button onclick="entityCreate()">创建</button>
+      </div>
+    </div>
+    <div style="border-top:1px solid var(--line);padding-top:8px">
+      <b>✏️ 修改 / 🗑 停用（选中实体）</b>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center">
+        <select id="eu-entity" style="max-width:220px;font-size:12px"></select>
+        <input id="eu-spec" placeholder="新规格（可空）" style="width:130px;font-size:12px">
+        <input id="eu-display" placeholder="新显示名（可空）" style="flex:1;min-width:130px;font-size:12px">
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button onclick="entityUpdate()">保存修改</button>
+        <button onclick="entityRetire()">⛔ 停用（保历史）</button>
+      </div>
+    </div>
+    <div id="entity-status" style="color:var(--sub);font-size:11.5px"></div>
+  </div>
 </div>
 <div class="mmb-panel" id="prop-panel" style="width:min(980px,94vw)">
   <div class="bar">
@@ -837,11 +872,16 @@ function drawChart(div, e, withTracks, fromZero) {
       z: 2,
     });
   }
-  if (e.series && e.series.length >= 2) {
+  // 自采双平台每日最低（10-17 口径修复后有数据了）：与销量锚主线重合时
+  // 不重复画（10-18 用户反馈"变成大粗点"= 7px 圆点叠在细线上）
+  const selfSame = main.length >= 2 && e.series.length === main.length &&
+    e.series.every((p, i) => p[0] === main[i][0] &&
+      Math.abs((p[1] || 0) - (main[i][1] || 0)) < 0.005);
+  if (e.series && e.series.length >= 2 && !selfSame) {
     const self = {
       name: '每日最低', type: 'line', data: e.series,
-      symbol: 'circle', symbolSize: 7,
-      lineStyle: { width: 2, color: m ? LABELS[m.label][1] : '#7a8499' },
+      symbol: 'circle', symbolSize: 3.5,
+      lineStyle: { width: 1.3, color: m ? LABELS[m.label][1] : '#7a8499' },
       itemStyle: { color: m ? LABELS[m.label][1] : '#7a8499' },
       emphasis: { disabled: true },
     };
@@ -896,7 +936,7 @@ function showPoints(e, date) {
     `${e.display_name} · ${date} · 原始报价`;
   const body = document.getElementById('modal-body');
   body.innerHTML = '<div class="none">加载中…</div>';
-  modal.classList.remove('hidden');
+  layerOpen('modal');
   fetch(`/api/entity/${e.entity_id}/points?date=${date}`)
     .then(r => r.json())
     .then(d => {
@@ -977,13 +1017,34 @@ let mmbChart = null;
   document.getElementById('mmb-go').addEventListener('click', mmbSearch);
 })();
 
+/* ---- 弹窗统一层（10-18 需求：互斥 + 点外关闭） ---- */
+const LAYER_SEL = '.mmb-panel, .modal';
+function layerOpen(id) {
+  document.querySelectorAll(LAYER_SEL).forEach(el => {
+    if (el.id !== id) { el.classList.remove('show'); el.classList.add('hidden'); }
+  });
+  const el = document.getElementById(id);
+  el.classList.add('show');
+  el.classList.remove('hidden');
+  window._layerJustOpened = performance.now();   // 防 canvas 点击冒泡误关
+}
+function layersCloseAll() {
+  if (performance.now() - (window._layerJustOpened || 0) < 400) return;
+  document.querySelectorAll('.mmb-panel.show').forEach(el => el.classList.remove('show'));
+  document.querySelectorAll('.modal:not(.hidden)').forEach(el => el.classList.add('hidden'));
+}
+document.addEventListener('click', e => {
+  if (e.target.closest('.mmb-panel, .modal, header, .cmp-fab')) return;
+  layersCloseAll();
+});
+
 function mmbClose() { document.getElementById('mmb-panel').classList.remove('show'); }
 
 async function mmbSearch() {
   const q = document.getElementById('mmb-q').value.trim();
   if (!q) return;
   const rows = document.getElementById('mmb-rows');
-  document.getElementById('mmb-panel').classList.add('show');
+  layerOpen('mmb-panel');
   rows.innerHTML = '<div class="mmb-empty">搜索中…</div>';
   try {
     const d = await fetch(`/api/mmb/search?q=${encodeURIComponent(q)}`).then(r => r.json());
@@ -1045,7 +1106,7 @@ async function anchorAddModal(idx) {
     } catch (e) { document.getElementById('aa-info').textContent = '实体清单加载失败：' + e; return; }
   }
   document.getElementById('aa-status').textContent = '';
-  document.getElementById('anchor-add-panel').classList.add('show');
+  layerOpen('anchor-add-panel');
 }
 
 async function anchorAddConfirm() {
@@ -1069,7 +1130,7 @@ async function anchorAddConfirm() {
 }
 
 async function anchorsLoad() {
-  document.getElementById('anchors-panel').classList.add('show');
+  layerOpen('anchors-panel');
   const box = document.getElementById('anchors-rows');
   box.innerHTML = '<div class="mmb-empty">加载中…</div>';
   let d = {};
@@ -1166,11 +1227,98 @@ async function anchorsRetire(url) {
   else alert('失败：' + (d.detail || '?'));
 }
 
+/* ---- 实体管理（SKU CRUD，10-18） ---- */
+async function entityOptsRefresh() {
+  window._entOpts = await fetch('/api/entity-options').then(x => x.json());
+  // 同步刷新所有实体下拉（value 都是 entity_id），保留当前选中
+  ['af-entity', 'aa-entity', 'mmb-entity'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel && sel.options.length) {
+      const cur = sel.value;
+      sel.innerHTML = window._entOpts.items.map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+      if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+    }
+  });
+  return window._entOpts;
+}
+function entityFillSelect(sel, keepName) {
+  sel.innerHTML = window._entOpts.items.map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+  if (keepName) {
+    const opt = [...sel.options].find(o => o.text === keepName);
+    if (opt) sel.value = opt.value;
+  }
+}
+async function entityPanelOpen(preselectName) {
+  layerOpen('entity-panel');
+  try { await entityOptsRefresh(); } catch (e) {
+    document.getElementById('entity-status').textContent = '实体清单加载失败'; return;
+  }
+  entityFillSelect(document.getElementById('eu-entity'), preselectName);
+  document.getElementById('entity-status').textContent =
+    preselectName ? `操作对象：${preselectName}` : '';
+}
+async function entityCreate() {
+  const st_ = document.getElementById('entity-status');
+  try {
+    const resp = await fetch('/api/entity/create', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        category: document.getElementById('ec-cat').value,
+        series: document.getElementById('ec-series').value.trim(),
+        spec: document.getElementById('ec-spec').value.trim(),
+        display_name: document.getElementById('ec-display').value.trim()
+      })
+    });
+    const d = await resp.json();
+    if (!resp.ok) { st_.textContent = '❌ ' + (d.detail || '?'); return; }
+    st_.textContent = `✅ 已创建：${d.display_name}（entity_id ${d.entity_id}），已可用于加锚`;
+    await entityOptsRefresh();
+    document.getElementById('ec-series').value = '';
+    document.getElementById('ec-spec').value = '';
+    document.getElementById('ec-display').value = '';
+  } catch (e) { st_.textContent = '请求失败：' + e; }
+}
+async function entityUpdate() {
+  const st_ = document.getElementById('entity-status');
+  const eid = +document.getElementById('eu-entity').value;
+  try {
+    const resp = await fetch('/api/entity/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        entity_id: eid,
+        spec: document.getElementById('eu-spec').value.trim(),
+        display_name: document.getElementById('eu-display').value.trim()
+      })
+    });
+    const d = await resp.json();
+    if (!resp.ok) { st_.textContent = '❌ ' + (d.detail || '?'); return; }
+    st_.textContent = `✅ 已修改：${d.display_name}（换绑注册表锚 ${d.registry_swapped} 条）`;
+    await entityOptsRefresh();
+    document.getElementById('eu-spec').value = '';
+    document.getElementById('eu-display').value = '';
+  } catch (e) { st_.textContent = '请求失败：' + e; }
+}
+async function entityRetire() {
+  const st_ = document.getElementById('entity-status');
+  const eid = +document.getElementById('eu-entity').value;
+  if (!confirm('停用该实体？（active=0，历史数据保留，不再参与匹配）')) return;
+  try {
+    const resp = await fetch('/api/entity/retire', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity_id: eid })
+    });
+    const d = await resp.json();
+    if (!resp.ok) { st_.textContent = '❌ ' + (d.detail || '?'); return; }
+    st_.textContent = '✅ 已停用';
+    await entityOptsRefresh();
+  } catch (e) { st_.textContent = '请求失败：' + e; }
+}
+
 async function mmbTrend(idx, src = 'mmb') {
   const r = (window._mmbLast || [])[idx];
   if (!r) return;
   window._mmbTrendIdx = idx;
-  document.getElementById('mmb-modal').classList.remove('hidden');
+  layerOpen('mmb-modal');
   document.getElementById('mmb-trend-title').textContent = (r.title || '').slice(0, 44);
   document.getElementById('mmb-trend-meta').textContent =
     src === 'gwd' ? '购物党加载中…' : '加载中…';
@@ -1235,8 +1383,7 @@ async function propCount() {
 propCount();
 async function propLoad() {
   const rows = document.getElementById('prop-rows');
-  document.getElementById('prop-panel').classList.add('show');
-  document.getElementById('mmb-panel').classList.remove('show');
+  layerOpen('prop-panel');
   rows.innerHTML = '<div class="mmb-empty">加载中…</div>';
   let d = {};
   try {
@@ -1361,7 +1508,7 @@ async function propReview(i, status) {
 // ---------- 任务流水（控制台风格，2s 自刷新） ----------
 let tasklogTimer = null;
 document.getElementById('tasklog-go').addEventListener('click', () => {
-  document.getElementById('tasklog-panel').classList.add('show');
+  layerOpen('tasklog-panel');
   document.getElementById('mmb-panel').classList.remove('show');
   document.getElementById('prop-panel').classList.remove('show');
   tasklogLoad();

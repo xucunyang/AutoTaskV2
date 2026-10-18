@@ -639,6 +639,127 @@ def api_anchors_upsert(payload: dict = Body(...)) -> dict:
     return {"ok": True, "mode": mode, "url": url}
 
 
+@app.post("/api/entity/create")
+def api_entity_create(payload: dict = Body(...)) -> dict:
+    """新建实体（SKU CRUD 之 C，2026-10-18 用户要求补齐）。
+
+    identity = {category, series, spec}；display 缺省 f"{series} {spec}"。
+    重复（同 identity 且 active）→ 409 返回已有 entity_id。同步种子文件
+    （hardware_entities.yaml），防未来 re-seed 造出重复实体。"""
+    import yaml
+
+    ident = {"category": str(payload.get("category") or "").strip(),
+             "series": str(payload.get("series") or "").strip(),
+             "spec": str(payload.get("spec") or "").strip()}
+    if not all(ident.values()):
+        raise HTTPException(422, "category / series / spec 必填")
+    if ident["category"] not in ("显卡", "CPU", "主板", "内存", "固态硬盘"):
+        raise HTTPException(422, f"未知品类：{ident['category']}")
+    ident_json = json.dumps(ident, ensure_ascii=False)
+    display = str(payload.get("display_name") or "").strip() \
+        or f"{ident['series']} {ident['spec']}".strip()
+
+    con = ro_connect()
+    dup = con.execute("SELECT entity_id FROM entity WHERE domain='hardware' "
+                      "AND identity_json=? AND active=1", (ident_json,)).fetchone()
+    con.close()
+    if dup:
+        raise HTTPException(409, f"实体已存在（entity_id {dup['entity_id']}）")
+
+    con = connect(DB_PATH)
+    cur = con.execute(
+        "INSERT INTO entity (domain, identity_json, display_name, aliases, "
+        "active, created_at, updated_at) VALUES ('hardware', ?, ?, '[]', 1, "
+        "datetime('now'), datetime('now'))", (ident_json, display))
+    con.commit()
+    eid = cur.lastrowid
+    con.close()
+
+    seed_path = ROOT / "config" / "contracts" / "hardware_entities.yaml"
+    seed = yaml.safe_load(seed_path.read_text(encoding="utf-8")) or {}
+    seed.setdefault("entities", []).append(
+        {"identity": ident, "display_name": display, "aliases": []})
+    seed_path.write_text(yaml.safe_dump(seed, allow_unicode=True, sort_keys=False),
+                         encoding="utf-8")
+    return {"ok": True, "entity_id": eid, "display_name": display}
+
+
+@app.post("/api/entity/update")
+def api_entity_update(payload: dict = Body(...)) -> dict:
+    """修改实体（U）：改 spec / 显示名。联动同步：
+    ① 注册表中绑旧 identity 的 listing 一并换绑；② 种子文件同名条目。"""
+    import yaml
+
+    eid = int(payload.get("entity_id") or 0)
+    con = ro_connect()
+    row = con.execute("SELECT identity_json, display_name FROM entity "
+                      "WHERE entity_id=? AND domain='hardware'", (eid,)).fetchone()
+    con.close()
+    if not row:
+        raise HTTPException(404, f"实体 {eid} 不存在")
+    old_ident = json.loads(row["identity_json"] or "{}")
+    old_display = row["display_name"]
+    new_spec = str(payload.get("spec") or "").strip() or old_ident.get("spec", "")
+    new_display = str(payload.get("display_name") or "").strip() or \
+        f"{old_ident.get('series', '')} {new_spec}".strip()
+    new_ident = {"category": old_ident.get("category", ""),
+                 "series": old_ident.get("series", ""), "spec": new_spec}
+    if not all(new_ident.values()):
+        raise HTTPException(422, "spec 不能为空")
+    new_json = json.dumps(new_ident, ensure_ascii=False)
+
+    con = ro_connect()
+    clash = con.execute("SELECT entity_id FROM entity WHERE domain='hardware' "
+                        "AND identity_json=? AND active=1 AND entity_id != ?",
+                        (new_json, eid)).fetchone()
+    con.close()
+    if clash:
+        raise HTTPException(409, f"新规格与已有实体冲突（entity_id "
+                                 f"{clash['entity_id']}）")
+
+    con = connect(DB_PATH)
+    con.execute("UPDATE entity SET identity_json=?, display_name=?, "
+                "updated_at=datetime('now') WHERE entity_id=?",
+                (new_json, new_display, eid))
+    con.commit()
+    con.close()
+
+    # 注册表换绑（旧 identity → 新 identity）
+    reg = _reg_load()
+    swapped = 0
+    for it in reg.get("listings") or []:
+        if it.get("identity") == old_ident:
+            it["identity"] = new_ident
+            swapped += 1
+    if swapped:
+        _reg_save(reg)
+    # 种子同名条目同步
+    seed_path = ROOT / "config" / "contracts" / "hardware_entities.yaml"
+    seed = yaml.safe_load(seed_path.read_text(encoding="utf-8")) or {}
+    for e in seed.get("entities") or []:
+        if e.get("display_name") == old_display:
+            e["identity"] = new_ident
+            e["display_name"] = new_display
+    seed_path.write_text(yaml.safe_dump(seed, allow_unicode=True, sort_keys=False),
+                         encoding="utf-8")
+    return {"ok": True, "entity_id": eid, "display_name": new_display,
+            "registry_swapped": swapped}
+
+
+@app.post("/api/entity/retire")
+def api_entity_retire(payload: dict = Body(...)) -> dict:
+    """停用实体（D）：active=0 保历史（observation 不动）。"""
+    eid = int(payload.get("entity_id") or 0)
+    con = connect(DB_PATH)
+    cur = con.execute("UPDATE entity SET active=0, updated_at=datetime('now') "
+                      "WHERE entity_id=? AND domain='hardware'", (eid,))
+    con.commit()
+    con.close()
+    if cur.rowcount == 0:
+        raise HTTPException(404, f"实体 {eid} 不存在")
+    return {"ok": True, "entity_id": eid}
+
+
 @app.post("/api/mmb/propose")
 def api_mmb_propose(payload: dict = Body(...)) -> dict:
     """把 searchbox 里勾选的候选追加进提案文件（同实体同锚覆盖旧提案）。"""
