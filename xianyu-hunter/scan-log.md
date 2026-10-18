@@ -1950,3 +1950,55 @@
 - 10-18 21:21:27 AUTO-R69: PARSED total=0 fresh=0
 - 10-18 21:21:27 AUTO-R69: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R69_1018-2119_auto.md
 - 10-18 21:21:28 AUTO-R69: IME restored + sdcard cleaned
+- 10-18 21:21:31 AUTO-R69: DONE round 69
+- 10-18 21:49:02 AUTO-R70: START round 70 (1018-2149)
+- 10-18 21:49:03 PAD R70: LEASE_OK
+- 10-18 21:49:03 AUTO-R70: PAD: LEASE_OK
+- 10-18 21:49:03 AUTO-R70: PAD: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-18 21:49:03 AUTO-R70: PAD: 件。
+- 10-18 21:49:03 AUTO-R70: PAD: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_pad.ps1:22 字符: 3
+- 10-18 21:49:03 AUTO-R70: PAD: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-18 21:49:03 AUTO-R70: PAD: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-18 21:49:04 AUTO-R70: PAD:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-18 21:49:04 AUTO-R70: PAD:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-18 21:49:04 AUTO-R70: PAD:  
+- 10-18 21:49:29 PAD R70: DEVICE_LOST
+- 10-18 21:49:46 PAD R70: DEVICE_STALE, recovering...
+- 10-18 21:50:12 PAD R70: DEVICE_LOST
+- 10-18 21:50:15 PAD R70: DUMP_MISSING (device dropped?), abort round
+- 10-18 21:50:15 PAD R70: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-18 21:50:16 AUTO-R70: PAD: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-18 21:50:16 PAD R70: DONE pad70_1018_2149 (aborted)
+- 10-18 21:50:16 AUTO-R70: PAD: DONE pad70_1018_2149 (aborted)
+- 10-18 21:50:17 R70: LEASE_OK
+- 10-18 21:50:17 AUTO-R70: HONOR: LEASE_OK
+- 10-18 21:50:17 AUTO-R70: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法
+- 10-18 21:50:17 AUTO-R70: HONOR: 访问此文件。
+- 10-18 21:50:17 AUTO-R70: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-18 21:50:17 AUTO-R70: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-18 21:50:17 AUTO-R70: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-18 21:50:18 AUTO-R70: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOExceptio 
+- 10-18 21:50:18 AUTO-R70: HONOR:    n
+- 10-18 21:50:18 AUTO-R70: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-18 21:50:18 AUTO-R70: HONOR:  
+- 10-18 21:50:23 R70: SWITCHED to wifi device
+- 10-18 21:50:23 AUTO-R70: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-18 21:50:24 AUTO-R70: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-18 21:50:38 R70: DEVICE_STALE, recovering...
+- 10-18 21:50:43 R70: SWITCHED to wifi device
+- 10-18 21:50:47 R70: DEVICE_STALE, recovering...
+- 10-18 21:50:52 R70: SWITCHED to wifi device
+- 10-18 21:50:52 AUTO-R70: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-18 21:51:11 R70: DEVICE_STALE, recovering...
+- 10-18 21:51:16 R70: SWITCHED to wifi device
+- 10-18 21:51:19 R70: DEVICE_STALE, recovering...
+- 10-18 21:51:25 R70: SWITCHED to wifi device
+- 10-18 21:51:25 R70: DUMP_MISSING (device dropped?), abort round
+- 10-18 21:51:25 AUTO-R70: HONOR: DUMP_MISSING (device dropped?), abort round
+- 10-18 21:51:26 R70: DONE round70_1018_2150 (aborted, no home)
+- 10-18 21:51:26 AUTO-R70: HONOR: DONE round70_1018_2150 (aborted, no home)
+- 10-18 21:51:26 AUTO-R70: pad: no scans, skip
+- 10-18 21:51:26 AUTO-R70: honor: no scans, skip
+- 10-18 21:51:26 AUTO-R70: PARSED total=0 fresh=0
+- 10-18 21:51:26 AUTO-R70: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R70_1018-2149_auto.md
+- 10-18 21:51:27 AUTO-R70: IME restored + sdcard cleaned
