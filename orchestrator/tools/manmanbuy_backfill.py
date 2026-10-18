@@ -326,6 +326,14 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
                              prev_listings=prev_listings)
         cache_path.write_text(json.dumps(dumps, ensure_ascii=False, indent=1),
                               encoding="utf-8")
+        # 无上限模式的观测哨：日发 ≥120 提醒一次（不阻断）
+        if gate is not None and gate.budget is None and gate.spent() >= 120:
+            marker = root / "artifacts" / date_dir / ".budget_notify_done"
+            if not marker.exists():
+                _notify_feishu(f"📱 慢买今日已发 {gate.spent()} 发（无上限模式观测哨）·"
+                               f"节奏红线仍生效·出风控信号会自动回退 80 上限")
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.write_text(_ts(), encoding="utf-8")
         print(f"[{_ts()}] ◇ raw 留档 -> {cache_path}")
 
     obs_path = root / "artifacts" / date_dir / "t1_sku_observations.json"
@@ -678,9 +686,10 @@ def main(argv: list[str] | None = None) -> int:
     rn.add_argument("--only", default=None, help="URL/名称子串过滤")
     rn.add_argument("--gwd-only", action="store_true",
                     help="只采 gwdang 顶班锚（source=gwdang，不占慢买预算）")
-    rn.add_argument("--budget", type=int, default=80,
-                    help="今日慢买预算上限（默认 80；2026-10-18 用户放宽："
-                         "channel-gate 治理下 80 内无人值守，超限飞书请示人工批准）")
+    rn.add_argument("--budget", type=int, default=None,
+                    help="今日慢买预算上限（默认无上限：10-18 双批实证 72→92 零风控，"
+                         "用户授权移除；节奏红线 R4 不变，≥120 发/天飞书提醒；"
+                         "出现风控信号立即恢复 80）")
     rn.add_argument("--sleep-min", type=float, default=5.0,
                     help="节流随机下限秒（默认 5）")
     rn.add_argument("--sleep-max", type=float, default=20.0,
@@ -725,7 +734,7 @@ def main(argv: list[str] | None = None) -> int:
                    dry_run=args.dry_run, skip_ingest=args.skip_ingest,
                    sleep_min=args.sleep_min, sleep_max=args.sleep_max,
                    only=args.only, gwd_only=args.gwd_only)
-    gate = ChannelGate("mmb", budget=args.budget, log=_stamp)   # R2：全接口日总预算（操作手册红线）
+    gate = ChannelGate("mmb", budget=args.budget, log=_stamp)   # R2：None=无上限（节奏红线仍在）
     try:
         with gate.session("run 采集"):
             return run(args.date_dir, root=root, from_cache=args.from_cache,
