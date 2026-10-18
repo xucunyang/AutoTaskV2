@@ -214,7 +214,8 @@ def test_trend_to_series_rejects_empty():
 # ---------- 节流与双锚发现（品类采集规则 v1） ----------
 
 def test_fetch_sleep_uses_random_range(monkeypatch):
-    """节流=区间随机（默认 2~7s）：固定间隔是机器指纹（用户定稿）。"""
+    """节流=区间随机（默认 2~7s）：固定间隔是机器指纹（用户定稿）。
+    0 点退避重试（10-18）：瞬时空响应重采一次再定论，不当场判死。"""
     calls = []
 
     monkeypatch.setattr(mbf.random, "uniform",
@@ -222,13 +223,19 @@ def test_fetch_sleep_uses_random_range(monkeypatch):
     monkeypatch.setattr(mbf.time, "sleep", lambda s: None)
 
     class FakeMmb:
+        n = 0
+
         def trend(self, url):
+            self.n += 1
             return {"datePrice": []}
 
     reg = {"listings": [{"identity": {}, "url": f"u{i}", "sp_name": f"s{i}",
                          "channel": "自营", "vendor": ""} for i in range(3)]}
-    mbf._fetch_dumps(FakeMmb(), reg, (2.0, 7.0))
-    assert calls == [(2.0, 7.0), (2.0, 7.0)]   # 3 个 listing 只有间隔处 sleep
+    fake = FakeMmb()
+    mbf._fetch_dumps(fake, reg, (2.0, 7.0))
+    # 3 个 listing：间隔 sleep ×2 + 每 listing 首采 0 点触发一次退避重试 ×3
+    assert calls == [(6, 10), (2.0, 7.0), (6, 10), (2.0, 7.0), (6, 10)]
+    assert fake.n == 6                        # 3 首采 + 3 重试
 
 
 def test_match_spec_guards_wrong_series():
