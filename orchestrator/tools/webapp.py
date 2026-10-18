@@ -573,6 +573,72 @@ def api_anchors_retire(payload: dict = Body(...)) -> dict:
     return {"ok": True, "url": url}
 
 
+@app.post("/api/anchors/upsert")
+def api_anchors_upsert(payload: dict = Body(...)) -> dict:
+    """新增 / 修改锚（C+U of CRUD，人工入口，2026-10-18 用户要求补齐）。
+
+    original_url 为空 = 新增；给原 URL = 就地修改（可改 URL 本身/归属实体）。
+    URL 硬校验：必须是纯数字京东直链——jingfen/加密串三渠道不认（10-17 实证）。
+    """
+    import re
+
+    url = str(payload.get("url") or "").strip()
+    eid = int(payload.get("entity_id") or 0)
+    original = str(payload.get("original_url") or "").strip()
+    anchor = payload.get("anchor") or "销量"
+    if not url or not eid:
+        raise HTTPException(422, "url / entity_id 必填")
+    if not re.search(r"item\.jd\.com/\d+\.html$", url):
+        raise HTTPException(422, "URL 必须是纯数字京东直链 item.jd.com/<数字>.html"
+                                 "（jingfen/加密串三渠道不认，10-17 实证）")
+    if anchor not in ("销量", "价格"):
+        raise HTTPException(422, "anchor 只能是 销量/价格")
+    con = ro_connect()
+    erow = con.execute("SELECT identity_json FROM entity WHERE entity_id=?",
+                       (eid,)).fetchone()
+    con.close()
+    if not erow:
+        raise HTTPException(404, f"实体 {eid} 不存在")
+    identity = json.loads(erow["identity_json"] or "{}")
+
+    reg = _reg_load()
+    listings = reg.get("listings") or []
+    if any(it.get("url") == url and not it.get("retired")
+           and it.get("url") != original for it in listings):
+        raise HTTPException(409, f"该 URL 已有在册锚：{url}")
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    if original:
+        target = next((it for it in listings
+                       if it.get("url") == original and not it.get("retired")), None)
+        if not target:
+            raise HTTPException(404, f"原锚不存在或已下线：{original}")
+        target["url"] = url
+        target["identity"] = identity
+        for k in ("vendor", "channel", "anchor", "sp_name"):
+            v = str(payload.get(k) or "").strip()
+            if v:
+                target[k] = v
+        target["anchor"] = anchor
+        target["verified"] = now
+        mode = "update"
+    else:
+        listings.append({
+            "identity": identity,
+            "vendor": str(payload.get("vendor") or "").strip(),
+            "channel": str(payload.get("channel") or "待核").strip(),
+            "url": url,
+            "sp_name": str(payload.get("sp_name") or "")[:120],
+            "anchor": anchor,
+            "verified": now,
+            "source": "manmanmai",
+        })
+        reg["listings"] = listings
+        mode = "create"
+    _reg_save(reg)
+    return {"ok": True, "mode": mode, "url": url}
+
+
 @app.post("/api/mmb/propose")
 def api_mmb_propose(payload: dict = Body(...)) -> dict:
     """把 searchbox 里勾选的候选追加进提案文件（同实体同锚覆盖旧提案）。"""

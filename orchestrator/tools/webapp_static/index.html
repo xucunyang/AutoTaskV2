@@ -289,7 +289,20 @@
     <b style="font-size:13.5px;color:var(--txt)">锚管理</b>
     <span id="anchors-stat" style="color:var(--sub);font-size:12px"></span>
     <label style="font-size:12px"><input type="checkbox" id="anchors-show-retired" onchange="anchorsLoad()"> 显示已下线</label>
+    <button onclick="anchorFormOpen()">➕ 新增 / ✏️ 修改</button>
     <button class="close" onclick="document.getElementById('anchors-panel').classList.remove('show')">收起</button>
+  </div>
+  <div id="anchors-form" style="display:none;padding:8px 2px;border-bottom:1px solid var(--line);flex-wrap:wrap">
+    <input id="af-url" placeholder="https://item.jd.com/纯数字.html" style="flex:2;min-width:200px;font-size:12px">
+    <select id="af-entity" style="max-width:200px;font-size:12px"></select>
+    <input id="af-vendor" placeholder="店名(可空)" style="width:130px;font-size:12px">
+    <select id="af-channel" style="font-size:12px">
+      <option>自营</option><option>官旗</option><option>三方店铺</option><option>待核</option>
+    </select>
+    <select id="af-anchor" style="font-size:12px"><option>销量</option><option>价格</option></select>
+    <input id="af-spname" placeholder="商品名(可空)" style="flex:1;min-width:140px;font-size:12px">
+    <button class="primary" onclick="anchorSave()">保存</button>
+    <span id="af-status" style="font-size:11.5px;color:var(--sub)"></span>
   </div>
   <div id="anchors-rows" style="overflow:auto;max-height:80vh;font-size:12.5px"></div>
 </div>
@@ -1062,8 +1075,9 @@ async function anchorsLoad() {
   let d = {};
   try { d = await fetch('/api/anchors').then(r => r.json()); }
   catch (e) { box.innerHTML = `<div class="mmb-empty">加载失败：${esc(e)}</div>`; return; }
+  window._anchorItems = d.items || [];
   const showRetired = document.getElementById('anchors-show-retired').checked;
-  const items = (d.items || []).filter(x => showRetired || !x.retired);
+  const items = window._anchorItems.filter(x => showRetired || !x.retired);
   document.getElementById('anchors-stat').textContent =
     `active ${d.active} / 共 ${d.items.length}`;
   if (!items.length) { box.innerHTML = '<div class="mmb-empty">空</div>'; return; }
@@ -1078,8 +1092,67 @@ async function anchorsLoad() {
       <span class="t" style="max-width:280px"><a href="${x.url}" target="_blank"
           style="color:inherit;text-decoration:none">${esc(x.sp_name || x.url)}</a></span>
       ${x.retired ? `<span class="m" title="${esc(x.retired_reason || '')}">${esc(x.retired || '')}</span>`
-                  : `<button onclick="anchorsRetire('${x.url}')">下线</button>`}
+                  : `<button onclick="anchorFormEdit('${x.url}')">✏️ 改</button>
+                     <button onclick="anchorsRetire('${x.url}')">下线</button>`}
     </div>`).join('');
+}
+
+async function anchorFormOpen(originalUrl) {
+  const form = document.getElementById('anchors-form');
+  form.style.display = 'flex';
+  document.getElementById('af-status').textContent = '';
+  if (!window._entOpts) {
+    try {
+      window._entOpts = await fetch('/api/entity-options').then(x => x.json());
+    } catch (e) { document.getElementById('af-status').textContent = '实体清单加载失败'; return; }
+  }
+  const sel = document.getElementById('af-entity');
+  sel.innerHTML = window._entOpts.items.map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
+  if (originalUrl) {
+    const x = (window._anchorItems || []).find(v => v.url === originalUrl);
+    if (!x) { document.getElementById('af-status').textContent = '没找到该锚'; return; }
+    document.getElementById('af-url').value = x.url;
+    if (x.entity) {
+      const opt = [...sel.options].find(o => o.text === x.entity);
+      if (opt) sel.value = opt.value;
+    }
+    document.getElementById('af-vendor').value = x.vendor || '';
+    document.getElementById('af-channel').value = x.channel || '待核';
+    document.getElementById('af-anchor').value = x.anchor === '价格' ? '价格' : '销量';
+    document.getElementById('af-spname').value = x.sp_name || '';
+    window._afOriginal = x.url;
+    document.getElementById('af-status').textContent = '修改模式：改完点保存';
+  } else {
+    document.getElementById('af-url').value = '';
+    document.getElementById('af-vendor').value = '';
+    document.getElementById('af-spname').value = '';
+    window._afOriginal = '';
+    document.getElementById('af-status').textContent = '新增模式';
+  }
+}
+
+async function anchorSave() {
+  const url = document.getElementById('af-url').value.trim();
+  const eid = +document.getElementById('af-entity').value;
+  if (!url || !eid) { document.getElementById('af-status').textContent = 'URL 和实体必填'; return; }
+  const payload = {
+    url, entity_id: eid,
+    vendor: document.getElementById('af-vendor').value.trim(),
+    channel: document.getElementById('af-channel').value,
+    anchor: document.getElementById('af-anchor').value,
+    sp_name: document.getElementById('af-spname').value.trim(),
+    original_url: window._afOriginal || ''
+  };
+  try {
+    const resp = await fetch('/api/anchors/upsert', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const d = await resp.json();
+    document.getElementById('af-status').textContent =
+      resp.ok ? `✅ ${d.mode === 'update' ? '已修改' : '已新增'}：${d.url}` : `❌ ${d.detail || '?'}`;
+    if (resp.ok) anchorsLoad();
+  } catch (e) { document.getElementById('af-status').textContent = '请求失败：' + e; }
 }
 
 async function anchorsRetire(url) {

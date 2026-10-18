@@ -201,10 +201,10 @@ elif page == PAGES[1]:
     if not show_ret:
         view = view[~view["已下线"]]
     st.caption(f"在册 {sum(1 for x in rows if not x['已下线'])} / 共 {len(rows)}"
-               " · 直接改单元格（店名/渠道/锚类型），勾「标记下线」= retire，改完点保存")
+               " · 直接改单元格（店名/渠道/锚类型/商品名），勾「标记下线」= retire，改完点保存")
     edited = st.data_editor(
         view, use_container_width=True, height=520, hide_index=True,
-        disabled=["URL", "实体", "来源", "商品名", "已下线"],
+        disabled=["URL", "实体", "来源", "已下线"],
         column_config={
             "渠道": st.column_config.SelectboxColumn(
                 options=["自营", "官旗", "三方店铺", "待核"]),
@@ -219,7 +219,7 @@ elif page == PAGES[1]:
                 if it.get("retired"):
                     continue
                 for field, col in (("vendor", "店名"), ("channel", "渠道"),
-                                   ("anchor", "锚类型")):
+                                   ("anchor", "锚类型"), ("sp_name", "商品名")):
                     new = row[col]
                     if new and it.get(field) != new:
                         it[field] = new
@@ -231,6 +231,70 @@ elif page == PAGES[1]:
         reg_save(reg)
         st.success(f"已保存：字段修改 {changed} 处 · 下线 {retired_n} 条")
         st.rerun()
+
+    st.subheader("➕ 新增锚 / ✏️ 修改指定锚")
+    act = [(it.get("url"), (it.get("sp_name") or it.get("url"))[:44])
+           for it in rows if not it["已下线"]]
+    op = st.radio("操作", ["➕ 新增", "✏️ 修改现有"], horizontal=True)
+    default_url = ""
+    if op.startswith("✏"):
+        if not act:
+            st.info("没有在册锚可改")
+        else:
+            default_url = st.selectbox(
+                "选择在册锚", [u for u, _ in act],
+                format_func=lambda u: next((n for uu, n in act if uu == u), u))
+    with st.form("anchor-upsert", clear_on_submit=False):
+        url = st.text_input("商品 URL（纯数字京东直链）", value=default_url,
+                            placeholder="https://item.jd.com/100193851132.html")
+        df_e = entities_df()
+        name = st.selectbox("归属实体", df_e["实体"].tolist())
+        c1, c2 = st.columns(2)
+        vendor = c1.text_input("店名（可空）")
+        channel = c2.selectbox("渠道", ["自营", "官旗", "三方店铺", "待核"])
+        anchor_t = st.radio("锚类型", ["销量", "价格"], horizontal=True)
+        spname = st.text_input("商品名（可空）")
+        if st.form_submit_button("💾 保存到注册表"):
+            url_n = url.strip()
+            if not url_n or not name:
+                st.error("URL 和实体必填")
+            elif not re.match(r"item\.jd\.com/\d+\.html$", url_n):
+                st.error("URL 必须是纯数字京东直链 item.jd.com/<数字>.html"
+                         "（jingfen/加密串三渠道不认，10-17 实证）")
+            else:
+                eid = int(df_e.loc[df_e["实体"] == name, "ID"].iloc[0])
+                ident = ro().execute(
+                    "SELECT identity_json FROM entity WHERE entity_id=?",
+                    (eid,)).fetchone()[0]
+                reg2 = reg_load()
+                ls = reg2.get("listings") or []
+                if any(it.get("url") == url_n and not it.get("retired")
+                       and it.get("url") != default_url for it in ls):
+                    st.error("该 URL 已有在册锚")
+                else:
+                    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    if default_url:
+                        for it in ls:
+                            if it.get("url") == default_url and not it.get("retired"):
+                                it.update({"url": url_n,
+                                           "identity": json.loads(ident),
+                                           "vendor": vendor.strip(),
+                                           "channel": channel,
+                                           "anchor": anchor_t,
+                                           "sp_name": spname,
+                                           "verified": now})
+                        reg_save(reg2)
+                        st.success(f"✅ 已修改：{url_n}")
+                    else:
+                        ls.append({"identity": json.loads(ident),
+                                   "vendor": vendor.strip(), "channel": channel,
+                                   "url": url_n, "sp_name": spname,
+                                   "anchor": anchor_t, "verified": now,
+                                   "source": "manmanmai"})
+                        reg2["listings"] = ls
+                        reg_save(reg2)
+                        st.success(f"✅ 已新增：{url_n}")
+                    st.rerun()
 
 # ---------------------------------------------------------------- 提案审核
 elif page == PAGES[2]:
