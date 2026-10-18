@@ -25,6 +25,7 @@
 1299|pic2018款Macbookpro 15寸i5处理器8G 
 1|自用MacBook Pro m3pro 36+1TB 无拆无
 5699|pic2025款MacBook Air 13寸 M4芯片 1
+8376|pic满血苹果M1Max 32+512 16寸 电效97% 
 6400|【Mac mini M4 24G+512G 千兆网口】 20
 4140|全新未拆Mac mini M4芯片，16G+256G，国行A
 2|MacBook Pro 14寸 M5 Pro 24G，国行正
@@ -150,7 +151,7 @@
 4688|出一台自用的MacBook Pro 13寸，M1芯片，16G
 2|苍龙16XPro，64G内存+3T硬盘（自己加的2T固态+3
 6488|苹果2023款Pro M3 16+512G 14寸 深空灰色
-8376|pic满血苹果M1Max 32+512 16寸 电效97% 
+2|16寸 M2 Max 64G 8T 美版，外观新，无锁全原，
 1|M2Max 64G+1T，16寸，23款MacBook Pr
 3|国行m3max16寸128g4t苹果笔记本，有AppleCa
 600|MacBook Pro13.3寸，配置见图，2.5k视网膜屏
@@ -197,7 +198,6 @@
 7550|picMacBook Pro 14寸 2023款，M3 Pr
 5850|出个自用MacBook Air M2，2022款，24G内存
 5050|苹果MacBook Pro 14寸 M3芯片 8G内存 49
-1|pic32核满血M1Max 32+2TB 16寸 电效100
 1|2023款 苹果M3 Max 14寸  36GB内存+1TB
 7100|Macbook air 13寸 M5 16g+512g 星光
 6000|出一款macbook Pro M1max  16寸 默认9成
@@ -206,7 +206,7 @@
 4700|99新Mac mini M4 16+1TB (第三方小板扩容
 4899|21款MacBook Pro 16寸 M1 Pro 16G+
 9999|pic顶配生产力神机M1 Max‑64G+1TB 21 款 
-2|16寸 M2 Max 64G 8T 美版，外观新，无锁全原，
+1|pic32核满血M1Max 32+2TB 16寸 电效100
 8588|pic2021款MacBook Pro 16寸 深空灰 M1
 1|picpic16寸 M3max 36+1T  MacBook
 8200|Mac Studio 2022款 M1 Max芯片 32G内
