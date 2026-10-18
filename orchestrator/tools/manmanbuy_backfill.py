@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import random
 import re
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -176,6 +177,19 @@ def _gwd():
     return _GWD
 
 
+def _notify_feishu(msg: str) -> None:
+    """飞书推送（cc-push）：预算到顶等需要人工决策的场景，无论用户是否在
+    电脑前都推（远程决策例外）。best-effort，失败静默（通知不阻塞采集）。"""
+    try:
+        ps = Path.home() / ".local" / "bin" / "cc-push.ps1"
+        if not ps.exists():
+            return
+        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                        "-File", str(ps), msg], capture_output=True, timeout=30)
+    except Exception:
+        pass
+
+
 def _fetch_dumps(mmb: "Mmb | None", registry: dict,
                  sleep_range: tuple[float, float],
                  gate=None, cache_path: Path | None = None,
@@ -252,6 +266,8 @@ def _fetch_dumps(mmb: "Mmb | None", registry: dict,
             print(f"[{_ts()}] ✗ {name} · 0 点（listing 疑似失效，跳过）")
     if stopped:
         print(f"[{_ts()}] ■ 慢买预算顺延 {stopped} 锚（明天自动续）")
+        _notify_feishu(f"📱 慢买日预算已用尽 · {stopped} 锚顺延明天 · "
+                       f"想今天采完请到 OpenCode 授权临时调高预算")
     return dumps
 
 
@@ -662,8 +678,9 @@ def main(argv: list[str] | None = None) -> int:
     rn.add_argument("--only", default=None, help="URL/名称子串过滤")
     rn.add_argument("--gwd-only", action="store_true",
                     help="只采 gwdang 顶班锚（source=gwdang，不占慢买预算）")
-    rn.add_argument("--budget", type=int, default=60,
-                    help="今日慢买预算上限（默认 60；风控实验期可临时放宽）")
+    rn.add_argument("--budget", type=int, default=80,
+                    help="今日慢买预算上限（默认 80；2026-10-18 用户放宽："
+                         "channel-gate 治理下 80 内无人值守，超限飞书请示人工批准）")
     rn.add_argument("--sleep-min", type=float, default=5.0,
                     help="节流随机下限秒（默认 5）")
     rn.add_argument("--sleep-max", type=float, default=20.0,
@@ -680,7 +697,7 @@ def main(argv: list[str] | None = None) -> int:
         with ChannelGate("mmb").session("login"):
             return login(args.user)
     if args.cmd == "discover":
-        gate = ChannelGate("mmb", budget=60, log=_stamp)
+        gate = ChannelGate("mmb", budget=80, log=_stamp)
         try:
             with gate.session("discover"):
                 result = discover(args.series, args.spec, keyword=args.keyword,
@@ -719,6 +736,8 @@ def main(argv: list[str] | None = None) -> int:
         # 预算入口即尽（2026-10-18 实例：session() 进入即 fail-closed 抛异常，
         # 把 gwdang 免费轨和缓存入库也炸掉了）→ 降级：慢买轨顺延，零消费部分照做
         print("[mmb] 今日预算已尽：慢买轨顺延明天，gwdang 免费锚 + 已缓存数据照常处理")
+        _notify_feishu(f"📱 慢买日预算已用尽（{gate.budget}/{gate.budget}）· "
+                       f"链降级续跑（gwdang/入库照常）· 想今天继续采慢买请到 OpenCode 授权调高")
         return run(args.date_dir, root=root, dry_run=args.dry_run,
                    skip_ingest=args.skip_ingest,
                    sleep_min=args.sleep_min, sleep_max=args.sleep_max,

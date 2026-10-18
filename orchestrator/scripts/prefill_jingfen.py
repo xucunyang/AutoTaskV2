@@ -100,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
 
     ap = argparse.ArgumentParser(description="jingfen 提案补链（search 配对+店名）")
     ap.add_argument("--limit", type=int, default=0, help="最多处理 N 条（0=全量）")
-    ap.add_argument("--budget", type=int, default=60,
+    ap.add_argument("--budget", type=int, default=80,
                     help="今日慢买预算上限（默认 60；风控实验期可临时放宽）")
     ap.add_argument("--fix-url", action="store_true",
                     help="只修 URL：已配对但 url 非纯数字直链的提案，重发 search "
