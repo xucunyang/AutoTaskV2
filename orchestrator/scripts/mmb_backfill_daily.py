@@ -26,8 +26,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-STEP_TIMEOUT_S = 60 * 75          # 单步上限 75 分钟（10-17：全量 32 锚含 gwdang 轨
-                                  # 22 请求×批间休息会跨 40 分钟，被杀过一次）
+STEP_TIMEOUT_S = 60 * 150         # 单步上限 150 分钟（10-17：32 锚跨 40 分钟被 40 杀过；
+                                  # 10-18：41 锚混合轨 804s 批间休息又跨 75 分钟被杀——
+                                  # gwdang 批休不可压缩，只能放宽上限）
 LOG_DIR: Path | None = None       # 测试缝：覆写后日志改落别处（默认 reports/）
 
 
