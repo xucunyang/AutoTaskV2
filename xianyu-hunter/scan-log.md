@@ -1707,3 +1707,42 @@
 - 10-18 18:51:26 AUTO-R64: PARSED total=0 fresh=0
 - 10-18 18:51:26 AUTO-R64: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R64_1018-1849_auto.md
 - 10-18 18:51:27 AUTO-R64: IME restored + sdcard cleaned
+- 10-18 18:51:28 AUTO-R64: DONE round 64
+- 10-18 19:19:04 AUTO-R65: START round 65 (1018-1919)
+- 10-18 19:19:05 PAD R65: LEASE_OK
+- 10-18 19:19:05 AUTO-R65: PAD: LEASE_OK
+- 10-18 19:20:18 AUTO-R65: PAD:     ion
+- 10-18 19:20:18 AUTO-R65: PAD:     + FullyQualifiedErrorId : GetContentWriterArgumentError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-18 19:20:18 AUTO-R65: PAD:  
+- 10-18 19:20:18 AUTO-R65: PAD: DONE pad65_1018_1919 (aborted)
+- 10-18 19:20:19 R65: LEASE_OK
+- 10-18 19:20:19 AUTO-R65: HONOR: LEASE_OK
+- 10-18 19:20:19 AUTO-R65: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-18 19:20:19 AUTO-R65: HONOR: 件。
+- 10-18 19:20:19 AUTO-R65: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-18 19:20:19 AUTO-R65: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-18 19:20:19 AUTO-R65: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-18 19:20:19 AUTO-R65: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-18 19:20:19 AUTO-R65: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-18 19:20:20 AUTO-R65: HONOR:  
+- 10-18 19:20:24 R65: SWITCHED to wifi device
+- 10-18 19:20:24 AUTO-R65: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-18 19:20:25 AUTO-R65: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-18 19:20:39 R65: DEVICE_STALE, recovering...
+- 10-18 19:20:45 R65: SWITCHED to wifi device
+- 10-18 19:20:48 R65: DEVICE_STALE, recovering...
+- 10-18 19:20:53 R65: SWITCHED to wifi device
+- 10-18 19:20:54 AUTO-R65: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-18 19:21:12 R65: DEVICE_STALE, recovering...
+- 10-18 19:21:17 R65: SWITCHED to wifi device
+- 10-18 19:21:20 R65: DEVICE_STALE, recovering...
+- 10-18 19:21:26 R65: SWITCHED to wifi device
+- 10-18 19:21:27 R65: DUMP_MISSING (device dropped?), abort round
+- 10-18 19:21:27 AUTO-R65: HONOR: DUMP_MISSING (device dropped?), abort round
+- 10-18 19:21:27 R65: DONE round65_1018_1920 (aborted, no home)
+- 10-18 19:21:27 AUTO-R65: HONOR: DONE round65_1018_1920 (aborted, no home)
+- 10-18 19:21:27 AUTO-R65: pad: no scans, skip
+- 10-18 19:21:27 AUTO-R65: honor: no scans, skip
+- 10-18 19:21:27 AUTO-R65: PARSED total=0 fresh=0
+- 10-18 19:21:27 AUTO-R65: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R65_1018-1919_auto.md
+- 10-18 19:21:28 AUTO-R65: IME restored + sdcard cleaned
