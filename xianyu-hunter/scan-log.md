@@ -1185,3 +1185,62 @@
 - 10-18 09:23:40 AUTO-R52: PARSED total=0 fresh=0
 - 10-18 09:23:41 AUTO-R52: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R52_1018-0919_auto.md
 - 10-18 09:23:41 AUTO-R52: IME restored + sdcard cleaned
+- 10-18 09:23:43 AUTO-R52: DONE round 52
+- 10-18 09:49:09 AUTO-R53: START round 53 (1018-0949)
+- 10-18 09:49:11 PAD R53: LEASE_OK
+- 10-18 09:49:11 AUTO-R53: PAD: LEASE_OK
+- 10-18 09:49:11 PAD R53: DEVICE_STALE, recovering...
+- 10-18 09:49:38 PAD R53: DEVICE_LOST
+- 10-18 09:49:54 PAD R53: DEVICE_STALE, recovering...
+- 10-18 09:50:21 PAD R53: DEVICE_LOST
+- 10-18 09:50:26 PAD R53: DUMP_MISSING (device dropped?), abort round
+- 10-18 09:50:26 PAD R53: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-18 09:50:26 AUTO-R53: PAD: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-18 09:50:27 PAD R53: DONE pad53_1018_0949 (aborted)
+- 10-18 09:50:27 AUTO-R53: PAD: DONE pad53_1018_0949 (aborted)
+- 10-18 09:50:30 R53: LEASE_OK
+- 10-18 09:50:31 AUTO-R53: HONOR: LEASE_OK
+- 10-18 09:50:31 AUTO-R53: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-18 09:50:31 AUTO-R53: HONOR: 件。
+- 10-18 09:50:31 AUTO-R53: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-18 09:50:31 AUTO-R53: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-18 09:50:31 AUTO-R53: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-18 09:50:31 AUTO-R53: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-18 09:50:32 AUTO-R53: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-18 09:50:32 AUTO-R53: HONOR:  
+- 10-18 12:19:10 AUTO-R54: START round 54 (1018-1219)
+- 10-18 12:19:14 PAD R54: LEASE_OK
+- 10-18 12:19:14 AUTO-R54: PAD: LEASE_OK
+- 10-18 12:19:15 PAD R54: DEVICE_STALE, recovering...
+- 10-18 12:19:42 PAD R54: DEVICE_LOST
+- 10-18 12:19:58 PAD R54: DEVICE_STALE, recovering...
+- 10-18 12:20:25 PAD R54: DEVICE_LOST
+- 10-18 12:20:28 PAD R54: DUMP_MISSING (device dropped?), abort round
+- 10-18 12:20:28 PAD R54: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-18 12:20:29 AUTO-R54: PAD: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-18 12:20:29 PAD R54: DONE pad54_1018_1219 (aborted)
+- 10-18 12:20:29 AUTO-R54: PAD: DONE pad54_1018_1219 (aborted)
+- 10-18 12:20:30 R54: LEASE_OK
+- 10-18 12:20:31 AUTO-R54: HONOR: LEASE_OK
+- 10-18 12:20:31 R54: DEVICE_STALE, recovering...
+- 10-18 12:21:04 R54: DEVICE_LOST
+- 10-18 12:21:04 AUTO-R54: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-18 12:21:05 AUTO-R54: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-18 12:21:19 R54: DEVICE_STALE, recovering...
+- 10-18 12:21:52 R54: DEVICE_LOST
+- 10-18 12:21:55 R54: DEVICE_STALE, recovering...
+- 10-18 12:22:28 R54: DEVICE_LOST
+- 10-18 12:22:30 AUTO-R54: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-18 12:22:49 R54: DEVICE_STALE, recovering...
+- 10-18 12:23:21 R54: DEVICE_LOST
+- 10-18 12:23:26 R54: DEVICE_STALE, recovering...
+- 10-18 12:24:00 R54: DEVICE_LOST
+- 10-18 12:24:01 R54: DUMP_MISSING (device dropped?), abort round
+- 10-18 12:24:01 AUTO-R54: HONOR: DUMP_MISSING (device dropped?), abort round
+- 10-18 12:24:02 R54: DONE round54_1018_1220 (aborted, no home)
+- 10-18 12:24:02 AUTO-R54: HONOR: DONE round54_1018_1220 (aborted, no home)
+- 10-18 12:24:02 AUTO-R54: pad: no scans, skip
+- 10-18 12:24:03 AUTO-R54: honor: no scans, skip
+- 10-18 12:24:03 AUTO-R54: PARSED total=0 fresh=0
+- 10-18 12:24:03 AUTO-R54: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R54_1018-1219_auto.md
+- 10-18 12:24:04 AUTO-R54: IME restored + sdcard cleaned
