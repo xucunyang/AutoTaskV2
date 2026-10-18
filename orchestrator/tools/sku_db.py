@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS entity (
   domain        TEXT NOT NULL,
   identity_json TEXT NOT NULL,     -- 键序=契约声明序
   display_name  TEXT NOT NULL,     -- 展示名（确定性拼接）
+  brand         TEXT NOT NULL DEFAULT '',  -- 品牌（契约 vendor 词表，10-18）
   aliases       TEXT,              -- JSON：别名（归一化规则外的人工兜底）
   perf_anchor   REAL,              -- 相对锚点（Q4：同代销量最大者=1.0，可空待定基底）
   active        INTEGER NOT NULL DEFAULT 1,

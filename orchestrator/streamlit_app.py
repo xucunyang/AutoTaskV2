@@ -353,6 +353,10 @@ elif page == PAGES[3]:
         nc_series = cc2.text_input("系列", key="nc-series",
                                    placeholder="RTX 5090D V2")
         nc_spec = st.text_input("规格", key="nc-spec", placeholder="24GB")
+        from tools.sku_ingest import Contract as _C
+        _vendors = _C.load(ROOT, "hardware").attrs["vendor"]["values"]
+        nc_brand = st.selectbox("品牌（契约词表，可空）", ["（未设）"] + list(_vendors),
+                                key="nc-brand")
         nc_disp = st.text_input("显示名（可空，缺省=系列 规格）", key="nc-display")
         if st.button("创建实体"):
             if not nc_series.strip() or not nc_spec.strip():
@@ -360,6 +364,7 @@ elif page == PAGES[3]:
             else:
                 ident = {"category": nc_cat, "series": nc_series.strip(),
                          "spec": nc_spec.strip()}
+                brand = "" if nc_brand == "（未设）" else nc_brand
                 ident_json = json.dumps(ident, ensure_ascii=False)
                 con = ro()
                 dup = con.execute(
@@ -374,15 +379,17 @@ elif page == PAGES[3]:
                     con = connect(DB)
                     con.execute(
                         "INSERT INTO entity (domain, identity_json, display_name, "
-                        "aliases, active, created_at, updated_at) VALUES "
-                        "('hardware', ?, ?, '[]', 1, datetime('now'), datetime('now'))",
-                        (ident_json, display))
+                        "brand, aliases, active, created_at, updated_at) VALUES "
+                        "('hardware', ?, ?, ?, '[]', 1, datetime('now'), datetime('now'))",
+                        (ident_json, display, brand))
                     con.commit()
                     con.close()
                     seed_path = ROOT / "config" / "contracts" / "hardware_entities.yaml"
                     seed = yaml.safe_load(seed_path.read_text(encoding="utf-8")) or {}
-                    seed.setdefault("entities", []).append(
-                        {"identity": ident, "display_name": display, "aliases": []})
+                    entry = {"identity": ident, "display_name": display, "aliases": []}
+                    if brand:
+                        entry["brand"] = brand
+                    seed.setdefault("entities", []).append(entry)
                     seed_path.write_text(
                         yaml.safe_dump(seed, allow_unicode=True, sort_keys=False),
                         encoding="utf-8")

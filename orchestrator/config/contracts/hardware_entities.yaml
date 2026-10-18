@@ -323,3 +323,9 @@ entities:
     series: Z890 GAMING X
     spec: LGA1851
   display_name: Z890 GAMING X (高端)
+- identity:
+    category: 显卡
+    series: RTX 5090D V2 24G
+    spec: 24GB
+  display_name: RTX 5090D V2 24G
+  aliases: []

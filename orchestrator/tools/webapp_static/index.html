@@ -297,12 +297,10 @@
     <input id="af-url" placeholder="https://item.jd.com/纯数字.html" style="flex:2;min-width:200px;font-size:12px">
     <select id="af-entity" style="max-width:200px;font-size:12px"></select>
     <button title="新建/修改/停用实体" onclick="entityPanelOpen(document.getElementById('af-entity')?.selectedOptions?.[0]?.text)">🧬实体管理</button>
-    <input id="af-vendor" placeholder="店名(可空)" style="width:130px;font-size:12px">
-    <select id="af-channel" style="font-size:12px">
-      <option>自营</option><option>官旗</option><option>三方店铺</option><option>待核</option>
-    </select>
+    <select id="af-vendor" title="品牌（契约词表）" style="width:120px;font-size:12px"></select>
+    <select id="af-channel" title="渠道（契约词表）" style="font-size:12px"></select>
     <select id="af-anchor" style="font-size:12px"><option>销量</option><option>价格</option></select>
-    <input id="af-spname" placeholder="商品名(可空)" style="flex:1;min-width:140px;font-size:12px">
+    <input id="af-spname" placeholder="商品名(必填)" style="flex:1;min-width:140px;font-size:12px">
     <button class="primary" onclick="anchorSave()">保存</button>
     <span id="af-status" style="font-size:11.5px;color:var(--sub)"></span>
   </div>
@@ -318,6 +316,7 @@
       <b>➕ 新建实体</b>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center">
         <select id="ec-cat"><option>显卡</option><option>CPU</option><option>主板</option><option>内存</option><option>固态硬盘</option></select>
+        <select id="ec-brand" title="品牌（契约词表）" style="max-width:110px;font-size:12px"><option value="">—品牌(可空)—</option></select>
         <input id="ec-series" placeholder="系列，如 RTX 5090D V2" style="flex:1;min-width:150px;font-size:12px">
         <input id="ec-spec" placeholder="规格，如 24GB" style="width:110px;font-size:12px">
       </div>
@@ -330,7 +329,12 @@
       <b>✏️ 修改 / 🗑 停用（选中实体）</b>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center">
         <select id="eu-entity" style="max-width:220px;font-size:12px"></select>
-        <input id="eu-spec" placeholder="新规格（可空）" style="width:130px;font-size:12px">
+        <select id="eu-cat" title="品类（可改）" style="font-size:12px"><option>显卡</option><option>CPU</option><option>主板</option><option>内存</option><option>固态硬盘</option></select>
+        <select id="eu-brand" title="品牌（可改）" style="max-width:100px;font-size:12px"><option value="">—品牌(可空)—</option></select>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center">
+        <input id="eu-series" placeholder="系列（可改）" style="flex:1;min-width:130px;font-size:12px">
+        <input id="eu-spec" placeholder="规格（可改）" style="width:120px;font-size:12px">
         <input id="eu-display" placeholder="新显示名（可空）" style="flex:1;min-width:130px;font-size:12px">
       </div>
       <div style="display:flex;gap:6px;margin-top:6px">
@@ -1167,6 +1171,22 @@ async function anchorFormOpen(originalUrl) {
       window._entOpts = await fetch('/api/entity-options').then(x => x.json());
     } catch (e) { document.getElementById('af-status').textContent = '实体清单加载失败'; return; }
   }
+  // 契约词表下拉（品牌/渠道）：自由文本会造成注册表校验崩链（10-18 实证）
+  if (!window._enums) {
+    try { window._enums = await fetch('/api/contract/enums').then(x => x.json()); }
+    catch (e) { window._enums = null; }
+  }
+  if (window._enums) {
+    const ev_ = document.getElementById('af-vendor');
+    const keepV = ev_.value;
+    ev_.innerHTML = '<option value="">—品牌(可空)—</option>' +
+      window._enums.vendor.map(v => `<option>${esc(v)}</option>`).join('');
+    if (keepV && [...ev_.options].some(o => o.value === keepV)) ev_.value = keepV;
+    const ec_ = document.getElementById('af-channel');
+    const keepC = ec_.value;
+    ec_.innerHTML = window._enums.channel.map(c => `<option>${esc(c)}</option>`).join('');
+    if (keepC && [...ec_.options].some(o => o.value === keepC)) ec_.value = keepC;
+  }
   const sel = document.getElementById('af-entity');
   sel.innerHTML = window._entOpts.items.map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join('');
   if (originalUrl) {
@@ -1178,7 +1198,7 @@ async function anchorFormOpen(originalUrl) {
       if (opt) sel.value = opt.value;
     }
     document.getElementById('af-vendor').value = x.vendor || '';
-    document.getElementById('af-channel').value = x.channel || '待核';
+    document.getElementById('af-channel').value = x.channel || '';
     document.getElementById('af-anchor').value = x.anchor === '价格' ? '价格' : '销量';
     document.getElementById('af-spname').value = x.sp_name || '';
     window._afOriginal = x.url;
@@ -1255,12 +1275,34 @@ function entityFillSelect(sel, keepName) {
 }
 async function entityPanelOpen(preselectName) {
   layerOpen('entity-panel');
+  if (!window._enums) {
+    try { window._enums = await fetch('/api/contract/enums').then(x => x.json()); }
+    catch (e) { window._enums = null; }
+  }
+  const brandOpts = '<option value="">—品牌(可空)—</option>' +
+    ((window._enums && window._enums.vendor) || []).map(v => `<option>${esc(v)}</option>`).join('');
+  document.getElementById('ec-brand').innerHTML = brandOpts;
+  document.getElementById('eu-brand').innerHTML = brandOpts;
   try { await entityOptsRefresh(); } catch (e) {
     document.getElementById('entity-status').textContent = '实体清单加载失败'; return;
   }
-  entityFillSelect(document.getElementById('eu-entity'), preselectName);
+  const euSel = document.getElementById('eu-entity');
+  entityFillSelect(euSel, preselectName);
+  euSel.onchange = entityPrefillEdit;
+  entityPrefillEdit();
   document.getElementById('entity-status').textContent =
     preselectName ? `操作对象：${preselectName}` : '';
+}
+function entityPrefillEdit() {
+  const id = +document.getElementById('eu-entity').value;
+  const e = (window._entOpts.items || []).find(v => v.id === id);
+  if (!e) return;
+  const ident = e.identity || {};
+  document.getElementById('eu-cat').value = ident.category || '显卡';
+  document.getElementById('eu-series').value = ident.series || '';
+  document.getElementById('eu-spec').value = ident.spec || '';
+  document.getElementById('eu-brand').value = e.brand || '';
+  document.getElementById('eu-display').value = '';
 }
 async function entityCreate() {
   const st_ = document.getElementById('entity-status');
@@ -1271,6 +1313,7 @@ async function entityCreate() {
         category: document.getElementById('ec-cat').value,
         series: document.getElementById('ec-series').value.trim(),
         spec: document.getElementById('ec-spec').value.trim(),
+        brand: document.getElementById('ec-brand').value,
         display_name: document.getElementById('ec-display').value.trim()
       })
     });
@@ -1280,6 +1323,7 @@ async function entityCreate() {
     await entityOptsRefresh();
     document.getElementById('ec-series').value = '';
     document.getElementById('ec-spec').value = '';
+    document.getElementById('ec-brand').value = '';
     document.getElementById('ec-display').value = '';
   } catch (e) { st_.textContent = '请求失败：' + e; }
 }
@@ -1291,7 +1335,10 @@ async function entityUpdate() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         entity_id: eid,
+        category: document.getElementById('eu-cat').value,
+        series: document.getElementById('eu-series').value.trim(),
         spec: document.getElementById('eu-spec').value.trim(),
+        brand: document.getElementById('eu-brand').value,
         display_name: document.getElementById('eu-display').value.trim()
       })
     });

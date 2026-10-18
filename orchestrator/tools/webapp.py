@@ -37,6 +37,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from channel_gate import BudgetExhausted, ChannelGate, LockHeld  # noqa: E402
 
 from tools.sku_db import DB_PATH, connect  # noqa: E402
+from tools.sku_ingest import Contract  # noqa: E402
 from tools.trend_calc import (  # noqa: E402
     _aggregate_series as aggregate_series,
     _series_with_attrs as series_with_attrs,
@@ -183,7 +184,7 @@ def build_board(con: sqlite3.Connection, root: Path | None = None,
     entities = []
     for row in con.execute(
             "SELECT entity_id, domain, display_name, identity_json, "
-            "perf_anchor FROM entity WHERE active=1 ORDER BY entity_id"):
+            "perf_anchor, brand FROM entity WHERE active=1 ORDER BY entity_id"):
         eid = row["entity_id"]
         series = aggregate_series(con, eid, as_of)
         metrics = l0_metrics(series)          # <5 期 → None（Q12 占位）
@@ -199,6 +200,7 @@ def build_board(con: sqlite3.Connection, root: Path | None = None,
             "group": (identity.get("category") or identity.get("city")
                       or "其他"),
             "display_name": row["display_name"],
+            "brand": row["brand"] or "",
             "identity": identity,
             "perf_anchor": row["perf_anchor"],
             "n_periods": len(series),
@@ -472,15 +474,33 @@ def _channel_of(shop: str) -> str:
     return "三方店铺"
 
 
+@app.get("/api/contract/enums")
+def api_contract_enums() -> dict:
+    """契约枚举词表（表单下拉用，10-18）：锚表单的 品牌/渠道/锚类型
+    必须从这里选——自由文本会造成注册表校验不过、定时链崩（10-18 实证）。"""
+    attrs = Contract.load(ROOT, "hardware").attrs
+    return {"vendor": attrs["vendor"]["values"],
+            "channel": attrs["channel"]["values"],
+            "anchor": attrs["anchor"]["values"],
+            "category": ["显卡", "CPU", "主板", "内存", "固态硬盘"]}
+
+
 @app.get("/api/entity-options")
 def api_entity_options() -> dict:
-    """轻量实体清单（加锚下拉用）。"""
+    """轻量实体清单（加锚下拉用）。带 identity+brand 供实体管理预填。"""
     con = ro_connect()
     rows = con.execute(
-        "SELECT entity_id, display_name FROM entity "
+        "SELECT entity_id, display_name, identity_json, brand FROM entity "
         "WHERE domain='hardware' AND active=1 ORDER BY display_name").fetchall()
-    return {"items": [{"id": r["entity_id"], "name": r["display_name"]}
-                      for r in rows]}
+    out = []
+    for r in rows:
+        try:
+            ident = json.loads(r["identity_json"] or "{}")
+        except ValueError:
+            ident = {}
+        out.append({"id": r["entity_id"], "name": r["display_name"],
+                    "identity": ident, "brand": r["brand"] or ""})
+    return {"items": out}
 
 
 @app.post("/api/mmb/add-anchor")
@@ -592,6 +612,17 @@ def api_anchors_upsert(payload: dict = Body(...)) -> dict:
     if not sp_name:
         raise HTTPException(422, "商品名（sp_name）必填——锚管理列表与提案卡显示用，"
                                  "填慢买/京东商品标题")
+    # 品牌/渠道须在契约词表内：自由文本会让 load_registry 校验崩掉定时链
+    # （10-18 实证：'英特尔京东自营' 写入后 06:30 链直接 ValueError）
+    attrs = Contract.load(ROOT, "hardware").attrs
+    vendor = str(payload.get("vendor") or "").strip()
+    if vendor and vendor not in attrs["vendor"]["values"]:
+        raise HTTPException(422, f"品牌 {vendor!r} 不在契约词表（请下拉选择）："
+                                 f"{'、'.join(attrs['vendor']['values'])}")
+    channel = str(payload.get("channel") or "").strip()
+    if channel and channel not in attrs["channel"]["values"]:
+        raise HTTPException(422, f"渠道 {channel!r} 不在契约词表（请下拉选择）："
+                                 f"{'、'.join(attrs['channel']['values'])}")
     if not re.search(r"item\.jd\.com/\d+\.html$", url):
         raise HTTPException(422, "URL 必须是纯数字京东直链 item.jd.com/<数字>.html"
                                  "（jingfen/加密串三渠道不认，10-17 实证）")
@@ -630,7 +661,7 @@ def api_anchors_upsert(payload: dict = Body(...)) -> dict:
         listings.append({
             "identity": identity,
             "vendor": str(payload.get("vendor") or "").strip(),
-            "channel": str(payload.get("channel") or "待核").strip(),
+            "channel": str(payload.get("channel") or "自营").strip(),
             "url": url,
             "sp_name": sp_name[:120],
             "anchor": anchor,
@@ -641,6 +672,23 @@ def api_anchors_upsert(payload: dict = Body(...)) -> dict:
         mode = "create"
     _reg_save(reg)
     return {"ok": True, "mode": mode, "url": url}
+
+
+def _validate_category(v: str) -> str:
+    if v not in ("显卡", "CPU", "主板", "内存", "固态硬盘"):
+        raise HTTPException(422, f"未知品类：{v}（合法：显卡/CPU/主板/内存/固态硬盘）")
+    return v
+
+
+def _validate_brand(v: str) -> str:
+    """品牌须在契约 vendor 词表内（锚表单/实体共用一套词表）。空=未设。"""
+    v = (v or "").strip()
+    if not v:
+        return ""
+    legal = Contract.load(ROOT, "hardware").attrs["vendor"]["values"]
+    if v not in legal:
+        raise HTTPException(422, f"品牌 {v!r} 不在契约词表，合法值：{'、'.join(legal)}")
+    return v
 
 
 @app.post("/api/entity/create")
@@ -657,8 +705,8 @@ def api_entity_create(payload: dict = Body(...)) -> dict:
              "spec": str(payload.get("spec") or "").strip()}
     if not all(ident.values()):
         raise HTTPException(422, "category / series / spec 必填")
-    if ident["category"] not in ("显卡", "CPU", "主板", "内存", "固态硬盘"):
-        raise HTTPException(422, f"未知品类：{ident['category']}")
+    _validate_category(ident["category"])
+    brand = _validate_brand(str(payload.get("brand") or ""))
     ident_json = json.dumps(ident, ensure_ascii=False)
     display = str(payload.get("display_name") or "").strip() \
         or f"{ident['series']} {ident['spec']}".strip()
@@ -672,17 +720,20 @@ def api_entity_create(payload: dict = Body(...)) -> dict:
 
     con = connect(DB_PATH)
     cur = con.execute(
-        "INSERT INTO entity (domain, identity_json, display_name, aliases, "
-        "active, created_at, updated_at) VALUES ('hardware', ?, ?, '[]', 1, "
-        "datetime('now'), datetime('now'))", (ident_json, display))
+        "INSERT INTO entity (domain, identity_json, display_name, brand, "
+        "aliases, active, created_at, updated_at) VALUES ('hardware', ?, ?, "
+        "?, '[]', 1, datetime('now'), datetime('now'))",
+        (ident_json, display, brand))
     con.commit()
     eid = cur.lastrowid
     con.close()
 
     seed_path = ROOT / "config" / "contracts" / "hardware_entities.yaml"
     seed = yaml.safe_load(seed_path.read_text(encoding="utf-8")) or {}
-    seed.setdefault("entities", []).append(
-        {"identity": ident, "display_name": display, "aliases": []})
+    entry = {"identity": ident, "display_name": display, "aliases": []}
+    if brand:
+        entry["brand"] = brand
+    seed.setdefault("entities", []).append(entry)
     seed_path.write_text(yaml.safe_dump(seed, allow_unicode=True, sort_keys=False),
                          encoding="utf-8")
     return {"ok": True, "entity_id": eid, "display_name": display}
@@ -690,26 +741,32 @@ def api_entity_create(payload: dict = Body(...)) -> dict:
 
 @app.post("/api/entity/update")
 def api_entity_update(payload: dict = Body(...)) -> dict:
-    """修改实体（U）：改 spec / 显示名。联动同步：
-    ① 注册表中绑旧 identity 的 listing 一并换绑；② 种子文件同名条目。"""
+    """修改实体（U）：品类/系列/规格/品牌/显示名全部可改（缺省=保持原值）。
+    联动同步：① 注册表中绑旧 identity 的 listing 一并换绑；
+    ② 种子文件同 display_name 条目。历史观测不动（按 entity_id 归属）。"""
     import yaml
 
     eid = int(payload.get("entity_id") or 0)
     con = ro_connect()
-    row = con.execute("SELECT identity_json, display_name FROM entity "
+    row = con.execute("SELECT identity_json, display_name, brand FROM entity "
                       "WHERE entity_id=? AND domain='hardware'", (eid,)).fetchone()
     con.close()
     if not row:
         raise HTTPException(404, f"实体 {eid} 不存在")
     old_ident = json.loads(row["identity_json"] or "{}")
     old_display = row["display_name"]
+    old_brand = row["brand"] or ""
+    new_cat = _validate_category(str(payload.get("category") or "").strip()
+                                 or old_ident.get("category", ""))
+    new_series = str(payload.get("series") or "").strip() or old_ident.get("series", "")
     new_spec = str(payload.get("spec") or "").strip() or old_ident.get("spec", "")
     new_display = str(payload.get("display_name") or "").strip() or \
-        f"{old_ident.get('series', '')} {new_spec}".strip()
-    new_ident = {"category": old_ident.get("category", ""),
-                 "series": old_ident.get("series", ""), "spec": new_spec}
+        f"{new_series} {new_spec}".strip()
+    new_brand = _validate_brand(str(payload.get("brand") or "").strip()
+                                or old_brand)
+    new_ident = {"category": new_cat, "series": new_series, "spec": new_spec}
     if not all(new_ident.values()):
-        raise HTTPException(422, "spec 不能为空")
+        raise HTTPException(422, "category / series / spec 不能为空")
     new_json = json.dumps(new_ident, ensure_ascii=False)
 
     con = ro_connect()
@@ -722,9 +779,9 @@ def api_entity_update(payload: dict = Body(...)) -> dict:
                                  f"{clash['entity_id']}）")
 
     con = connect(DB_PATH)
-    con.execute("UPDATE entity SET identity_json=?, display_name=?, "
+    con.execute("UPDATE entity SET identity_json=?, display_name=?, brand=?, "
                 "updated_at=datetime('now') WHERE entity_id=?",
-                (new_json, new_display, eid))
+                (new_json, new_display, new_brand, eid))
     con.commit()
     con.close()
 
@@ -741,13 +798,15 @@ def api_entity_update(payload: dict = Body(...)) -> dict:
     seed_path = ROOT / "config" / "contracts" / "hardware_entities.yaml"
     seed = yaml.safe_load(seed_path.read_text(encoding="utf-8")) or {}
     for e in seed.get("entities") or []:
-        if e.get("display_name") == old_display:
+        if e.get("display_name") == old_display or e.get("identity") == old_ident:
             e["identity"] = new_ident
             e["display_name"] = new_display
+            if new_brand:
+                e["brand"] = new_brand
     seed_path.write_text(yaml.safe_dump(seed, allow_unicode=True, sort_keys=False),
                          encoding="utf-8")
     return {"ok": True, "entity_id": eid, "display_name": new_display,
-            "registry_swapped": swapped}
+            "brand": new_brand, "registry_swapped": swapped}
 
 
 @app.post("/api/entity/retire")
