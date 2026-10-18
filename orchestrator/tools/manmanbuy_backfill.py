@@ -176,16 +176,36 @@ def _gwd():
 
 
 def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
-                 gate=None) -> dict:
-    n_gwd = sum(1 for x in registry["listings"]
-                if (x.get("source") or "manmanmai") == "gwdang")
+                 gate=None, cache_path: Path | None = None,
+                 done_urls: set | None = None,
+                 prev_listings: list | None = None) -> dict:
+    """采集全部锚 → dumps。增量落盘（10-18 教训：采完才落盘，中断=全丢）：
+    每锚采集后即整体写 cache_path；done_urls 里的锚（当日已留档）断点跳过。
+    慢买预算耗尽时**只停慢买轨**，gwdang 免费锚照采（跨渠道独立账）。"""
+    done_urls = done_urls or set()
+    todo = [x for x in registry["listings"] if x["url"] not in done_urls]
+    n_gwd = sum(1 for x in todo if (x.get("source") or "manmanmai") == "gwdang")
     print(f"── 采集 {len(registry['listings'])} 锚"
-          f"（慢买 {len(registry['listings']) - n_gwd} / gwdang 顶班 {n_gwd}）──")
+          f"（慢买 {len(todo) - n_gwd} / gwdang 顶班 {n_gwd}）──")
+    if done_urls:
+        print(f"[{_ts()}] ↩ 断点续采：{len(done_urls)} 锚当日已有留档，跳过")
     dumps = {"fetched_at": datetime.now(timezone.utc).isoformat(),
-             "listings": []}
+             "listings": list(prev_listings or [])}
+
+    def _flush():
+        if cache_path:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(dumps, ensure_ascii=False, indent=1),
+                                  encoding="utf-8")
+
+    _flush()
     stopped = 0
-    for i, it in enumerate(registry["listings"]):
+    mmb_starved = False
+    for i, it in enumerate(todo):
         src = it.get("source") or "manmanmai"
+        if src != "gwdang" and mmb_starved:
+            stopped += 1
+            continue            # 慢买预算尽：慢买锚顺延，gwdang 免费锚照采
         if src == "gwdang":
             # gwdang 轨：自己的 Pacer 节流，不占 mmb 预算（单写者按渠道分账）
             _gwd().pacer.wait()
@@ -193,9 +213,11 @@ def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
             # 治理闸门（R1/R2/R4 机制化）：拟人间隔+批间休息+预算扣减，超了 fail-closed
             gate.wait()
             if not gate.spend(1, it.get("sp_name", "")):
-                stopped = len(registry["listings"]) - i
-                print(f"[{_ts()}] ⛔ 今日预算已尽，停发剩余 {stopped} 锚")
-                break
+                mmb_starved = True
+                print(f"[{_ts()}] ⛔ 今日慢买预算已尽：剩余慢买锚顺延明天"
+                      f"（gwdang 锚照采，已采数据已增量落盘）")
+                stopped += 1
+                continue
         elif i:
             # 节流=区间内随机（默认 2~7s）：固定间隔是可被识别的机器指纹，
             # 随机化更像人；区间上限可按需放宽（--sleep-max）
@@ -216,10 +238,13 @@ def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
             "sp_name": it["sp_name"], "channel": it["channel"],
             "vendor": it.get("vendor") or "", "source": src,
             "trend": trend})
+        _flush()                # 增量落盘：中断已采部分不丢
         if n:
             print(f"[{_ts()}] ✓ {name} · {n} 点{'（gwdang）' if src == 'gwdang' else ''}")
         else:
             print(f"[{_ts()}] ✗ {name} · 0 点（listing 疑似失效，跳过）")
+    if stopped:
+        print(f"[{_ts()}] ■ 慢买预算顺延 {stopped} 锚（明天自动续）")
     return dumps
 
 
@@ -256,9 +281,23 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
                 print("未登录：先执行 python -m tools.manmanbuy_backfill login")
                 return 2
         print(f"[{_ts()}] ▶ 开始采集（{len(registry['listings'])} 锚）")
-        dumps = _fetch_dumps(mmb, registry, (sleep_min, sleep_max), gate=gate)
         cache_path = root / "artifacts" / date_dir / "backfill_manmanbuy_raw.json"
         cache_path.parent.mkdir(parents=True, exist_ok=True)
+        # 断点续采（10-18 教训：两次中断 48 发全丢）：当日缓存里已有的锚跳过
+        prev_listings: list = []
+        done_urls: set = set()
+        if cache_path.exists():
+            try:
+                prev_listings = (json.loads(cache_path.read_text(encoding="utf-8"))
+                                 .get("listings") or [])
+                reg_urls = {it["url"] for it in registry["listings"]}
+                done_urls = {x["url"] for x in prev_listings} & reg_urls
+                prev_listings = [x for x in prev_listings if x["url"] in done_urls]
+            except Exception:
+                prev_listings, done_urls = [], set()
+        dumps = _fetch_dumps(mmb, registry, (sleep_min, sleep_max), gate=gate,
+                             cache_path=cache_path, done_urls=done_urls,
+                             prev_listings=prev_listings)
         cache_path.write_text(json.dumps(dumps, ensure_ascii=False, indent=1),
                               encoding="utf-8")
         print(f"[{_ts()}] ◇ raw 留档 -> {cache_path}")
