@@ -66,7 +66,7 @@ def match_candidate(rows: list, series: str, spec: str,
         if key_spec and key_spec in title:
             sim += 0.15                     # 规格命中加分（8GB/16GB/32G×2…）
         price = Mmb._num(r.get("price"))
-        if (prop_price > 0 and price > 0
+        if (prop_price and prop_price > 0 and price and price > 0
                 and abs(price - prop_price) / max(prop_price, 1) > 0.25):
             sim -= 0.25                     # 价格对不上降权而不是一票否决
         if sim >= 0.40 and (best is None or sim > best[0]):
