@@ -254,6 +254,16 @@ def _fetch_dumps(mmb: "Mmb | None", registry: dict,
             print(f"[{_ts()}] ✗ {name} · 瞬时失败：{e}")
             continue
         n = len(trend.get("datePrice") or [])
+        if not n:
+            # 0 点可能是瞬时空响应（10-18 实证：270K Plus 首采 0 点，
+            # 手动重打同接口 207 点）→ 退避重试一次再定论
+            time.sleep(random.uniform(6, 10))
+            try:
+                trend = (_gwd().trend(it["url"]) if src == "gwdang"
+                         else mmb.trend(it["url"]))
+                n = len(trend.get("datePrice") or [])
+            except Exception:
+                pass
         dumps["listings"].append({
             "identity": it["identity"], "url": it["url"],
             "sp_name": it["sp_name"], "channel": it["channel"],
