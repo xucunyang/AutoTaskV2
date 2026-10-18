@@ -36,6 +36,7 @@ sys.path.insert(0, str(ROOT))
 import yaml  # noqa: E402
 
 from channel_gate import ChannelGate  # 独立包（pip install -e E:\code\channel-gate）  # noqa: E402
+from channel_gate.gate import BudgetExhausted  # noqa: E402
 from tools.manmanbuy_client import Mmb, SessionExpired  # noqa: E402
 from tools.sku_backfill import append_rows, convert  # noqa: E402
 from tools.sku_db import connect  # noqa: E402
@@ -175,18 +176,24 @@ def _gwd():
     return _GWD
 
 
-def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
+def _fetch_dumps(mmb: "Mmb | None", registry: dict,
+                 sleep_range: tuple[float, float],
                  gate=None, cache_path: Path | None = None,
                  done_urls: set | None = None,
                  prev_listings: list | None = None) -> dict:
     """采集全部锚 → dumps。增量落盘（10-18 教训：采完才落盘，中断=全丢）：
     每锚采集后即整体写 cache_path；done_urls 里的锚（当日已留档）断点跳过。
-    慢买预算耗尽时**只停慢买轨**，gwdang 免费锚照采（跨渠道独立账）。"""
+    慢买预算耗尽时**只停慢买轨**，gwdang 免费锚照采（跨渠道独立账）。
+    mmb=None（预算尽降级/离线）同理：慢买锚全部顺延。"""
     done_urls = done_urls or set()
     todo = [x for x in registry["listings"] if x["url"] not in done_urls]
     n_gwd = sum(1 for x in todo if (x.get("source") or "manmanmai") == "gwdang")
-    print(f"── 采集 {len(registry['listings'])} 锚"
-          f"（慢买 {len(todo) - n_gwd} / gwdang 顶班 {n_gwd}）──")
+    if mmb is None:
+        print(f"── 采集 {len(registry['listings'])} 锚"
+              f"（慢买轨不可用：{len(todo) - n_gwd} 锚顺延 / gwdang 顶班 {n_gwd}）──")
+    else:
+        print(f"── 采集 {len(registry['listings'])} 锚"
+              f"（慢买 {len(todo) - n_gwd} / gwdang 顶班 {n_gwd}）──")
     if done_urls:
         print(f"[{_ts()}] ↩ 断点续采：{len(done_urls)} 锚当日已有留档，跳过")
     dumps = {"fetched_at": datetime.now(timezone.utc).isoformat(),
@@ -203,9 +210,9 @@ def _fetch_dumps(mmb: Mmb, registry: dict, sleep_range: tuple[float, float],
     mmb_starved = False
     for i, it in enumerate(todo):
         src = it.get("source") or "manmanmai"
-        if src != "gwdang" and mmb_starved:
+        if src != "gwdang" and (mmb is None or mmb_starved):
             stopped += 1
-            continue            # 慢买预算尽：慢买锚顺延，gwdang 免费锚照采
+            continue            # 慢买不可用/预算尽：慢买锚顺延，gwdang 免费锚照采
         if src == "gwdang":
             # gwdang 轨：自己的 Pacer 节流，不占 mmb 预算（单写者按渠道分账）
             _gwd().pacer.wait()
@@ -252,7 +259,7 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
         dry_run: bool = False, skip_ingest: bool = False,
         sleep_min: float = 5.0, sleep_max: float = 20.0,
         only: str | None = None, gate: "ChannelGate | None" = None,
-        gwd_only: bool = False) -> int:
+        gwd_only: bool = False, mmb_blocked: bool = False) -> int:
     # 契约/注册表属代码资产，固定从模块 ROOT 读；root 只重定向产物
     contract = Contract.load(ROOT, "hardware")
     registry = load_registry(contract)
@@ -275,11 +282,13 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
         print(f"[cache] {from_cache}（{len(dumps['listings'])} listing）")
     else:
         mmb = None
-        if not gwd_only:
+        if not gwd_only and not mmb_blocked:
             mmb = Mmb()
             if not mmb.load_session():
                 print("未登录：先执行 python -m tools.manmanbuy_backfill login")
                 return 2
+        if mmb_blocked:
+            print(f"[{_ts()}] ⛔ 慢买轨今日不可用（预算尽）：{sum(1 for it in registry['listings'] if (it.get('source') or 'manmanmai') != 'gwdang')} 锚顺延明天，gwdang 免费锚照采")
         print(f"[{_ts()}] ▶ 开始采集（{len(registry['listings'])} 锚）")
         cache_path = root / "artifacts" / date_dir / "backfill_manmanbuy_raw.json"
         cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -295,7 +304,8 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
                 prev_listings = [x for x in prev_listings if x["url"] in done_urls]
             except Exception:
                 prev_listings, done_urls = [], set()
-        dumps = _fetch_dumps(mmb, registry, (sleep_min, sleep_max), gate=gate,
+        dumps = _fetch_dumps(mmb, registry, (sleep_min, sleep_max),
+                             gate=None if mmb_blocked else gate,
                              cache_path=cache_path, done_urls=done_urls,
                              prev_listings=prev_listings)
         cache_path.write_text(json.dumps(dumps, ensure_ascii=False, indent=1),
@@ -705,6 +715,14 @@ def main(argv: list[str] | None = None) -> int:
                        dry_run=args.dry_run, skip_ingest=args.skip_ingest,
                        sleep_min=args.sleep_min, sleep_max=args.sleep_max,
                        only=args.only, gate=gate, gwd_only=args.gwd_only)
+    except BudgetExhausted:
+        # 预算入口即尽（2026-10-18 实例：session() 进入即 fail-closed 抛异常，
+        # 把 gwdang 免费轨和缓存入库也炸掉了）→ 降级：慢买轨顺延，零消费部分照做
+        print("[mmb] 今日预算已尽：慢买轨顺延明天，gwdang 免费锚 + 已缓存数据照常处理")
+        return run(args.date_dir, root=root, dry_run=args.dry_run,
+                   skip_ingest=args.skip_ingest,
+                   sleep_min=args.sleep_min, sleep_max=args.sleep_max,
+                   only=args.only, gwd_only=args.gwd_only, mmb_blocked=True)
     except SessionExpired as e:
         print(_fail_label(e))
         return 2
