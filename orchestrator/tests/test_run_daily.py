@@ -321,7 +321,7 @@ def test_desktop_marker_drops_file_in_desktop_with_summary(tmp_path):
         links=[("股票日报", str(root / "artifacts" / "2026-10-06" / "finance_report.md"))],
         desktop_dir=desk,
     )
-    out = desk / "AutoTask_finance_daily_2026-10-06.txt"
+    out = desk / "AutoTask_finance_daily.txt"
     body = out.read_text(encoding="utf-8-sig")
     assert "[OK]" in body
     assert "金融日报 2026-10-06" in body
@@ -343,11 +343,36 @@ def test_desktop_marker_uses_dead_icon_when_rc_2(tmp_path):
         links=[],
         desktop_dir=desk,
     )
-    body = (desk / "AutoTask_finance_daily_2026-10-06.txt").read_text(
+    body = (desk / "AutoTask_finance_daily.txt").read_text(
         encoding="utf-8-sig")
     assert "[DEAD]" in body
     assert "死信处理" in body
     assert "core.scheduler --rerun" in body
+
+
+def test_desktop_marker_appends_runs_and_rotates(tmp_path):
+    """单文件追加（10-19 用户要求：不再每天一个文件）；超 200KB 留尾 2000 行。"""
+    desk = tmp_path / "Desktop"
+    desk.mkdir(parents=True)
+    root = tmp_path
+    _summary3 = _summary([("t1_stocks", "DONE")])
+    _write_desktop_marker(root, "finance_daily", "2026-10-19", rc=0,
+                          summary=_summary3, links=[], desktop_dir=desk)
+    _write_desktop_marker(root, "finance_daily", "2026-10-20", rc=0,
+                          summary=_summary3, links=[], desktop_dir=desk)
+    out = desk / "AutoTask_finance_daily.txt"
+    body = out.read_text(encoding="utf-8-sig")
+    assert body.count("[OK]") == 2                      # 两次运行都在
+    assert "2026-10-20" in body and "2026-10-19" in body
+    # 轮转：预置 >200KB 垃圾，写入后应收敛到尾部
+    big = desk / "AutoTask_finance_daily.txt"
+    big.write_text("x" * 250_000 + "\n[OK] 旧尾巴行\n", encoding="utf-8-sig")
+    _write_desktop_marker(root, "finance_daily", "2026-10-21", rc=0,
+                          summary=_summary3, links=[], desktop_dir=desk)
+    body2 = out.read_text(encoding="utf-8-sig")
+    assert len(body2) < 200_000                         # 收敛了
+    assert "金融日报 2026-10-21" in body2               # 最新一次在
+    assert "旧尾巴行" in body2                          # 尾部保留
 
 
 def test_desktop_marker_passes_under_unwritable_dir(tmp_path):

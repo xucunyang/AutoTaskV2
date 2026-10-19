@@ -230,7 +230,7 @@ def _write_desktop_marker(root: Path, job: str, date: str, rc: int,
         home = Path(os.path.expanduser("~"))
         candidates = [home / "Desktop", home / "OneDrive" / "Desktop", home]
         desktop_dir = next((d for d in candidates if d.is_dir()), home)
-    out_path = desktop_dir / f"AutoTask_{job}_{date}.txt"
+    out_path = desktop_dir / f"AutoTask_{job}.txt"
 
     icon = {0: "[OK]", 1: "[..]", 2: "[DEAD]", 3: "[CFG]"}.get(rc, "[??]")
     lines = [
@@ -266,7 +266,19 @@ def _write_desktop_marker(root: Path, job: str, date: str, rc: int,
         f"本份为 2026-10-06 起每次跑批的桌面冗余通知（与 toasts 并行）",
     ]
     try:
-        out_path.write_text("\n".join(lines), encoding="utf-8-sig")
+        # 追加模式（10-19 用户要求：每天一个文件→单文件追加）；
+        # 超 200KB 收敛到尾部 100KB（按行界切，防超长行顶穿）
+        if out_path.exists() and out_path.stat().st_size > 200_000:
+            text = out_path.read_text(encoding="utf-8-sig", errors="replace")
+            keep = text[-100_000:]
+            nl = keep.find("\n")
+            if nl >= 0:
+                keep = keep[nl + 1:]
+            out_path.write_text(keep, encoding="utf-8")
+        stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        with out_path.open("a", encoding="utf-8") as f:
+            f.write(f"\n{'─' * 8} {stamp} {'─' * 8}\n")
+            f.write("\n".join(lines) + "\n")
     except OSError:
         # marker 写失败不影响主流程退出码；用户通知已经发了
         pass
