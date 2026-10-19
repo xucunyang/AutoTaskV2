@@ -567,20 +567,28 @@ def api_mmb_add_anchor(payload: dict = Body(...)) -> dict:
 def api_anchors() -> dict:
     """注册表全量 listing + 实体名解析（锚管理面板，R of CRUD）。"""
     con = ro_connect()
-    ents = [(json.loads(r["identity_json"] or "{}"), r["display_name"])
-            for r in con.execute("SELECT identity_json, display_name FROM entity "
-                                 "WHERE domain='hardware' AND active=1")]
+    ents = [(json.loads(r["identity_json"] or "{}"), r["display_name"],
+             r["entity_id"])
+            for r in con.execute("SELECT identity_json, display_name, entity_id "
+                                 "FROM entity WHERE domain='hardware' AND active=1")]
+    # 实体粒度观测计数（锚状态徽标）：observation.source_url 存的是慢买页面
+    # 而非商品链接（ingest 口径），锚粒度归因需改 ingest——见设计文档 §11 待办
+    obs_by_ent = {r["entity_id"]: r["n"] for r in con.execute(
+        "SELECT entity_id, COUNT(*) AS n FROM observation GROUP BY entity_id")}
     items = []
     for it in _reg_load().get("listings") or []:
         ident = it.get("identity") or {}
-        name = next((dn for ed, dn in ents if ed == ident), "")
+        eid = next((e for ed, dn, e in ents if ed == ident), None)
+        name = next((dn for ed, dn, e in ents if ed == ident), "")
+        url = it.get("url")
         items.append({
-            "url": it.get("url"), "sp_name": (it.get("sp_name") or "")[:60],
+            "url": url, "sp_name": (it.get("sp_name") or "")[:60],
             "vendor": it.get("vendor"), "channel": it.get("channel"),
             "source": it.get("source") or "manmanmai",
             "anchor": it.get("anchor"), "retired": it.get("retired"),
             "retired_reason": it.get("retired_reason"),
             "entity": name or json.dumps(ident, ensure_ascii=False),
+            "points": obs_by_ent.get(eid, 0),
         })
     active = sum(1 for x in items if not x["retired"])
     return {"items": items, "active": active}
@@ -1033,6 +1041,42 @@ def _read_log_any(p: Path) -> str:
 
 # ---------- 任务流水（控制台风格，2026-10-17）：只读 reports/*.log + 闸门状态 ----------
 
+@app.post("/api/mmb/collect-now")
+def api_mmb_collect_now(payload: dict = Body(...)) -> dict:
+    """立即采集指定锚（2026-10-19 新增 SKU 用户旅程 §5.5 设计文档）。
+
+    urls 须已在注册表（404 兜底）；拉起 scripts/collect_now.py 后台子进程
+    ——同一 channel-gate 锁+节奏，增量缓存+断点续采，重复点击幂等；
+    采完自动 trend_calc 刷新快照。进度看「任务流水」面板，重复点击 409。"""
+    import subprocess
+
+    from tools import taskboard
+    urls = [str(u).strip() for u in (payload.get("urls") or [])
+            if str(u).strip()]
+    if not urls:
+        raise HTTPException(422, "urls 必填")
+    running = [t for t in taskboard.snapshot()
+               if t.get("status") == "running"
+               and str(t.get("name", "")).startswith("立即采集")]
+    if running:
+        raise HTTPException(409, "已有「立即采集」在跑，看任务流水进度")
+    reg_urls = {it.get("url") for it in _reg_load().get("listings") or []}
+    unknown = [u for u in urls if u not in reg_urls]
+    if unknown:
+        raise HTTPException(404, "以下 URL 不在注册表："
+                            + "、".join(unknown[:3])
+                            + ("…" if len(unknown) > 3 else ""))
+    script = ROOT / "scripts" / "collect_now.py"
+    logf = (ROOT / "reports" / "collect_now.log").open("ab")
+    subprocess.Popen(
+        [sys.executable, "-X", "utf8", "-u", str(script),
+         "--urls", ",".join(urls)],
+        cwd=str(ROOT), stdout=logf, stderr=subprocess.STDOUT,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    return {"ok": True, "urls": urls,
+            "msg": "已启动采集：完成后看板自动刷新（任务流水可看进度）"}
+
+
 @app.get("/api/tasklog")
 def api_tasklog(file: str = "mmb_backfill_run.log", tail: int = 120) -> dict:
     """任务执行流水：reports/ 下的 .log 尾部 + 渠道闸门实时状态。
@@ -1088,9 +1132,7 @@ def api_mmb_auto_anchor() -> dict:
                and str(t.get("name", "")).startswith("一键补锚")]
     if running:
         raise HTTPException(409, f"已在跑（{running[0]['name']}），看任务流水进度")
-    used = channel_gate.gate.spent_today("mmb")
-    if used >= 80:      # R2 上限（10-17 实验后口径）；脚本内闸门仍 fail-closed
-        raise HTTPException(429, f"今日慢买预算已用尽（{used}/80），0 点重置后再点")
+    # R2 上限已于 10-18 移除（d8c353a）：预算无上限，脚本内闸门仍管节奏
     script = ROOT / "scripts" / "auto_anchor.py"
     logf = (ROOT / "reports" / "auto_anchor.log").open("ab")
     subprocess.Popen(

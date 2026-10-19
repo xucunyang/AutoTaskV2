@@ -285,7 +285,8 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
         dry_run: bool = False, skip_ingest: bool = False,
         sleep_min: float = 5.0, sleep_max: float = 20.0,
         only: str | None = None, gate: "ChannelGate | None" = None,
-        gwd_only: bool = False, mmb_blocked: bool = False) -> int:
+        gwd_only: bool = False, mmb_blocked: bool = False,
+        urls: str | None = None) -> int:
     # 契约/注册表属代码资产，固定从模块 ROOT 读；root 只重定向产物
     contract = Contract.load(ROOT, "hardware")
     registry = load_registry(contract)
@@ -301,6 +302,13 @@ def run(date_dir: str, root: Path = ROOT, from_cache: str | None = None,
                                 if only in it["url"] or only in it["sp_name"]]
         if not registry["listings"]:
             print(f"--only {only!r} 未命中任何 listing")
+            return 2
+    if urls:
+        url_set = {u.strip() for u in urls.split(",") if u.strip()}
+        registry["listings"] = [it for it in registry["listings"]
+                                if it["url"] in url_set]
+        if not registry["listings"]:
+            print("--urls 未命中任何 listing（确认 URL 已入注册表）")
             return 2
 
     if from_cache:
@@ -694,6 +702,9 @@ def main(argv: list[str] | None = None) -> int:
     rn.add_argument("--dry-run", action="store_true")
     rn.add_argument("--skip-ingest", action="store_true")
     rn.add_argument("--only", default=None, help="URL/名称子串过滤")
+    rn.add_argument("--urls", default=None,
+                    help="逗号分隔的精确 URL 列表（立即采集：只采这些锚，"
+                         "2026-10-19 新增 SKU 用户旅程）")
     rn.add_argument("--gwd-only", action="store_true",
                     help="只采 gwdang 顶班锚（source=gwdang，不占慢买预算）")
     rn.add_argument("--budget", type=int, default=None,
@@ -737,20 +748,23 @@ def main(argv: list[str] | None = None) -> int:
         return run(args.date_dir, root=root, from_cache=args.from_cache,
                    dry_run=args.dry_run, skip_ingest=args.skip_ingest,
                    sleep_min=args.sleep_min, sleep_max=args.sleep_max,
-                   only=args.only, gwd_only=args.gwd_only)
+                   only=args.only, gwd_only=args.gwd_only,
+                   urls=args.urls)
     if args.gwd_only:
         # gwd 独立管线：不碰慢买锁/预算——跨渠道允许并行（串行只限平台内）
         return run(args.date_dir, root=root, from_cache=args.from_cache,
                    dry_run=args.dry_run, skip_ingest=args.skip_ingest,
                    sleep_min=args.sleep_min, sleep_max=args.sleep_max,
-                   only=args.only, gwd_only=args.gwd_only)
+                   only=args.only, gwd_only=args.gwd_only,
+                   urls=args.urls)
     gate = ChannelGate("mmb", budget=args.budget, log=_stamp)   # R2：None=无上限（节奏红线仍在）
     try:
         with gate.session("run 采集"):
             return run(args.date_dir, root=root, from_cache=args.from_cache,
                        dry_run=args.dry_run, skip_ingest=args.skip_ingest,
                        sleep_min=args.sleep_min, sleep_max=args.sleep_max,
-                       only=args.only, gate=gate, gwd_only=args.gwd_only)
+                       only=args.only, gate=gate, gwd_only=args.gwd_only,
+                       urls=args.urls)
     except BudgetExhausted:
         # 预算入口即尽（2026-10-18 实例：session() 进入即 fail-closed 抛异常，
         # 把 gwdang 免费轨和缓存入库也炸掉了）→ 降级：慢买轨顺延，零消费部分照做
@@ -760,7 +774,8 @@ def main(argv: list[str] | None = None) -> int:
         return run(args.date_dir, root=root, dry_run=args.dry_run,
                    skip_ingest=args.skip_ingest,
                    sleep_min=args.sleep_min, sleep_max=args.sleep_max,
-                   only=args.only, gwd_only=args.gwd_only, mmb_blocked=True)
+                   only=args.only, gwd_only=args.gwd_only, mmb_blocked=True,
+                   urls=args.urls)
     except SessionExpired as e:
         print(_fail_label(e))
         return 2

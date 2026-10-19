@@ -419,6 +419,24 @@
 </div>
 
 <button class="cmp-fab" id="cmp-fab" title="曲线对比（勾1聚焦 / 2~3条同图对比）">📈<span class="ar" id="cmp-ar">▾</span></button>
+<div id="ctx-menu" style="position:fixed;z-index:10001;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:4px;display:none;min-width:170px"></div>
+<div class="modal hidden" id="collect-card" style="width:min(440px,92vw)">
+  <div class="bar">
+    <b style="font-size:13.5px;color:var(--txt)">✅ 锚已入注册表</b>
+    <button class="close" onclick="document.getElementById('collect-card').classList.add('hidden')">完成</button>
+  </div>
+  <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;font-size:12.5px">
+    <div id="cc-name" style="font-weight:600"></div>
+    <div id="cc-meta" style="color:var(--sub);font-size:12px;word-break:break-all"></div>
+    <div style="color:var(--sub);font-size:11.5px">位置：锚管理面板（🆕）· 不点采集也会在次日 06:30 定时链自动补</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="primary" id="cc-go">⚡ 立即采集（约 20~60s）</button>
+      <button onclick="ctxHide();anchorsLoad()">查看锚管理</button>
+      <button onclick="document.getElementById('collect-card').classList.add('hidden')">稍后再说</button>
+    </div>
+    <div id="cc-status" style="font-size:11.5px;color:var(--sub)"></div>
+  </div>
+</div>
 <div class="cmp-panel" id="cmp-panel">
   <div class="cmp-head" id="cmp-drag">📈 曲线对比 <span class="cnt" id="cmp-picked" style="font-weight:400;color:var(--sub)"></span>
     <button class="cmp-fold" title="收起（点左上角图标再展开）" onclick="cmpToggle(false)">✕</button>
@@ -540,6 +558,7 @@ function renderNavAndWall() {
   for (const e of withData) {
     const a = document.createElement('a');
     a.href = '#';
+    a.dataset.eid = e.entity_id; a.dataset.name = e.display_name;
     const days = e.mmb && e.mmb.lowest ? e.mmb.lowest.length : 0;
     a.innerHTML = `<span>${esc(e.display_name)}</span><span class="n">${days ? days + '天' : e.n_periods + '期'}</span>`;
     a.onclick = ev => { ev.preventDefault(); focusCard(e.entity_id); };
@@ -551,6 +570,7 @@ function renderNavAndWall() {
     for (const e of noData) {
       const a = document.createElement('a');
       a.href = '#'; a.style.color = 'var(--sub)';
+      a.dataset.eid = e.entity_id; a.dataset.name = e.display_name;
       a.innerHTML = `<span>${esc(e.display_name)}</span><span class="n">待发现</span>`;
       a.onclick = ev => ev.preventDefault();
       nav.appendChild(a);
@@ -1129,7 +1149,10 @@ async function anchorAddConfirm() {
     st.textContent = resp.ok
       ? `✅ 已入注册表：${d.entity} ← ${d.vendor || '店名待定'}（${d.channel}）`
       : `❌ ${d.detail || '?'}`;
-    if (resp.ok) anchorsLoad();
+    if (resp.ok) {
+      anchorsLoad();
+      showCollectCard(d.url, d.entity, r.title);
+    }
   } catch (e) { st.textContent = '请求失败：' + e; }
 }
 
@@ -1147,7 +1170,7 @@ async function anchorsLoad() {
     `active ${d.active} / 共 ${d.items.length}`;
   if (!items.length) { box.innerHTML = '<div class="mmb-empty">空</div>'; return; }
   box.innerHTML = items.map(x => `
-    <div class="mmb-row" style="${x.retired ? 'opacity:.45' : ''}">
+    <div class="mmb-row" data-url="${esc(x.url)}" data-entity="${esc(x.entity)}" data-sp="${esc(x.sp_name)}" data-retired="${x.retired ? 1 : 0}" style="${x.retired ? 'opacity:.45' : ''}">
       <span class="jd" style="${x.retired ? '' : 'background:#16a34a'}">${x.retired ? '已下线' : '在册'}</span>
       <span class="t" style="max-width:200px">${esc(x.entity)}</span>
       <span class="m">${esc(x.vendor || '-')}</span>
@@ -1157,7 +1180,10 @@ async function anchorsLoad() {
       <span class="t" style="max-width:280px"><a href="${x.url}" target="_blank"
           style="color:inherit;text-decoration:none">${esc(x.sp_name || x.url)}</a></span>
       ${x.retired ? `<span class="m" title="${esc(x.retired_reason || '')}">${esc(x.retired || '')}</span>`
-                  : `<button onclick="anchorFormOpen('${x.url}')">✏️ 改</button>
+                  : `${x.points ? `<span class="m" style="color:#16a34a">有数据·${x.points}点</span>`
+                                : `<span class="m" style="color:#b45309">⚠ 无数据</span>`}
+                     <button title="立即采集此锚" onclick="collectNow(['${x.url}'],'${esc(x.entity)}')">⚡采</button>
+                     <button onclick="anchorFormOpen('${x.url}')">✏️ 改</button>
                      <button onclick="anchorsRetire('${x.url}')">下线</button>`}
     </div>`).join('');
 }
@@ -1237,9 +1263,125 @@ async function anchorSave() {
     const d = await resp.json();
     document.getElementById('af-status').textContent =
       resp.ok ? `✅ ${d.mode === 'update' ? '已修改' : '已新增'}：${d.url}` : `❌ ${d.detail || '?'}`;
-    if (resp.ok) anchorsLoad();
+    if (resp.ok) {
+      anchorsLoad();
+      const en = document.getElementById('af-entity')?.selectedOptions?.[0]?.text || '';
+      showCollectCard(d.url, en, spn);
+    }
   } catch (e) { document.getElementById('af-status').textContent = '请求失败：' + e; }
 }
+
+/* ---- 新增 SKU 用户旅程（10-19）：toast / 右键菜单 / 立即采集 / 成功卡 ---- */
+function toastMsg(txt, ms) {
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div'); t.id = 'toast';
+    t.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:10000;background:#111827;color:#f9fafb;padding:10px 14px;border-radius:10px;font-size:12.5px;max-width:340px;box-shadow:0 8px 24px rgba(0,0,0,.35)';
+    document.body.appendChild(t);
+  }
+  t.textContent = txt; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', ms || 4200);
+}
+
+function ctxOpen(ev, items) {
+  ev.preventDefault(); ev.stopPropagation();
+  const m = document.getElementById('ctx-menu');
+  m.innerHTML = '';
+  items.filter(Boolean).forEach(it => {
+    const b = document.createElement('button');
+    b.textContent = it.label;
+    b.onclick = () => { m.style.display = 'none'; it.fn(); };
+    m.appendChild(b);
+  });
+  m.style.display = 'block';
+  m.style.left = Math.min(ev.clientX, innerWidth - m.offsetWidth - 8) + 'px';
+  m.style.top = Math.min(ev.clientY, innerHeight - m.offsetHeight - 8) + 'px';
+}
+function ctxHide() {
+  const m = document.getElementById('ctx-menu');
+  if (m) m.style.display = 'none';
+}
+document.addEventListener('click', ctxHide);
+document.addEventListener('scroll', ctxHide, true);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') ctxHide(); });
+
+let _collectPoll = null;
+async function collectNow(urls, label) {
+  try {
+    const r = await fetch('/api/mmb/collect-now', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ urls })
+    });
+    const d = await r.json();
+    if (!r.ok) { toastMsg('⚠️ ' + (d.detail || '启动失败')); return; }
+  } catch (e) { toastMsg('⚠️ 请求失败：' + e); return; }
+  toastMsg(`⚡ 采集中：${label}——完成或失败都会自动提示（节奏约 20~60s/锚）`);
+  if (_collectPoll) clearInterval(_collectPoll);
+  _collectPoll = setInterval(async () => {
+    let tasks = [];
+    try {
+      tasks = (await fetch('/api/tasklog').then(x => x.json())).tasks || [];
+    } catch (e) { return; }
+    const t = tasks.find(t => (t.name || '').startsWith('立即采集'));
+    if (!t || t.status === 'running') return;
+    clearInterval(_collectPoll); _collectPoll = null;
+    if (t.status === 'ok') {
+      toastMsg(`✅ ${label} 采集完成，看板刷新中…`);
+      setTimeout(() => location.reload(), 1400);
+    } else {
+      toastMsg(`⚠️ ${label} 未全成（${t.summary || '详情看任务流水'}）——0 点锚请核实链接是否有效商品页`, 8000);
+      if (typeof anchorsLoad === 'function') anchorsLoad();
+    }
+  }, 5000);
+}
+
+function showCollectCard(url, entity, spName) {
+  document.getElementById('cc-name').textContent = spName || url;
+  document.getElementById('cc-meta').textContent = `归属实体：${entity || '—'} · ${url}`;
+  document.getElementById('cc-status').textContent = '';
+  document.getElementById('cc-go').onclick = () =>
+    collectNow([url], entity || spName || '锚');
+  layerOpen('collect-card');
+}
+
+/* 锚管理行右键（事件委托在容器上，随 innerHTML 重建不受影响） */
+document.getElementById('anchors-rows').addEventListener('contextmenu', ev => {
+  const row = ev.target.closest('.mmb-row');
+  if (!row || !row.dataset.url) return;
+  ctxOpen(ev, [
+    row.dataset.retired === '1' ? null :
+      { label: '⚡ 立即采集此锚', fn: () => collectNow([row.dataset.url], row.dataset.entity) },
+    { label: '✏️ 修改', fn: () => anchorFormOpen(row.dataset.url) },
+    { label: '🌐 打开商品页', fn: () => window.open(row.dataset.url, '_blank') },
+    row.dataset.retired === '1' ? null :
+      { label: '⛔ 下线', fn: () => anchorsRetire(row.dataset.url) },
+  ]);
+});
+
+/* 左列导航实体项右键（含「锚未覆盖」分组） */
+document.getElementById('nav').addEventListener('contextmenu', ev => {
+  const a = ev.target.closest('a[data-eid]');
+  if (!a) return;
+  const eid = +a.dataset.eid, name = a.dataset.name;
+  ctxOpen(ev, [
+    { label: '⚡ 采集此实体的锚', fn: async () => {
+        const d = await fetch('/api/anchors').then(x => x.json());
+        const mine = (d.items || []).filter(x => x.entity === name && !x.retired);
+        const todo = mine.filter(x => !x.points);
+        if (!mine.length) { alert(`${name} 还没有在册锚——先在搜索/锚管理里加锚`); return; }
+        if (!todo.length) { alert(`${name} 的锚都已有数据，无需采集`); return; }
+        collectNow(todo.map(x => x.url), `${name}（${todo.length} 锚）`);
+      } },
+    { label: '⚓ 在锚管理中查看', fn: async () => {
+        await anchorsLoad();
+        const rows = [...document.querySelectorAll('#anchors-rows .mmb-row')]
+          .filter(r => r.dataset.entity === name);
+        rows.forEach(r => r.style.background = 'rgba(216,155,58,.18)');
+        if (rows[0]) rows[0].scrollIntoView({ block: 'center' });
+      } },
+    { label: '📌 定位到看板卡片', fn: () => focusCard(eid) },
+  ]);
+});
 
 async function anchorsRetire(url) {
   if (!confirm('下线这条锚？（保留审计行，不再采集）')) return;
