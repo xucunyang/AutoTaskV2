@@ -42,7 +42,7 @@ def find_targets() -> list[dict]:
     con.row_factory = sqlite3.Row
     rows = con.execute(
         """
-        SELECT e.entity_id, e.display_name, e.identity_json
+        SELECT e.entity_id, e.display_name, e.identity_json, e.aliases
           FROM entity e
          WHERE e.domain = 'hardware' AND e.active = 1
            AND NOT EXISTS (SELECT 1 FROM observation o
@@ -54,8 +54,12 @@ def find_targets() -> list[dict]:
         ident = json.loads(r["identity_json"] or "{}")
         kw = f"{ident.get('series', '')} {ident.get('spec', '')}".strip() \
             or r["display_name"]
+        try:
+            aliases = json.loads(r["aliases"] or "[]")
+        except (ValueError, TypeError):
+            aliases = []
         out.append({"entity_id": r["entity_id"], "display_name": r["display_name"],
-                    "identity": ident, "kw": kw})
+                    "identity": ident, "kw": kw, "aliases": aliases})
     return out
 
 
@@ -121,7 +125,8 @@ def main(argv: list[str] | None = None) -> int:
                 failed += 1
                 continue
             best = match_candidate(rows, ident.get("series", ""),
-                                   ident.get("spec", ""), "", None)
+                                   ident.get("spec", ""), "", None,
+                                   aliases=t.get("aliases"))
             if not best:
                 _stamp(f"✗ {tag} · 无合格候选（相似度/价格不达标），留人工")
                 failed += 1

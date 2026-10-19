@@ -46,23 +46,39 @@ def norm(s: str) -> str:
 
 
 def match_candidate(rows: list, series: str, spec: str,
-                    sp_name: str, prop_price: float) -> tuple | None:
+                    sp_name: str, prop_price: float,
+                    aliases: list | None = None) -> tuple | None:
     """从 search 结果选与提案同款的京东条目。
 
-    硬条件：标题含系列词（去空格小写后子串）+ siteid=1 + 有 skuid；
+    硬条件：标题命中系列键组（原名/去品牌变体/别名）+ siteid=1 + 有 skuid；
     打分：标题相似度（排序用）+ spec 命中加分；价格偏差 >25% 降权。
     只靠整体相似度会漏配（提案是电商长全名，搜索标题是短版）。"""
     target = norm(sp_name)
     key_series = norm(series)
     key_spec = norm(spec)
+    # 匹配键组（10-19：19/19 全灭根因=硬条件过苛）：实体名 "Core Ultra 5 245K"
+    # 归一后 "coreultra5245k"，而搜索标题是 "英特尔酷睿Ultra5 245K" 短版，
+    # 永不含 "core" 前缀 → 去品牌词变体 + 种子别名一起作为硬条件键
+    keys = []
+    for k in [key_series] + [norm(a) for a in (aliases or [])]:
+        if not k:
+            continue
+        if k not in keys:
+            keys.append(k)
+        for w in ("intel", "core", "酷睿", "ryzen", "锐龙", "amd",
+                  "geforce", "nvidia"):
+            k2 = k.replace(w, "")
+            if k2 and k2 not in keys:
+                keys.append(k2)
     best = None
     for r in rows:
         if str(r.get("siteid")) != "1" or not r.get("skuid"):
             continue
         title = norm(r.get("title"))
-        if key_series and key_series not in title:
-            continue                        # 系列词都不含，必不是同款
-        sim = difflib.SequenceMatcher(None, target, title).ratio()
+        if keys and not any(k in title for k in keys):
+            continue                        # 键组全不命中，必不是同款
+        sim = difflib.SequenceMatcher(None, target, title).ratio() \
+            if target else 0.5       # 无提案名可比（auto_anchor 场景）：键组即门槛
         if key_spec and key_spec in title:
             sim += 0.15                     # 规格命中加分（8GB/16GB/32G×2…）
         price = Mmb._num(r.get("price"))
