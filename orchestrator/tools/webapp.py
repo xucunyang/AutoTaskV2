@@ -474,6 +474,16 @@ def _channel_of(shop: str) -> str:
     return "三方店铺"
 
 
+def _brand_from_shop(shop: str) -> str:
+    """店名 → 契约品牌词（最长匹配；不含品牌词返回空=未设）。
+    店名（如 'AMD京东自营旗舰店'）不能直接进注册表 vendor——
+    load_registry 契约校验不过会崩掉定时链（10-19 实证）。"""
+    if not shop:
+        return ""
+    legal = Contract.load(ROOT, "hardware").attrs["vendor"]["values"]
+    return next((b for b in sorted(legal, key=len, reverse=True) if b in shop), "")
+
+
 @app.get("/api/contract/enums")
 def api_contract_enums() -> dict:
     """契约枚举词表（表单下拉用，10-18）：锚表单的 品牌/渠道/锚类型
@@ -539,7 +549,7 @@ def api_mmb_add_anchor(payload: dict = Body(...)) -> dict:
         raise HTTPException(409, f"该商品已在注册表（active）：{url}")
     listings.append({
         "identity": identity,
-        "vendor": shop,
+        "vendor": _brand_from_shop(shop),
         "channel": _channel_of(shop),
         "url": url,
         "sp_name": title or shop,
@@ -549,7 +559,7 @@ def api_mmb_add_anchor(payload: dict = Body(...)) -> dict:
     })
     reg["listings"] = listings
     _reg_save(reg)
-    return {"ok": True, "url": url, "vendor": shop,
+    return {"ok": True, "url": url, "vendor": _brand_from_shop(shop),
             "channel": _channel_of(shop), "entity": erow["display_name"]}
 
 
