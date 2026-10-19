@@ -2340,3 +2340,47 @@
 - 10-19 20:53:41 AUTO-R80: PARSED total=0 fresh=0
 - 10-19 20:53:41 AUTO-R80: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R80_1019-2049_auto.md
 - 10-19 20:53:41 AUTO-R80: IME restored + sdcard cleaned
+- 10-19 20:53:43 AUTO-R80: DONE round 80
+- 10-19 21:19:02 AUTO-R81: START round 81 (1019-2119)
+- 10-19 21:19:03 PAD R81: LEASE_OK
+- 10-19 21:19:03 AUTO-R81: PAD: LEASE_OK
+- 10-19 21:19:03 PAD R81: DEVICE_STALE, recovering...
+- 10-19 21:19:29 PAD R81: DEVICE_LOST
+- 10-19 21:19:46 PAD R81: DEVICE_STALE, recovering...
+- 10-19 21:20:12 PAD R81: DEVICE_LOST
+- 10-19 21:20:15 PAD R81: DUMP_MISSING (device dropped?), abort round
+- 10-19 21:20:15 PAD R81: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-19 21:20:15 AUTO-R81: PAD: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-19 21:20:16 PAD R81: DONE pad81_1019_2119 (aborted)
+- 10-19 21:20:16 AUTO-R81: PAD: DONE pad81_1019_2119 (aborted)
+- 10-19 21:20:16 R81: LEASE_OK
+- 10-19 21:20:17 AUTO-R81: HONOR: LEASE_OK
+- 10-19 21:20:17 AUTO-R81: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-19 21:20:17 AUTO-R81: HONOR: 件。
+- 10-19 21:20:17 AUTO-R81: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-19 21:20:17 AUTO-R81: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-19 21:20:17 AUTO-R81: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-19 21:20:17 AUTO-R81: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-19 21:20:17 AUTO-R81: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-19 21:20:17 AUTO-R81: HONOR:  
+- 10-19 21:20:49 R81: DEVICE_LOST
+- 10-19 21:20:49 AUTO-R81: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-19 21:20:50 AUTO-R81: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-19 21:21:04 R81: DEVICE_STALE, recovering...
+- 10-19 21:21:37 R81: DEVICE_LOST
+- 10-19 21:21:40 R81: DEVICE_STALE, recovering...
+- 10-19 21:22:12 R81: DEVICE_LOST
+- 10-19 21:22:13 AUTO-R81: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-19 21:22:31 R81: DEVICE_STALE, recovering...
+- 10-19 21:23:03 R81: DEVICE_LOST
+- 10-19 21:23:07 R81: DEVICE_STALE, recovering...
+- 10-19 21:23:39 R81: DEVICE_LOST
+- 10-19 21:23:39 R81: DUMP_MISSING (device dropped?), abort round
+- 10-19 21:23:39 AUTO-R81: HONOR: DUMP_MISSING (device dropped?), abort round
+- 10-19 21:23:40 R81: DONE round81_1019_2120 (aborted, no home)
+- 10-19 21:23:40 AUTO-R81: HONOR: DONE round81_1019_2120 (aborted, no home)
+- 10-19 21:23:40 AUTO-R81: pad: no scans, skip
+- 10-19 21:23:40 AUTO-R81: honor: no scans, skip
+- 10-19 21:23:40 AUTO-R81: PARSED total=0 fresh=0
+- 10-19 21:23:40 AUTO-R81: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R81_1019-2119_auto.md
+- 10-19 21:23:41 AUTO-R81: IME restored + sdcard cleaned
