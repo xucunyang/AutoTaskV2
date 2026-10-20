@@ -1009,20 +1009,20 @@ def api_mmb_review_batch(payload: dict = Body(...)) -> dict:
     for r in rows:
         ident = r.get("identity") or {}
         anchor = _MMB_ANCHOR_NORM[r["anchor"]]
-        hit = None
-        for x in items:
-            xa = _MMB_ANCHOR_NORM.get(x.get("anchor"))
-            if x.get("identity") == ident and xa == anchor:
-                hit = x
-                break
-        if hit is None:
+        # 同 identity+anchor 可能有多条重复提案（10-16/10-18 两批金百达）——
+        # 只改首条会让其余永远卡「待核」（10-20 用户实测）→ 整组一起改
+        hits = [x for x in items
+                if x.get("identity") == ident
+                and _MMB_ANCHOR_NORM.get(x.get("anchor")) == anchor]
+        if not hits:
             raise HTTPException(404, f"提案不存在: {ident.get('series')}")
-        hit["channel"] = r["channel"]
-        if "vendor" in r:
-            hit["vendor"] = r["vendor"] or ""
-        hit["status"] = "通过"
-        hit["reviewed_at"] = now
-        hit_n += 1
+        for hit in hits:
+            hit["channel"] = r["channel"]
+            if "vendor" in r:
+                hit["vendor"] = r["vendor"] or ""
+            hit["status"] = "通过"
+            hit["reviewed_at"] = now
+        hit_n += len(hits)
     path.write_text(yaml.safe_dump(items, allow_unicode=True, sort_keys=False),
                     encoding="utf-8")
     pending = sum(1 for x in items if x.get("status", "待核") == "待核")
@@ -1259,23 +1259,24 @@ def api_mmb_review(payload: dict = Body(...)) -> dict:
     if not path.exists():
         raise HTTPException(404, "暂无提案文件")
     items = yaml.safe_load(path.read_text(encoding="utf-8")) or []
-    hit = None
-    for x in items:
-        xa = _MMB_ANCHOR_NORM.get(x.get("anchor"))
-        if x.get("identity") == ident and xa == anchor:
-            hit = x
-            break
-    if hit is None:
+    # 同 identity+anchor 的重复提案整组一起改（10-20：只改首条，
+    # 金百达第二条永远卡待核，用户点通过"状态不变"）
+    hits = [x for x in items
+            if x.get("identity") == ident
+            and _MMB_ANCHOR_NORM.get(x.get("anchor")) == anchor]
+    if not hits:
         raise HTTPException(404, "提案条目不存在（先 searchbox 提案或等遴选）")
-    hit["channel"] = channel
-    if "vendor" in payload:
-        hit["vendor"] = payload["vendor"] or ""
-    hit["status"] = status
-    hit["reviewed_at"] = datetime.now().isoformat(timespec="seconds")
+    for hit in hits:
+        hit["channel"] = channel
+        if "vendor" in payload:
+            hit["vendor"] = payload["vendor"] or ""
+        hit["status"] = status
+        hit["reviewed_at"] = datetime.now().isoformat(timespec="seconds")
     path.write_text(yaml.safe_dump(items, allow_unicode=True, sort_keys=False),
                     encoding="utf-8")
     pending = sum(1 for x in items if x.get("status", "待核") == "待核")
-    return {"ok": True, "total": len(items), "pending": pending}
+    return {"ok": True, "total": len(items), "pending": pending,
+            "changed": len(hits)}
 
 
 def main(argv: list[str] | None = None) -> int:
