@@ -47,7 +47,8 @@ def norm(s: str) -> str:
 
 def match_candidate(rows: list, series: str, spec: str,
                     sp_name: str, prop_price: float,
-                    aliases: list | None = None) -> tuple | None:
+                    aliases: list | None = None,
+                    category: str = "") -> tuple | None:
     """从 search 结果选与提案同款的京东条目。
 
     硬条件：标题命中系列键组（原名/去品牌变体/别名）+ siteid=1 + 有 skuid；
@@ -83,6 +84,15 @@ def match_candidate(rows: list, series: str, spec: str,
         # 245K、B860M 套装配 285K、工作站配 4060Ti 全部入库污染）
         if any(b in title for b in ("套装", "主机", "显示器", "工作站",
                                     "全家桶", "一体机", "机箱", "海景房")):
+            continue
+        # 板卡词只在主板实体合法（10-20：B860M 标题「支持285K」骗过别名
+        # 键组给 285K CPU 入库一年毒数据；主板也爱标「DDR5 8000(OC)」
+        # 骗内存键组）→ 非主板实体标题含板卡/芯片组词一律拦
+        if category and category != "主板" and any(
+                b in title for b in ("主板", "b860", "z890", "z790", "b760",
+                                     "z690", "b660", "b650", "b850", "x870",
+                                     "x670", "x570", "b550", "lga", "am5",
+                                     "am4")):
             continue
         # 多 SKU 页（一页挂多型号，如 '270K/265K/250K/245K'）不可作单品锚
         if re.search(r"\d{3,5}k/\w{0,2}\d{3,5}k", title):
@@ -202,7 +212,8 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             best = match_candidate(rows, ident.get("series", ""),
                                    ident.get("spec", ""),
-                                   p.get("sp_name", ""), prop_price)
+                                   p.get("sp_name", ""), prop_price,
+                                   category=ident.get("category", ""))
             if a.fix_url:
                 # 只修 URL：配到同款就取纯数字直链（siteSpuid 优先）
                 if not best:

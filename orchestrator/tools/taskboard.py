@@ -49,13 +49,33 @@ def _now() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _pid_alive(pid: int | None) -> bool:
+    """Windows 下判断 pid 是否存活；判断不了按存活处理（宁可漏杀不可错杀）。"""
+    if not pid:
+        return False
+    if pid == os.getpid():
+        return True
+    try:
+        import ctypes
+        SYNCHRONIZE = 0x00100000
+        h = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE, False, int(pid))
+        if h:
+            ctypes.windll.kernel32.CloseHandle(h)
+            return True
+        return False
+    except Exception:
+        return True
+
+
 def start(name: str, steps: list[str], pid: int | None = None) -> str:
     """登记新任务：steps 为步骤名列表。返回 task_id。"""
     data = _read()
     tasks = data.get("tasks", [])
     keep_done, stuck = [], []
     for t in tasks:
-        if t.get("status") == "running":
+        if t.get("status") == "running" and not _pid_alive(t.get("pid")):
+            # 只有确认进程已死才标 killed——10-20 曾把活着的补锚任务
+            # 一律标死（docstring 说查 pid，实现漏了），进度冻结在半路
             stuck.append({**t, "status": "killed",
                           "summary": t.get("summary") or "进程退出未收尾（自动标记）"})
         else:

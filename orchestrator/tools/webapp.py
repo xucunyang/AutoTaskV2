@@ -1069,6 +1069,20 @@ def api_mmb_collect_now(payload: dict = Body(...)) -> dict:
                and str(t.get("name", "")).startswith("立即采集")]
     if running:
         raise HTTPException(409, "已有「立即采集」在跑，看任务流水进度")
+    # 慢买单写者锁预检（10-20：补锚批休持锁 10 分钟，期间点⚡只得到
+    # rc=1 失败流水看不出原因）→ 点击即报占用方；顺手清死 pid 残锁
+    try:
+        from channel_gate import gate as _gate
+        try:
+            _gate.acquire("mmb", "collect-now 预检")
+            _gate.release("mmb")
+        except _gate.LockHeld as e:
+            h = getattr(e, "holder", {}) or {}
+            raise HTTPException(
+                409, f"慢买通道被「{h.get('purpose') or '其他任务'}」占用"
+                     f"（pid={h.get('pid')}），等它跑完再点⚡")
+    except ImportError:
+        pass
     reg_urls = {it.get("url") for it in _reg_load().get("listings") or []}
     unknown = [u for u in urls if u not in reg_urls]
     if unknown:

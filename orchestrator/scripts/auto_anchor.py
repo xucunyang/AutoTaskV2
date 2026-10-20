@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import signal
 import sqlite3
 import sys
 import time
@@ -101,10 +102,27 @@ def main(argv: list[str] | None = None) -> int:
     total = len(targets)
     taskboard.step(tb_id, "search+same 配对", "running", progress=f"0/{total}")
 
+    # 取消协议（sku-cancel-spec §3.2）：每轮 for 顶部判一次；信号由 webapp SIGTERM 触发
+    _cancelled = False
+
+    def _on_sig(signum, frame):
+        nonlocal _cancelled
+        _cancelled = True
+
+    try:
+        signal.signal(signal.SIGTERM, _on_sig)
+        signal.signal(signal.SIGINT, _on_sig)
+    except (ValueError, OSError):
+        pass
+
     done = failed = 0
     new_props = []
     with gate.session("一键补锚"):
         for idx, t in enumerate(targets, 1):
+            # 取消判定（每个 for 循环点 = 下一项入口前判）
+            if _cancelled:
+                _stamp(f"⚠ 已收到取消信号，跳出（处理到第 {idx - 1}/{total} 项）")
+                break
             ident = t["identity"]
             key = "|".join(str(ident.get(k) or "").lower()
                            for k in ("category", "series", "spec"))
@@ -126,7 +144,8 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             best = match_candidate(rows, ident.get("series", ""),
                                    ident.get("spec", ""), "", None,
-                                   aliases=t.get("aliases"))
+                                   aliases=t.get("aliases"),
+                                   category=ident.get("category", ""))
             if not best:
                 _stamp(f"✗ {tag} · 无合格候选（相似度/价格不达标），留人工")
                 failed += 1
@@ -166,8 +185,12 @@ def main(argv: list[str] | None = None) -> int:
     if new_props:
         PROP.write_text(yaml.safe_dump(items + new_props, allow_unicode=True,
                                        sort_keys=False), encoding="utf-8")
-    taskboard.finish(tb_id, "ok" if not failed else "ok",
-                     f"成提案 {done} / 留人工 {failed} · 预算 {gate.spent()}/{gate.budget}")
+    status = "cancelled" if _cancelled else ("ok" if not failed else "ok")
+    summary = (f"⚠ 已取消 · 处理到第 {done + failed}/{total} · "
+               f"成提案 {done} / 留人工 {failed} · 预算 {gate.spent()}/{gate.budget}"
+               if _cancelled else
+               f"成提案 {done} / 留人工 {failed} · 预算 {gate.spent()}/{gate.budget}")
+    taskboard.finish(tb_id, status, summary)
     _stamp("──────────────────── 总结 ────────────────────")
     _stamp(f"生成提案 {done} · 留人工 {failed} ｜ 预算 {gate.spent()}/{gate.budget}"
            f" ｜ 待核卡里审核，通过后 transcribe+回填自动收尾")

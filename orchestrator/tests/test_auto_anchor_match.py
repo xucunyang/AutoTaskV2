@@ -63,6 +63,28 @@ def test_blacklist_rejects_bundles_and_peripherals():
                            None, aliases=["265K"]) is None  # 多 SKU 页不可作锚
 
 
+def test_board_words_rejected_for_non_board_category():
+    """10-20 毒源实锤：B860M 主板（无'套装'字样）标题带'支持285K'，
+    骗过别名键组给 285K CPU 入库一年 ¥999 毒数据 → 非主板实体拦板卡词。"""
+    rows = [
+        _row("七彩虹(Colorful)BATTLE-AX B860M-WHITE WIFI V20 冷钢DDR5主板 "
+             "支持285K/265K/245K(Intel B860/LGA 1851)", 999.0, "401"),
+        # 无斜杠多 SKU 的纯主板标题：只靠板卡词防线
+        _row("微星(MSI)B860M 迫击炮主板 支持Ultra 9 285K 处理器", 1099.0, "402"),
+        # 内存标题提'适配Z890主板'属于兼容性话术，同样拦（宁缺毋毒）
+        _row("金百达DDR5 8000 16G 适配Z890主板 台式机内存条", 899.0, "403"),
+    ]
+    for cat in ("CPU", "内存"):
+        assert match_candidate(rows, "Core Ultra 9 285K", "", "",
+                               None, aliases=["285K"],
+                               category=cat) is None
+        assert match_candidate(rows, "DDR5 8000", "16G", "", None,
+                               aliases=["8000"], category=cat) is None
+    # 主板实体本身不受限（对照组：无类别=旧行为）
+    assert match_candidate(rows, "B860M", "", "", None,
+                           aliases=["B860M"], category="主板") is not None
+
+
 def test_short_alias_and_multisku_page_rejected():
     """短别名 '285k' 会命中套装页（黑名单拦）；多 SKU 斜杠页不可作单品锚。"""
     rows = [_row("七彩虹B860M-W搭Intel Ultra9 285K 高端套装", 4299.0, "301")]
