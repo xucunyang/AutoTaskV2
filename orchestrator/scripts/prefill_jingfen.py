@@ -70,6 +70,8 @@ def match_candidate(rows: list, series: str, spec: str,
             k2 = k.replace(w, "")
             if k2 and k2 not in keys:
                 keys.append(k2)
+    # 别名过短会误配（别名 '265k' 命中 '270K/265K/250K' 多 SKU 页、
+    # '285k' 命中主板套装）→ 多 SKU 页由下方斜杠模式拦截，套装走黑名单
     best = None
     for r in rows:
         if str(r.get("siteid")) != "1" or not r.get("skuid"):
@@ -77,6 +79,14 @@ def match_candidate(rows: list, series: str, spec: str,
         title = norm(r.get("title"))
         if keys and not any(k in title for k in keys):
             continue                        # 键组全不命中，必不是同款
+        # 品类黑名单：套装/整机/外设不是单品价格锚（10-20 实测：显示器配
+        # 245K、B860M 套装配 285K、工作站配 4060Ti 全部入库污染）
+        if any(b in title for b in ("套装", "主机", "显示器", "工作站",
+                                    "全家桶", "一体机", "机箱", "海景房")):
+            continue
+        # 多 SKU 页（一页挂多型号，如 '270K/265K/250K/245K'）不可作单品锚
+        if re.search(r"\d{3,5}k/\w{0,2}\d{3,5}k", title):
+            continue
         sim = difflib.SequenceMatcher(None, target, title).ratio() \
             if target else 0.5       # 无提案名可比（auto_anchor 场景）：键组即门槛
         if key_spec and key_spec in title:

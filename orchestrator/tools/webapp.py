@@ -46,6 +46,10 @@ from tools.trend_calc import (  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "webapp_static"
 
+# 后台脚本进程表（sku-cancel-spec §3.1）：webapp Popen 时入表，cancel 时取
+# 结构：{task_id: {"proc": Popen, "script": str, "started_at": float}}
+PROCS: dict[str, dict] = {}
+
 app = FastAPI(title="SKU 趋势看板", docs_url=None, redoc_url=None)
 # 本地静态资源（echarts 等走 /static/vendor/——消除 CDN 依赖，
 # 本地加载秒出；StaticFiles 自带 etag/304 缓存）
@@ -641,9 +645,14 @@ def api_anchors_upsert(payload: dict = Body(...)) -> dict:
     if channel and channel not in attrs["channel"]["values"]:
         raise HTTPException(422, f"渠道 {channel!r} 不在契约词表（请下拉选择）："
                                  f"{'、'.join(attrs['channel']['values'])}")
-    if not re.search(r"item\.jd\.com/\d+\.html$", url):
-        raise HTTPException(422, "URL 必须是纯数字京东直链 item.jd.com/<数字>.html"
-                                 "（jingfen/加密串三渠道不认，10-17 实证）")
+    # URL 归一化：手机版/带参数一律转电脑版纯直链（10-20 用户实测
+    # item.m.jd.com/product/<id>.html 被拒——m 站是合法商品页）
+    m = re.search(r"(?:item\.jd\.com|item\.m\.jd\.com/product)/(\d+)\.html", url)
+    if not m:
+        raise HTTPException(422, "URL 必须是京东商品页（支持 item.jd.com/<数字>.html "
+                                 "或手机版 item.m.jd.com/product/<数字>.html；"
+                                 "jingfen/加密串三渠道不认，10-17 实证）")
+    url = f"https://item.jd.com/{m.group(1)}.html"
     if anchor not in ("销量", "价格"):
         raise HTTPException(422, "anchor 只能是 销量/价格")
     con = ro_connect()
@@ -1068,12 +1077,21 @@ def api_mmb_collect_now(payload: dict = Body(...)) -> dict:
                             + ("…" if len(unknown) > 3 else ""))
     script = ROOT / "scripts" / "collect_now.py"
     logf = (ROOT / "reports" / "collect_now.log").open("ab")
-    subprocess.Popen(
+    proc = subprocess.Popen(
         [sys.executable, "-X", "utf8", "-u", str(script),
          "--urls", ",".join(urls)],
         cwd=str(ROOT), stdout=logf, stderr=subprocess.STDOUT,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    return {"ok": True, "urls": urls,
+    # 拿到 task_id（taskboard 起了两条同名 running 时取最新那一条）
+    new_task = next((t for t in taskboard.snapshot()
+                     if t.get("status") == "running"
+                     and str(t.get("name", "")).startswith("立即采集")),
+                    None)
+    task_id = new_task["id"] if new_task else None
+    if task_id:
+        PROCS[task_id] = {"proc": proc, "script": "collect_now",
+                           "started_at": time.time()}
+    return {"ok": True, "urls": urls, "task_id": task_id,
             "msg": "已启动采集：完成后看板自动刷新（任务流水可看进度）"}
 
 
@@ -1097,6 +1115,13 @@ def api_tasklog(file: str = "mmb_backfill_run.log", tail: int = 120) -> dict:
     lock = channel_gate.gate._read_lock("mmb")
     budget = channel_gate.gate.spent_today("mmb")
     from tools import taskboard
+    # 给每个 task 加 cancellable（sku-cancel-spec §3.4）：只有 running 且在 PROCS 表里
+    tasks = []
+    for t in taskboard.snapshot():
+        t2 = dict(t)
+        t2["cancellable"] = (t.get("status") == "running"
+                             and t.get("id") in PROCS)
+        tasks.append(t2)
     return {
         "file": safe, "exists": p.exists(),
         "mtime": (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(p.stat().st_mtime))
@@ -1105,8 +1130,68 @@ def api_tasklog(file: str = "mmb_backfill_run.log", tail: int = 120) -> dict:
         "gate": {"locked_by": (f"pid {lock['pid']} · {lock.get('purpose')}"
                                if lock else None),
                  "budget_used_today": budget},
-        "tasks": taskboard.snapshot(),
+        "tasks": tasks,
     }
+
+
+@app.post("/api/task/cancel")
+def api_task_cancel(payload: dict = Body(...)) -> dict:
+    """取消一个 running 任务（sku-cancel-spec §3.3）。
+
+    流程：taskboard 写 status="signal_sent" → proc.terminate() 发 SIGTERM
+    → 后台脚本在下一循环点（≤2s）认信号 → finish("cancelled") → 退出。
+
+    返回：
+    - 200: {ok, msg}              已发信号
+    - 404:  task_id 找不到（taskboard / PROCS 都没有）
+    - 409:  task 不是 running 状态
+    """
+    from tools import taskboard
+    task_id = str(payload.get("task_id") or "").strip()
+    if not task_id:
+        raise HTTPException(422, "task_id 必填")
+    # 找后台进程
+    entry = PROCS.get(task_id)
+    target = next((t for t in taskboard.snapshot()
+                   if t.get("id") == task_id), None)
+    if not target and not entry:
+        raise HTTPException(404, f"task_id {task_id} 不存在")
+    if target and target.get("status") != "running":
+        raise HTTPException(409, f"task 已结束：status={target.get('status')}")
+    if not entry:
+        # taskboard 还在跑但 PROCS 没了（webapp 重启过）→ 无法 cancel
+        raise HTTPException(409, "进程句柄丢失（webapp 重启过），无法远程取消")
+    proc = entry["proc"]
+    # 在台账里标"已发信号"，让前端显示"取消中"
+    try:
+        # 用 step(..., status="signal_sent") 不行——step 改的是 step 状态；写死 task 顶层 status
+        import json as _json
+        board = taskboard._read()
+        for t in board.get("tasks", []):
+            if t.get("id") == task_id:
+                t["status"] = "signal_sent"
+                t["summary"] = "已发取消信号，等待子进程退出"
+                break
+        taskboard._write(board)
+    except Exception as e:
+        log(f"cancel: 写台账 signal_sent 失败：{e}")
+    try:
+        proc.terminate()  # Windows: SIGTERM-equivalent
+    except Exception as e:
+        raise HTTPException(500, f"terminate 失败：{e}")
+    # 兜底：3s 后没退就用 kill（不是必然触发——脚本正常认信号就退）
+    try:
+        proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        try:
+            proc.kill()
+            proc.wait(timeout=2)
+        except Exception:
+            pass
+    # 清理 PROCS 表
+    PROCS.pop(task_id, None)
+    return {"ok": True, "msg": f"已发取消信号：{entry['script']}",
+            "task_id": task_id}
 
 
 _MMB_ANCHOR_NORM = {"sales": "销量", "price": "价格",
@@ -1135,11 +1220,19 @@ def api_mmb_auto_anchor() -> dict:
     # R2 上限已于 10-18 移除（d8c353a）：预算无上限，脚本内闸门仍管节奏
     script = ROOT / "scripts" / "auto_anchor.py"
     logf = (ROOT / "reports" / "auto_anchor.log").open("ab")
-    subprocess.Popen(
+    proc = subprocess.Popen(
         [sys.executable, "-X", "utf8", "-u", str(script)],
         cwd=str(ROOT), stdout=logf, stderr=subprocess.STDOUT,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    return {"ok": True,
+    new_task = next((t for t in taskboard.snapshot()
+                     if t.get("status") == "running"
+                     and str(t.get("name", "")).startswith("一键补锚")),
+                    None)
+    task_id = new_task["id"] if new_task else None
+    if task_id:
+        PROCS[task_id] = {"proc": proc, "script": "auto_anchor",
+                           "started_at": time.time()}
+    return {"ok": True, "task_id": task_id,
             "msg": "已启动：进度看「任务流水」，跑完在提案审核卡勾选"}
 
 

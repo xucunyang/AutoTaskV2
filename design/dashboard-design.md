@@ -77,7 +77,7 @@ identity = `{category, series, spec}`，键序=契约声明序（键序无关匹
 | 操作 | 入口 | 校验 | 备注 |
 |---|---|---|---|
 | C | 直加锚 `/api/mmb/add-anchor` | skuid/entity_id 必填；same_by_spbh 转 siteSpuid 纯数字直链（转不出→502）；**vendor=_brand_from_shop(店名)**（最长匹配契约词，提不出留空）；channel=_channel_of 三线规则 | 搜索结果一键入册 |
-| C+U | 锚管理 `/api/anchors/upsert` | URL 纯数字直链正则→422；重复 active URL→409；**sp_name 必填**→422；vendor/channel∈契约词表→422；实体存在→404 | original_url 非空=就地改（可改 URL/归属实体） |
+| C+U | 锚管理 `/api/anchors/upsert` | URL 归一化（手机版 `item.m.jd.com/product/<id>.html` / 带参数 → 电脑版纯直链，10-20）；非商品页→422；重复 active URL→409；**sp_name 必填**→422；vendor/channel∈契约词表→422；实体存在→404 | original_url 非空=就地改（可改 URL/归属实体） |
 | 软D | `/api/anchors/retire` | 找不到 active URL→404 | 保留审计行（retired+reason） |
 | R | `/api/anchors` | —— | 全量 listing+实体名解析（**本次新增：per-URL 观测计数 has_data/points**） |
 
