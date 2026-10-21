@@ -11,7 +11,8 @@ from core.search.classify_source import (classify_all,                     # noq
                                         classify_one, classify_with_cache,
                                         domain_of, parse_tier_reply,
                                         prior_tier)
-from core.search.pipeline import (build_analysis_context,                  # noqa: F401
+from core.search.pipeline import (FRESHNESS_DAYS,                          # noqa: F401
+                                  build_analysis_context,
                                   search_and_filter, write_four_set)
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "SearchResult", "TavilyProvider", "build",
     "classify_all", "classify_one", "classify_with_cache", "domain_of",
     "parse_tier_reply", "prior_tier",
+    "FRESHNESS_DAYS",
     "build_analysis_context", "search_and_filter", "write_four_set",
 ]

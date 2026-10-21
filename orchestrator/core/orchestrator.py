@@ -18,6 +18,7 @@ from pathlib import Path
 
 import anyio
 
+from core import dag as dag_mod
 from core import enqueue as enqueue_mod
 from core import governor as gov_mod
 from core import lease as lease_mod
@@ -203,39 +204,9 @@ class Orchestrator:
     # ---------- DAG 校验（§2：环/孤儿/自依赖 → FAILED+告警，不派发） ----------
 
     def validate_dag(self, plan_id: str) -> list[dict]:
-        bad = []
-        tasks = {t["task_id"]: t for t in self.store.list_plan_tasks(plan_id)}
-        for t in tasks.values():
-            deps = (t["shard"] or {}).get("depends_on") or []
-            for d in deps:
-                if d == t["task_id"]:
-                    bad.append({"task_id": t["task_id"], "problem": "self_dependency"})
-                elif d not in tasks:
-                    bad.append({"task_id": t["task_id"],
-                                "problem": "missing_dependency", "missing": d})
-        # 环检测（DFS三色）
-        colour: dict[str, int] = {}
-
-        def visit(node: str, stack: list[str]) -> None:
-            colour[node] = 1
-            for d in (tasks.get(node, {}).get("shard", {}) or {}).get("depends_on") or []:
-                if d not in tasks:
-                    continue
-                if colour.get(d) == 1:
-                    bad.append({"task_id": d, "problem": "cycle",
-                                "cycle": stack + [node, d]})
-                elif colour.get(d, 0) == 0:
-                    visit(d, stack + [node])
-            colour[node] = 2
-
-        for tid in tasks:
-            if colour.get(tid, 0) == 0:
-                visit(tid, [])
-        if bad:
-            for b in bad:
-                self.store.alert("P1", "dag_invalid", plan_id=plan_id, **b)
-            jlog(self.root, "WARN", "dag_invalid", plan_id=plan_id, count=len(bad))
-        return bad
+        # 逻辑抽到 core.dag：verify_orchestrator 终检也要用，
+        # 留在类里会迫使它反向 import 主循环（循环依赖）。
+        return dag_mod.validate_dag(self.store, self.root, plan_id)
 
     # ---------- 推进 READY（§2：依赖满足才派发） ----------
 
@@ -781,7 +752,7 @@ def _load_search(root: Path):
     凭记忆编事实。
     """
     try:
-        from core.search.base import build as build_search
+        from core.search import build as build_search
         return build_search(_load_cfg(root, "search.yaml"))
     except Exception as e:
         jlog(root, "WARN", "search_load_failed", error=str(e)[:200])

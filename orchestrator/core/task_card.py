@@ -14,7 +14,7 @@ from pathlib import Path
 import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from core.search.pipeline import FRESHNESS_DAYS
+from core.search import FRESHNESS_DAYS
 from schemas.models import Checkpoint
 
 # Phase0§5白名单：只有这些能进任务卡

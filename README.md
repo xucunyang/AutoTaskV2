@@ -422,9 +422,18 @@ provider 三选一：`minimax`（主用，M Plan 套餐自带搜索额度）/ `t
 python -m pytest -q                                  # 全量
 python scripts\check_coverage.py                     # 覆盖率门禁（25 模块）
 python scripts\check_coverage.py --min 85            # 提高门槛
+lint-imports                                         # 架构契约（分层+门面，见下）
 ```
 
 覆盖率门禁是"平均 + 单模块都过线"，不是只看平均：只看平均会让"一个模块 0%、另一个 100%"互相掩盖，而 0% 那个恰恰最危险——那段代码从没被执行过。
+
+### 架构守卫（2026-10-21 引入）
+
+分层与门面规则不是文档，是可执行契约（`orchestrator/.importlinter`）：违规 = `lint-imports` 非零退出 = `tests/test_architecture.py` 失败。给 core 加新模块时必须在契约里登记层位；`core.search` 只准从包门面 import，内部子模块（base/pipeline/classify_source）对外非法。分层自上而下：orchestrator（组合根）→ verify_orchestrator → 各阶段模块 → 共享服务（lease/checkpoint/tools/report/gateway）→ 数据层（store/task_card/providers/dag）→ search → notifier/winnotify（基础设施）→ utils。
+
+### 任务配置链路试跑（2026-10-21 引入）
+
+单测验证引擎、冒烟只跑 daily_report，但生产翻车的是"货物"——某任务的模板指令/验收规则/JSON schema 三件套互相矛盾（10-21 housing_rr 的 0 占位事故）。`tests/test_job_dryrun.py` 要求每个 `templates/*.yaml` 必须带黄金样本过真链路（stub 模型按合规形状写产物 → 真验收 → DONE），新模板不登记样本或债务直接红。已验证：把黄金样本改成 0 占位会被 schema+业务规则双卡拦下（RETRY，到不了 DONE）。
 
 当前基线：
 

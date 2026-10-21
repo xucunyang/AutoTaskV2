@@ -16,6 +16,7 @@ from pathlib import Path
 import anyio
 
 from core import verifier as vf
+from core.dag import validate_dag as dag_validate
 from core.store import Conflict, IllegalTransition, Store, StaleOwner, StoreError
 from core.utils import jlog, now_utc_iso
 
@@ -244,16 +245,13 @@ def final_consistency(store: Store, plan_id: str, notifier=None) -> dict:
     检查项：DAG无环/依赖满足/状态合法/无孤儿/产物存在+sha匹配/
     终态任务有验收记录/needs_web四件套齐。
     """
-    from core.orchestrator import Orchestrator
     problems = []
     tasks = store.list_plan_tasks(plan_id)
     if not tasks:
         return {"ok": True, "problems": [], "checked": 0}
-    # DAG（复用主循环的判环逻辑，不重复实现）
-    o = Orchestrator.__new__(Orchestrator)
-    o.store = store
-    o.root = Path(store.root)
-    for b in o.validate_dag(plan_id):
+    # DAG（复用主循环的判环逻辑，不重复实现——已抽到 core.dag，
+    # 不再用 Orchestrator.__new__ 造半初始化实例借方法）
+    for b in dag_validate(store, Path(store.root), plan_id):
         problems.append(f"dag:{b.get('problem')}:{b.get('task_id')}")
     for t in tasks:
         tid, status = t["task_id"], t["status"]

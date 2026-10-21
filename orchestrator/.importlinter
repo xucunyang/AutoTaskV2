@@ -1,0 +1,43 @@
+; Architecture contracts (import-linter). Violation = nonzero exit = CI/pytest fail.
+; This is an executable boundary, not documentation. Run `lint-imports` after
+; changing anything under core/.
+; Layering rationale (top may import downward, siblings may not import
+; each other):
+;   1. orchestrator - composition root / main loop, wires every stage.
+;   2. verify_orchestrator - verify pool manager, drives verifier workers.
+;   3. stage modules - scheduler/planner/enqueue/executor/verifier/governor...
+;   4. services & data - store/task_card/providers/dag; lease/checkpoint/tools
+;      are shared services consumed by several stages, hence below them.
+;   5. search subsystem - facade only (see second contract).
+;   6. notifier/winnotify - cross-cutting infra like logging.
+;   7. utils.
+[importlinter]
+root_packages =
+    core
+
+[importlinter:contract:core-layers]
+name = core layering - dependencies may only point downward
+type = layers
+layers =
+    core.orchestrator
+    core.verify_orchestrator
+    core.scheduler | core.planner | core.enqueue | core.executor | core.verifier | core.governor | core.power | core.privacy | core.timing | core.context
+    core.lease | core.checkpoint | core.tools | core.report | core.gateway
+    core.store | core.task_card | core.providers | core.dag
+    core.search
+    core.notifier | core.winnotify
+    core.utils
+
+[importlinter:contract:search-facade]
+name = search facade only - internal submodules are off limits
+type = forbidden
+source_modules =
+    core
+forbidden_modules =
+    core.search.base
+    core.search.pipeline
+    core.search.classify_source
+ignore_imports =
+    core.search -> core.search.base
+    core.search -> core.search.pipeline
+    core.search -> core.search.classify_source
