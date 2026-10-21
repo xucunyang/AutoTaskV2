@@ -615,6 +615,23 @@ def api_anchors_retire(payload: dict = Body(...)) -> dict:
     return {"ok": True, "url": url}
 
 
+def _norm_jd_url(url: str) -> str | None:
+    """粘贴链接 → 京东电脑版纯直链；认不出返回 None。
+
+    支持：item.jd.com/<数字>.html（带参数可）、手机版 item.m.jd.com/product/、
+    慢买解析壳 tool.manmanbuy.com/HistoryLowest.aspx?url=<URL编码的京东链接>
+    （10-21 用户实测：壳内 / ? = 全被编码成 %2F %3F %3D，必须先解壳再正则）。"""
+    import re
+
+    if "historylowest.aspx" in (url or "").lower():
+        from urllib.parse import parse_qs, urlsplit
+        inner = parse_qs(urlsplit(url).query).get("url") or []
+        if inner:
+            url = inner[0]
+    m = re.search(r"(?:item\.jd\.com|item\.m\.jd\.com/product)/(\d+)\.html", url or "")
+    return f"https://item.jd.com/{m.group(1)}.html" if m else None
+
+
 @app.post("/api/anchors/upsert")
 def api_anchors_upsert(payload: dict = Body(...)) -> dict:
     """新增 / 修改锚（C+U of CRUD，人工入口，2026-10-18 用户要求补齐）。
@@ -645,14 +662,16 @@ def api_anchors_upsert(payload: dict = Body(...)) -> dict:
     if channel and channel not in attrs["channel"]["values"]:
         raise HTTPException(422, f"渠道 {channel!r} 不在契约词表（请下拉选择）："
                                  f"{'、'.join(attrs['channel']['values'])}")
-    # URL 归一化：手机版/带参数一律转电脑版纯直链（10-20 用户实测
-    # item.m.jd.com/product/<id>.html 被拒——m 站是合法商品页）
-    m = re.search(r"(?:item\.jd\.com|item\.m\.jd\.com/product)/(\d+)\.html", url)
-    if not m:
-        raise HTTPException(422, "URL 必须是京东商品页（支持 item.jd.com/<数字>.html "
-                                 "或手机版 item.m.jd.com/product/<数字>.html；"
-                                 "jingfen/加密串三渠道不认，10-17 实证）")
-    url = f"https://item.jd.com/{m.group(1)}.html"
+    # URL 归一化：手机版/带参数/慢买解析壳一律转电脑版纯直链（10-20 实测
+    # item.m.jd.com/product/<id>.html 被拒——m 站是合法商品页；10-21 实测
+    # 慢买 HistoryLowest.aspx?url= 壳被拒——先解壳再提 id）
+    norm = _norm_jd_url(url)
+    if not norm:
+        raise HTTPException(422, "URL 必须是京东商品页（支持 item.jd.com/<数字>.html、"
+                                 "手机版 item.m.jd.com/product/<数字>.html、慢买解析页 "
+                                 "HistoryLowest.aspx?url=…；jingfen/加密串三渠道不认，"
+                                 "10-17 实证）")
+    url = norm
     if anchor not in ("销量", "价格"):
         raise HTTPException(422, "anchor 只能是 销量/价格")
     con = ro_connect()

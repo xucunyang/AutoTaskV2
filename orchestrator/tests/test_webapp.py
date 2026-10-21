@@ -373,3 +373,22 @@ def test_mmb_searchbox_gated_lock_held_becomes_429(monkeypatch):
         webapp.api_mmb_search(q="5060")
     assert e.value.status_code == 429
     assert "渠道忙" in e.value.detail
+
+
+def test_norm_jd_url_unwraps_manmanbuy_shell():
+    """10-21 用户实测：慢买解析壳 HistoryLowest.aspx?url=<编码京东链> 加锚被拒
+    → 壳内 / ? = 全被 URL 编码，必须先解壳再提 id。"""
+    from tools.webapp import _norm_jd_url
+    shell = ("https://tool.manmanbuy.com/HistoryLowest.aspx?url=https%3A%2F%2F"
+             "item.jd.com%2F10170240041301.html%3Fpcdk%3DsQR_wvR0Kp-VI3qN")
+    assert _norm_jd_url(shell) == "https://item.jd.com/10170240041301.html"
+    # 既有形态不回归
+    assert _norm_jd_url("https://item.jd.com/100120799071.html?pcdk=x") == \
+        "https://item.jd.com/100120799071.html"
+    assert _norm_jd_url("https://item.m.jd.com/product/100120799071.html") == \
+        "https://item.jd.com/100120799071.html"
+    assert _norm_jd_url("https://jingfen.jd.com/detail/xxx.html") is None
+    # 壳在、内层不是京东 → None
+    assert _norm_jd_url(
+        "https://tool.manmanbuy.com/HistoryLowest.aspx?url=https%3A%2F%2Ftaobao.com"
+    ) is None
