@@ -2735,3 +2735,47 @@
 - 10-23 22:21:25 AUTO-R90: PARSED total=0 fresh=0
 - 10-23 22:21:25 AUTO-R90: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R90_1023-2219_auto.md
 - 10-23 22:21:26 AUTO-R90: IME restored + sdcard cleaned
+- 10-23 22:21:27 AUTO-R90: DONE round 90
+- 10-23 22:49:02 AUTO-R91: START round 91 (1023-2249)
+- 10-23 22:49:03 PAD R91: LEASE_OK
+- 10-23 22:49:03 AUTO-R91: PAD: LEASE_OK
+- 10-23 22:49:03 PAD R91: DEVICE_STALE, recovering...
+- 10-23 22:49:29 PAD R91: DEVICE_LOST
+- 10-23 22:49:46 PAD R91: DEVICE_STALE, recovering...
+- 10-23 22:50:12 PAD R91: DEVICE_LOST
+- 10-23 22:50:15 PAD R91: DUMP_MISSING (device dropped?), abort round
+- 10-23 22:50:15 PAD R91: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-23 22:50:15 AUTO-R91: PAD: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-23 22:50:16 PAD R91: DONE pad91_1023_2249 (aborted)
+- 10-23 22:50:16 AUTO-R91: PAD: DONE pad91_1023_2249 (aborted)
+- 10-23 22:50:16 R91: LEASE_OK
+- 10-23 22:50:16 AUTO-R91: HONOR: LEASE_OK
+- 10-23 22:50:17 AUTO-R91: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-23 22:50:17 AUTO-R91: HONOR: 件。
+- 10-23 22:50:17 AUTO-R91: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-23 22:50:17 AUTO-R91: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-23 22:50:17 AUTO-R91: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-23 22:50:17 AUTO-R91: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-23 22:50:17 AUTO-R91: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-23 22:50:17 AUTO-R91: HONOR:  
+- 10-23 22:50:22 R91: SWITCHED to wifi device
+- 10-23 22:50:22 AUTO-R91: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-23 22:50:23 AUTO-R91: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-23 22:50:37 R91: DEVICE_STALE, recovering...
+- 10-23 22:50:43 R91: SWITCHED to wifi device
+- 10-23 22:50:46 R91: DEVICE_STALE, recovering...
+- 10-23 22:50:51 R91: SWITCHED to wifi device
+- 10-23 22:50:52 AUTO-R91: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-23 22:51:10 R91: DEVICE_STALE, recovering...
+- 10-23 22:51:15 R91: SWITCHED to wifi device
+- 10-23 22:51:18 R91: DEVICE_STALE, recovering...
+- 10-23 22:51:24 R91: SWITCHED to wifi device
+- 10-23 22:51:24 R91: DUMP_MISSING (device dropped?), abort round
+- 10-23 22:51:24 AUTO-R91: HONOR: DUMP_MISSING (device dropped?), abort round
+- 10-23 22:51:24 R91: DONE round91_1023_2250 (aborted, no home)
+- 10-23 22:51:24 AUTO-R91: HONOR: DONE round91_1023_2250 (aborted, no home)
+- 10-23 22:51:24 AUTO-R91: pad: no scans, skip
+- 10-23 22:51:25 AUTO-R91: honor: no scans, skip
+- 10-23 22:51:25 AUTO-R91: PARSED total=0 fresh=0
+- 10-23 22:51:25 AUTO-R91: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R91_1023-2249_auto.md
+- 10-23 22:51:26 AUTO-R91: IME restored + sdcard cleaned
