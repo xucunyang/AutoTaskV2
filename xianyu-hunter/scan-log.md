@@ -2384,3 +2384,76 @@
 - 10-19 21:23:40 AUTO-R81: PARSED total=0 fresh=0
 - 10-19 21:23:40 AUTO-R81: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R81_1019-2119_auto.md
 - 10-19 21:23:41 AUTO-R81: IME restored + sdcard cleaned
+- 10-19 21:23:42 AUTO-R81: DONE round 81
+- 10-19 21:49:02 AUTO-R82: START round 82 (1019-2149)
+- 10-19 21:49:03 PAD R82: LEASE_OK
+- 10-19 21:49:03 AUTO-R82: PAD: LEASE_OK
+- 10-19 21:49:03 PAD R82: DEVICE_STALE, recovering...
+- 10-19 21:49:29 PAD R82: DEVICE_LOST
+- 10-19 21:49:46 PAD R82: DEVICE_STALE, recovering...
+- 10-19 21:50:12 PAD R82: DEVICE_LOST
+- 10-19 21:50:15 PAD R82: DUMP_MISSING (device dropped?), abort round
+- 10-19 21:50:15 PAD R82: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-19 21:50:15 AUTO-R82: PAD: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-19 21:50:16 PAD R82: DONE pad82_1019_2149 (aborted)
+- 10-19 21:50:16 AUTO-R82: PAD: DONE pad82_1019_2149 (aborted)
+- 10-19 21:50:16 R82: LEASE_OK
+- 10-19 21:50:16 AUTO-R82: HONOR: LEASE_OK
+- 10-19 21:50:17 AUTO-R82: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-19 21:50:17 AUTO-R82: HONOR: 件。
+- 10-19 21:50:17 AUTO-R82: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-19 21:50:17 AUTO-R82: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-19 21:50:17 AUTO-R82: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-19 21:50:17 AUTO-R82: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-19 21:50:17 AUTO-R82: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-19 21:50:17 AUTO-R82: HONOR:  
+- 10-20 10:49:02 AUTO-R83: START round 83 (1020-1049)
+- 10-20 10:49:03 PAD R83: LEASE_OK
+- 10-20 10:49:03 AUTO-R83: PAD: LEASE_OK
+- 10-20 10:49:03 PAD R83: DEVICE_STALE, recovering...
+- 10-20 10:49:30 PAD R83: DEVICE_LOST
+- 10-20 10:49:46 PAD R83: DEVICE_STALE, recovering...
+- 10-20 10:50:12 PAD R83: DEVICE_LOST
+- 10-23 11:19:02 AUTO-R84: START round 84 (1023-1119)
+- 10-23 11:19:04 PAD R84: LEASE_OK
+- 10-23 11:19:04 AUTO-R84: PAD: LEASE_OK
+- 10-23 11:19:04 PAD R84: DEVICE_STALE, recovering...
+- 10-23 11:19:30 PAD R84: DEVICE_LOST
+- 10-23 11:19:47 PAD R84: DEVICE_STALE, recovering...
+- 10-23 11:20:13 PAD R84: DEVICE_LOST
+- 10-23 11:20:16 PAD R84: DUMP_MISSING (device dropped?), abort round
+- 10-23 11:20:16 PAD R84: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-23 11:20:16 AUTO-R84: PAD: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-23 11:20:17 PAD R84: DONE pad84_1023_1119 (aborted)
+- 10-23 11:20:17 AUTO-R84: PAD: DONE pad84_1023_1119 (aborted)
+- 10-23 11:20:17 R84: LEASE_OK
+- 10-23 11:20:18 AUTO-R84: HONOR: LEASE_OK
+- 10-23 11:20:18 AUTO-R84: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-23 11:20:18 AUTO-R84: HONOR: 件。
+- 10-23 11:20:18 AUTO-R84: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-23 11:20:18 AUTO-R84: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-23 11:20:18 AUTO-R84: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-23 11:20:18 AUTO-R84: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-23 11:20:18 AUTO-R84: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-23 11:20:18 AUTO-R84: HONOR:  
+- 10-23 11:20:50 R84: DEVICE_LOST
+- 10-23 11:20:50 AUTO-R84: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-23 11:20:51 AUTO-R84: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-23 11:21:05 R84: DEVICE_STALE, recovering...
+- 10-23 11:21:38 R84: DEVICE_LOST
+- 10-23 11:21:41 R84: DEVICE_STALE, recovering...
+- 10-23 11:22:15 R84: DEVICE_LOST
+- 10-23 11:22:16 AUTO-R84: HONOR: adb.exe: device 'AADEGL4701000138' not found
+- 10-23 11:22:34 R84: DEVICE_STALE, recovering...
+- 10-23 11:23:06 R84: DEVICE_LOST
+- 10-23 11:23:09 R84: DEVICE_STALE, recovering...
+- 10-23 11:23:42 R84: DEVICE_LOST
+- 10-23 11:23:42 R84: DUMP_MISSING (device dropped?), abort round
+- 10-23 11:23:42 AUTO-R84: HONOR: DUMP_MISSING (device dropped?), abort round
+- 10-23 11:23:42 R84: DONE round84_1023_1120 (aborted, no home)
+- 10-23 11:23:42 AUTO-R84: HONOR: DONE round84_1023_1120 (aborted, no home)
+- 10-23 11:23:43 AUTO-R84: pad: no scans, skip
+- 10-23 11:23:43 AUTO-R84: honor: no scans, skip
+- 10-23 11:23:43 AUTO-R84: PARSED total=0 fresh=0
+- 10-23 11:23:43 AUTO-R84: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R84_1023-1119_auto.md
+- 10-23 11:23:44 AUTO-R84: IME restored + sdcard cleaned
