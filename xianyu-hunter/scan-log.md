@@ -3390,3 +3390,54 @@
 - 10-24 19:21:33 AUTO-R106: IME restored + sdcard cleaned
 - 10-24 19:21:34 AUTO-R106: DONE round 106
 - 10-24 20:12:35 MOTO: 云南四地(昆明/大理/丽江/芒市)二手踏板车 22 台实采 + 2 台已收藏(¥1600 东川 125cc踏板 tbNick_zz9i3 / ¥2000 宜良 豪爵HJ100-8)；闲鱼摩托车垂直频道(车源地/品牌/排量筛选) + 行情成交记录残值基准；报告 reports/MOTO_1024-1755_云南四地踏板车价格建议.md
+- 10-24 20:19:02 AUTO-R107: START round 107 (1024-2019)
+- 10-24 20:19:03 AUTO-R107: device pick: pad=AUIFLJTKSGSWU4TK honor=True
+- 10-24 20:19:04 PAD R107: LEASE_OK
+- 10-24 20:19:04 AUTO-R107: PAD: LEASE_OK
+- 10-24 20:19:04 AUTO-R107: PAD: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-24 20:19:04 AUTO-R107: PAD: 件。
+- 10-24 20:19:04 AUTO-R107: PAD: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_pad.ps1:22 字符: 3
+- 10-24 20:19:04 AUTO-R107: PAD: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-24 20:19:04 AUTO-R107: PAD: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-24 20:19:04 AUTO-R107: PAD:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-24 20:19:05 AUTO-R107: PAD:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-24 20:19:05 AUTO-R107: PAD:  
+- 10-24 20:19:12 PAD R107: DEVICE_LOST
+- 10-24 20:19:28 PAD R107: DEVICE_STALE, recovering...
+- 10-24 20:19:36 PAD R107: DEVICE_LOST
+- 10-24 20:19:40 PAD R107: DUMP_MISSING (device dropped?), abort round
+- 10-24 20:19:40 PAD R107: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-24 20:19:40 AUTO-R107: PAD: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-24 20:19:40 PAD R107: DONE pad107_1024_2019 (aborted)
+- 10-24 20:19:40 AUTO-R107: PAD: DONE pad107_1024_2019 (aborted)
+- 10-24 20:19:41 R107: LEASE_OK
+- 10-24 20:19:41 AUTO-R107: HONOR: LEASE_OK
+- 10-24 20:19:41 AUTO-R107: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-24 20:19:41 AUTO-R107: HONOR: 件。
+- 10-24 20:19:41 AUTO-R107: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-24 20:19:41 AUTO-R107: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-24 20:19:41 AUTO-R107: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-24 20:19:41 AUTO-R107: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-24 20:19:42 AUTO-R107: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-24 20:19:42 AUTO-R107: HONOR:  
+- 10-24 20:19:55 R107: DEVICE_LOST
+- 10-24 20:19:55 AUTO-R107: HONOR: adb.exe: device 'True' not found
+- 10-24 20:19:56 AUTO-R107: HONOR: adb.exe: device 'True' not found
+- 10-24 20:20:10 R107: DEVICE_STALE, recovering...
+- 10-24 20:20:24 R107: DEVICE_LOST
+- 10-24 20:20:28 R107: DEVICE_STALE, recovering...
+- 10-24 20:20:42 R107: DEVICE_LOST
+- 10-24 20:20:42 AUTO-R107: HONOR: adb.exe: device 'True' not found
+- 10-24 20:21:00 R107: DEVICE_STALE, recovering...
+- 10-24 20:21:15 R107: DEVICE_LOST
+- 10-24 20:21:18 R107: DEVICE_STALE, recovering...
+- 10-24 20:21:32 R107: DEVICE_LOST
+- 10-24 20:21:32 R107: DUMP_MISSING (device dropped?), abort round
+- 10-24 20:21:32 AUTO-R107: HONOR: DUMP_MISSING (device dropped?), abort round
+- 10-24 20:21:32 R107: DONE round107_1024_2019 (aborted, no home)
+- 10-24 20:21:32 AUTO-R107: HONOR: DONE round107_1024_2019 (aborted, no home)
+- 10-24 20:21:33 AUTO-R107: pad: no scans, skip
+- 10-24 20:21:33 AUTO-R107: honor: no scans, skip
+- 10-24 20:21:33 AUTO-R107: PARSED total=0 fresh=0
+- 10-24 20:21:33 AUTO-R107: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R107_1024-2019_auto.md
+- 10-24 20:21:34 AUTO-R107: IME restored + sdcard cleaned
