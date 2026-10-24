@@ -3,6 +3,7 @@ param(
   [string]$PadKeywords = "macbookpro m1max 64g,m1max 64g 1t,16寸m1max",
   [string]$HonorKeywords = "mac studio 64g,studio m1 max,m1max 台式",
   [string]$PadDevice = "AUIFLJTKSGSWU4TK",
+  [string]$PadWifi = "192.168.31.208:5555",
   [string]$HonorDevice = "AADEGL4701000138",
   [string]$HonorWiFi = "192.168.31.95:5555"
 )
@@ -29,7 +30,25 @@ function Newest-Tag($prefix) {
 }
 try {
   Log ("START round " + $Round + " (" + $ts + ")")
-  powershell -NoProfile -ExecutionPolicy Bypass -File ($BaseDir + "\scan_pad.ps1") -Round $Round -SessionId ("auto-pad-r" + $Round) -Device $PadDevice -Keywords $PadKeywords 2>&1 | ForEach-Object { Log ("PAD: " + $_) }
+  # 快速门禁：两台采集机都不可用时立即跳过，不做 30s 级设备探测
+  $padUsb = (adb devices | Out-String) -match [regex]::Escape($PadDevice)
+  $padWifi = (adb devices | Out-String) -match [regex]::Escape($PadWifi)
+  $honorUsb = (adb devices | Out-String) -match [regex]::Escape($HonorDevice)
+  $honorWifi = (adb devices | Out-String) -match [regex]::Escape($HonorWiFi)
+  $padOk = $padUsb -or $padWifi
+  $honorOk = $honorUsb -or $honorWifi
+  if (-not ($padOk -or $honorOk)) {
+    Log "NO_DEVICE (pad+honor both offline) - skipped fast, needs physical USB"
+    $pauseFile = $BaseDir + "\AUTO_PAUSED.txt"
+    ("paused at " + $ts + " - connect pad USB AUIFLJTKSGSWU4TK or honor USB AADEGL4701000138") | Set-Content $pauseFile -Encoding UTF8
+    exit 0
+  }
+  if (Test-Path ($BaseDir + "\AUTO_PAUSED.txt")) { Remove-Item ($BaseDir + "\AUTO_PAUSED.txt") -Force }
+  # 无线优先：USB 在但可能不稳，无线在线则用无线
+  if ($padWifi) { $PadDevice = $PadWifi }
+  if ($honorWifi) { $HonorDevice = $HonorWiFi }
+  Log ("device pick: pad=" + $PadDevice + " honor=" + $HonorDevice)
+  powershell -NoProfile -ExecutionPolicy Bypass -File ($BaseDir + "\scan_pad.ps1") -Round $Round -SessionId ("auto-pad-r" + $Round) -Device $PadDevice -WiFiDevice $PadWifi -Keywords $PadKeywords 2>&1 | ForEach-Object { Log ("PAD: " + $_) }
   powershell -NoProfile -ExecutionPolicy Bypass -File ($BaseDir + "\scan_round.ps1") -Round $Round -SessionId ("auto-honor-r" + $Round) -Device $HonorDevice -WiFiDevice $HonorWiFi -Keywords $HonorKeywords 2>&1 | ForEach-Object { Log ("HONOR: " + $_) }
   $env:PYTHONIOENCODING = "utf-8"
   $padTag = Newest-Tag ("pad" + $Round)
