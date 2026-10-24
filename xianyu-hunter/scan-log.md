@@ -3179,3 +3179,48 @@
 - 10-24 15:21:33 AUTO-R102: PARSED total=0 fresh=0
 - 10-24 15:21:33 AUTO-R102: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R102_1024-1519_auto.md
 - 10-24 15:21:34 AUTO-R102: IME restored + sdcard cleaned
+- 10-24 15:21:35 AUTO-R102: DONE round 102
+- 10-24 17:49:02 AUTO-R103: START round 103 (1024-1749)
+- 10-24 17:49:02 AUTO-R103: device pick: pad=AUIFLJTKSGSWU4TK honor=True
+- 10-24 17:49:03 PAD R103: LEASE_OK
+- 10-24 17:49:03 AUTO-R103: PAD: LEASE_OK
+- 10-24 17:49:03 AUTO-R103: PAD: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-24 17:49:03 AUTO-R103: PAD: 件。
+- 10-24 17:49:03 AUTO-R103: PAD: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_pad.ps1:22 字符: 3
+- 10-24 17:49:04 AUTO-R103: PAD: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-24 17:49:04 AUTO-R103: PAD: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-24 17:49:04 AUTO-R103: PAD:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-24 17:49:04 AUTO-R103: PAD:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-24 17:49:04 AUTO-R103: PAD:  
+- 10-24 17:49:11 PAD R103: DEVICE_LOST
+- 10-24 17:49:28 PAD R103: DEVICE_STALE, recovering...
+- 10-24 17:49:36 PAD R103: DEVICE_LOST
+- 10-24 17:49:39 PAD R103: DUMP_MISSING (device dropped?), abort round
+- 10-24 17:49:39 PAD R103: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-24 17:49:39 AUTO-R103: PAD: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-24 17:49:40 PAD R103: DONE pad103_1024_1749 (aborted)
+- 10-24 17:49:40 AUTO-R103: PAD: DONE pad103_1024_1749 (aborted)
+- 10-24 17:49:41 R103: LEASE_OK
+- 10-24 17:49:41 AUTO-R103: HONOR: LEASE_OK
+- 10-24 17:49:41 R103: DEVICE_STALE, recovering...
+- 10-24 17:49:55 R103: DEVICE_LOST
+- 10-24 17:49:55 AUTO-R103: HONOR: adb.exe: device 'True' not found
+- 10-24 17:49:57 AUTO-R103: HONOR: adb.exe: device 'True' not found
+- 10-24 17:50:11 R103: DEVICE_STALE, recovering...
+- 10-24 17:50:25 R103: DEVICE_LOST
+- 10-24 17:50:28 R103: DEVICE_STALE, recovering...
+- 10-24 17:50:42 R103: DEVICE_LOST
+- 10-24 17:50:43 AUTO-R103: HONOR: adb.exe: device 'True' not found
+- 10-24 17:51:01 R103: DEVICE_STALE, recovering...
+- 10-24 17:51:15 R103: DEVICE_LOST
+- 10-24 17:51:18 R103: DEVICE_STALE, recovering...
+- 10-24 17:51:32 R103: DEVICE_LOST
+- 10-24 17:51:33 R103: DUMP_MISSING (device dropped?), abort round
+- 10-24 17:51:33 AUTO-R103: HONOR: DUMP_MISSING (device dropped?), abort round
+- 10-24 17:51:33 R103: DONE round103_1024_1749 (aborted, no home)
+- 10-24 17:51:33 AUTO-R103: HONOR: DONE round103_1024_1749 (aborted, no home)
+- 10-24 17:51:33 AUTO-R103: pad: no scans, skip
+- 10-24 17:51:33 AUTO-R103: honor: no scans, skip
+- 10-24 17:51:34 AUTO-R103: PARSED total=0 fresh=0
+- 10-24 17:51:34 AUTO-R103: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R103_1024-1749_auto.md
+- 10-24 17:51:34 AUTO-R103: IME restored + sdcard cleaned
