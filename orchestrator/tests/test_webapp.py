@@ -423,3 +423,77 @@ def test_reports_hub_list_content_and_guard(tmp_path, monkeypatch):
         webapp.api_reports_content(date="2026-10-24", name="report.html")
     with pytest.raises(HTTPException):        # 不存在
         webapp.api_reports_content(date="2026-10-24", name="nope.md")
+
+
+def _patch_queue_safe(monkeypatch, tmp_path):
+    """队列测试公共桩：ROOT/REG_PATH 指 tmp、spawn 免真采、busy 恒 False。"""
+    cfg = tmp_path / "config"
+    cfg.mkdir(parents=True)
+    (cfg / "backfill_manmanbuy.yaml").write_text(
+        "# test registry\nlistings:\n", encoding="utf-8")
+    monkeypatch.setattr(webapp, "ROOT", tmp_path)
+    monkeypatch.setattr(webapp, "REG_PATH", cfg / "backfill_manmanbuy.yaml")
+    monkeypatch.setattr(webapp, "_queue_spawn", lambda item: None)
+    monkeypatch.setattr(webapp, "_is_busy", lambda: False)
+
+
+def _queue_file(tmp_path):
+    import json
+    return json.loads((tmp_path / "reports" / "collect_queue.json")
+                      .read_text(encoding="utf-8"))
+
+
+def test_collect_now_enqueues_and_dedupes(tmp_path, monkeypatch):
+    """10-24 采集队列：恒入队（不再 409 让人等锁）、同 URL 去重 409、持久化。"""
+    import pytest
+    from fastapi import HTTPException
+    _patch_queue_safe(monkeypatch, tmp_path)
+    reg = webapp._reg_load()
+    reg["listings"] = [{"url": "https://item.jd.com/1.html",
+                        "sp_name": "x", "anchor": "销量"}]
+    webapp._reg_save(reg)
+    r = webapp.api_mmb_collect_now({"urls": ["https://item.jd.com/1.html"]})
+    assert r["ok"] and r["queued"] and r["position"] == 1
+    with pytest.raises(HTTPException) as e:      # 同 URL 再点 → 去重
+        webapp.api_mmb_collect_now({"urls": ["https://item.jd.com/1.html"]})
+    assert e.value.status_code == 409
+    q = _queue_file(tmp_path)
+    assert q[0]["source"] == "manual"
+    assert q[0]["urls"] == ["https://item.jd.com/1.html"]
+    assert q[0]["status"] in ("queued", "running")   # worker 可能已拾起
+
+
+def test_upsert_auto_enqueues_collection(tmp_path, monkeypatch):
+    """10-24：加锚成功自动入队采集（source=add-anchor）。"""
+    _patch_queue_safe(monkeypatch, tmp_path)
+
+    class _FakeAttrs:
+        attrs = {"vendor": {"values": ["AMD"]},
+                 "channel": {"values": ["自营", "三方店铺"]}}
+
+    monkeypatch.setattr(webapp.Contract, "load",
+                        lambda *a, **k: _FakeAttrs())
+
+    class _FakeCon:
+        def execute(self, *a, **k):
+            class _R:
+                def fetchone(self):
+                    return {"identity_json": '{"category": "CPU", '
+                                             '"series": "7800X3D", "spec": ""}',
+                            "display_name": "AMD 7800X3D"}
+            return _R()
+        def close(self):
+            pass
+    monkeypatch.setattr(webapp, "ro_connect", lambda: _FakeCon())
+
+    d = webapp.api_anchors_upsert({
+        "url": "https://item.jd.com/10170240041301.html", "entity_id": 1,
+        "sp_name": "AMD 7800X3D 盒装", "anchor": "销量",
+        "vendor": "AMD", "channel": "自营"})
+    assert d["ok"] and d["mode"] == "create" and d["auto_queued"] is True
+    q = _queue_file(tmp_path)
+    assert q[-1]["source"] == "add-anchor"
+    assert q[-1]["urls"] == ["https://item.jd.com/10170240041301.html"]
+    reg = webapp._reg_load()                     # 锚已入注册表（不因入队回滚）
+    assert any(x["url"] == "https://item.jd.com/10170240041301.html"
+               for x in reg["listings"])

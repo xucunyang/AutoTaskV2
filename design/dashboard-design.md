@@ -28,7 +28,7 @@
 | 10-18 | 实体 CRUD 补全；弹窗统一层；断点续采+降级续跑；预算 80→验证→移除；品牌/品类贯通 | 可靠性三件套；契约三道防线 |
 | 10-19 | 直加锚 vendor 契约化（第二例崩链）；一键补锚双层根因修复（15 提案）；**新增 SKU 用户旅程立项** | 本文档成文；§5.5 立项 |
 
-## 3. 模块清单与职责（12 模块 × 31 端点）
+## 3. 模块清单与职责（13 模块 × 32 端点）
 
 UI 面板（index.html，`.mmb-panel` 弹窗卡片体系 + header + nav/wall + cmp 对比悬浮窗）：
 
@@ -46,6 +46,7 @@ UI 面板（index.html，`.mmb-panel` 弹窗卡片体系 + header + nav/wall + c
 | 10 | ⚡一键补锚 | `POST /api/mmb/auto-anchor` | C（子进程） | 提案 yaml（零观测实体批量配对） |
 | 11 | 对比悬浮窗（cmp-panel） | `GET /api/recommend` `GET /api/snapshot` | R | DB/快照 |
 | 12 | 报告中心（reports.html，10-24） | `GET /reports` `GET /api/reports` `GET /api/reports/content` | R | artifacts/{date}/*.md（扫描即真，不建索引文件） |
+| 13 | 采集队列（10-24） | `POST /api/mmb/collect-now`（改语义：入队） `GET /api/mmb/collect-queue` `POST /api/anchors/upsert`（自动入队） | C | reports/collect_queue.json（持久）→ worker 串行拉起 collect_now.py |
 | — | 静态资源 | `GET /` `GET /img/{date}/{fname}` | R | webapp_static / artifacts |
 
 **本设计新增（§5.5 旅程落地）**：`POST /api/mmb/collect-now`（立即采集指定锚）+ backfill `run --urls` 参数。
@@ -55,6 +56,15 @@ UI 面板（index.html，`.mmb-panel` 弹窗卡片体系 + header + nav/wall + c
 （vendor 本地化 `/static/vendor/`，与 echarts 同原则：离线可用不依赖外网 CDN；服务端零渲染依赖）。
 安全：date 白名单 `^\d{4}-\d{2}-\d{2}$`、name 白名单 `^[\w.\-]+\.md$`（斜杠进不来，路径穿越无立足点）+
 resolve 后必须落在 artifacts 下。文件名→中文标签映射表 `_MD_LABELS`（未知文件名原样显示）。
+
+**采集队列（10-24，"点采撞锁不再让人等"）**：`collect-now` 从"锁被占即 409"改为**恒入队**
+（reports/collect_queue.json 持久化，webapp 重启不丢）；webapp 内 worker 线程串行拉起
+`collect_now.py --wait-lock-min 90`——锁被占时子进程在锁上排队（taskboard「立即采集」实时显示
+"被「一键补锚」占用已等 Xs"），锁一释放自动开跑；同 URL 队列内去重（409"已在队列"）；
+失败不自动重试（终态 failed 留审计，防循环轰炸）。`upsert` 加锚/改绑 URL 成功后自动入队
+（auto_queued 返回，成功卡显示排队位次）。等待靠 collect_now 探锁轮询（acquire+release 探测，
+不持锁等待——backfill 子进程异 pid 不可重入），竞速失败（探到空闲但 backfill 取锁前被抢）
+时重等+重试一次。
 
 ## 4. 数据存放点与实体模型（六个事实源）
 

@@ -1152,7 +1152,8 @@ async function anchorAddConfirm() {
       : `❌ ${d.detail || '?'}`;
     if (resp.ok) {
       anchorsLoad();
-      showCollectCard(d.url, d.entity, r.title);
+      showCollectCard(d.url, d.entity, r.title,
+        d.auto_queued ? `⚡ 已自动排队采集${d.queue_position > 1 ? `（第 ${d.queue_position} 位）` : ''}，完成后自动提示` : '');
     }
   } catch (e) { st.textContent = '请求失败：' + e; }
 }
@@ -1267,7 +1268,8 @@ async function anchorSave() {
     if (resp.ok) {
       anchorsLoad();
       const en = document.getElementById('af-entity')?.selectedOptions?.[0]?.text || '';
-      showCollectCard(d.url, en, spn);
+      showCollectCard(d.url, en, spn,
+        d.auto_queued ? `⚡ 已自动排队采集${d.queue_position > 1 ? `（第 ${d.queue_position} 位）` : ''}，完成后自动提示` : '');
     }
   } catch (e) { document.getElementById('af-status').textContent = '请求失败：' + e; }
 }
@@ -1316,15 +1318,23 @@ async function collectNow(urls, label) {
     const d = await r.json();
     if (!r.ok) { toastMsg('⚠️ ' + (d.detail || '启动失败')); return; }
   } catch (e) { toastMsg('⚠️ 请求失败：' + e); return; }
-  toastMsg(`⚡ 采集中：${label}——完成或失败都会自动提示（节奏约 20~60s/锚）`);
+  toastMsg(d.queued && d.position > 1
+    ? `⏳ ${label} 已入采集队列（第 ${d.position} 位）——通道空闲自动开跑`
+    : `⚡ 采集中：${label}——完成或失败都会自动提示（节奏约 20~60s/锚）`);
   if (_collectPoll) clearInterval(_collectPoll);
+  const t0 = Date.now();          // 只认本次点击之后启动的任务（排队场景防误判旧任务）
   _collectPoll = setInterval(async () => {
     let tasks = [];
     try {
       tasks = (await fetch('/api/tasklog').then(x => x.json())).tasks || [];
     } catch (e) { return; }
-    const t = tasks.find(t => (t.name || '').startsWith('立即采集'));
-    if (!t || t.status === 'running') return;
+    const t = tasks.find(t => {
+      if (!(t.name || '').startsWith('立即采集')) return false;
+      const ts = Date.parse((t.started_at || '').replace(' ', 'T'));
+      return isNaN(ts) || ts >= t0 - 60000;
+    });
+    if (!t) return;               // 还在排队（本轮任务尚未生成）
+    if (t.status === 'running') return;
     clearInterval(_collectPoll); _collectPoll = null;
     if (t.status === 'ok') {
       toastMsg(`✅ ${label} 采集完成，看板刷新中…`);
@@ -1336,10 +1346,10 @@ async function collectNow(urls, label) {
   }, 5000);
 }
 
-function showCollectCard(url, entity, spName) {
+function showCollectCard(url, entity, spName, autoNote) {
   document.getElementById('cc-name').textContent = spName || url;
   document.getElementById('cc-meta').textContent = `归属实体：${entity || '—'} · ${url}`;
-  document.getElementById('cc-status').textContent = '';
+  document.getElementById('cc-status').textContent = autoNote || '';
   document.getElementById('cc-go').onclick = () =>
     collectNow([url], entity || spName || '锚');
   layerOpen('collect-card');

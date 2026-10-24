@@ -641,8 +641,17 @@ def api_mmb_add_anchor(payload: dict = Body(...)) -> dict:
     })
     reg["listings"] = listings
     _reg_save(reg)
+    # 自动采集（10-24）：搜索面板直加锚同 upsert 口径——加完自动入队，撞锁排队
+    auto_queued, auto_pos = False, 0
+    try:
+        _, auto_pos = _queue_enqueue([url], "add-anchor")
+        auto_queued = True
+    except HTTPException as e:
+        if e.status_code != 409:
+            raise
     return {"ok": True, "url": url, "vendor": _brand_from_shop(shop),
-            "channel": _channel_of(shop), "entity": erow["display_name"]}
+            "channel": _channel_of(shop), "entity": erow["display_name"],
+            "auto_queued": auto_queued, "queue_position": auto_pos}
 
 
 @app.get("/api/anchors")
@@ -795,7 +804,18 @@ def api_anchors_upsert(payload: dict = Body(...)) -> dict:
         reg["listings"] = listings
         mode = "create"
     _reg_save(reg)
-    return {"ok": True, "mode": mode, "url": url}
+    # 自动采集（10-24 用户需求：加锚/改绑 URL 后自动触发，撞锁入队不阻塞）。
+    # 入队失败不回滚锚（采集可手动补），只吞掉异常附注。
+    auto_queued, auto_pos = False, 0
+    if mode == "create" or (original and url != original):
+        try:
+            _, auto_pos = _queue_enqueue([url], "add-anchor")
+            auto_queued = True
+        except HTTPException as e:
+            if e.status_code != 409:
+                raise
+    return {"ok": True, "mode": mode, "url": url,
+            "auto_queued": auto_queued, "queue_position": auto_pos}
 
 
 def _validate_category(v: str) -> str:
@@ -1147,63 +1167,175 @@ def _read_log_any(p: Path) -> str:
 
 # ---------- 任务流水（控制台风格，2026-10-17）：只读 reports/*.log + 闸门状态 ----------
 
+# ---------- 采集队列（10-24）：点采撞锁入队等待，不让用户人肉等锁 ----------
+
+import threading  # noqa: E402
+
+def _queue_path() -> Path:
+    return ROOT / "reports" / "collect_queue.json"
+
+
+def _qload() -> list:
+    p = _queue_path()
+    if not p.exists():
+        return []
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) or []
+    except Exception:
+        return []
+
+
+def _qsave(items: list) -> None:
+    p = _queue_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=1),
+                   encoding="utf-8")
+    import os
+    os.replace(tmp, p)          # 原子替换（同 taskboard）
+
+
+def _queue_enqueue(urls: list[str], source: str) -> dict:
+    """入队一条采集（同 URL queued/running 中则 409）。返回条目与位次。"""
+    import uuid
+    q = _qload()
+    dup = [u for u in urls
+           if any(u in (x.get("urls") or [])
+                  and x.get("status") in ("queued", "running") for x in q)]
+    if dup:
+        raise HTTPException(409, "已在采集队列中：" + dup[0]
+                            + "（看「任务流水」进度，完成后可再采）")
+    item = {"id": uuid.uuid4().hex[:8], "urls": urls, "source": source,
+            "status": "queued",
+            "enqueued_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "started_at": None, "finished_at": None, "rc": None,
+            "task_id": None, "summary": ""}
+    q.append(item)
+    _qsave(q)
+    _queue_wake.set()
+    pos = sum(1 for x in q if x.get("status") == "queued")
+    return item, pos
+
+
+def _queue_spawn(item: dict) -> None:
+    """拉起 collect_now.py（等锁 90 分钟）并登记 PROCS（取消协议 §3.4）。"""
+    import subprocess
+    from tools import taskboard
+    script = ROOT / "scripts" / "collect_now.py"
+    logf = (ROOT / "reports" / "collect_now.log").open("ab")
+    proc = subprocess.Popen(
+        [sys.executable, "-X", "utf8", "-u", str(script),
+         "--urls", ",".join(item["urls"]), "--wait-lock-min", "90"],
+        cwd=str(ROOT), stdout=logf, stderr=subprocess.STDOUT,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    new_task = next((t for t in taskboard.snapshot()
+                     if t.get("status") == "running"
+                     and str(t.get("name", "")).startswith("立即采集")), None)
+    task_id = new_task["id"] if new_task else None
+    if task_id:
+        PROCS[task_id] = {"proc": proc, "script": "collect_now",
+                          "started_at": time.time()}
+    q = _qload()
+    for x in q:
+        if x.get("id") == item["id"]:
+            x["task_id"] = task_id
+    _qsave(q)
+    rc = proc.wait()
+    q = _qload()
+    for x in q:
+        if x.get("id") == item["id"]:
+            x["status"] = "done" if rc == 0 else "failed"
+            x["finished_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            x["rc"] = rc
+    _qsave(q)
+
+
+def _queue_worker() -> None:
+    """串行 worker：一次只跑一条，其余 queued；webapp 重启时把上次遗留的
+    running 标 failed（无人收尸的半程）。空转 20s 醒一次 / 入队即醒。"""
+    import threading
+    _stale_fixed = False
+    while True:
+        try:
+            if not _stale_fixed:
+                q = _qload()
+                fixed = False
+                for x in q:
+                    if x.get("status") == "running":
+                        x["status"] = "failed"
+                        x["summary"] = "webapp 重启中断，请重新点采"
+                        fixed = True
+                if fixed:
+                    _qsave(q)
+                _stale_fixed = True
+            q = _qload()
+            busy = any(x.get("status") == "running" for x in q)
+            item = next((x for x in q if x.get("status") == "queued"), None)
+            if item and not busy:
+                q2 = _qload()
+                for x in q2:
+                    if x.get("id") == item["id"]:
+                        x["status"] = "running"
+                        x["started_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                _qsave(q2)
+                _queue_spawn(item)
+                continue          # 立刻看下一条
+        except Exception:
+            pass
+        _queue_wake.wait(20)
+        _queue_wake.clear()
+
+
+_queue_wake = threading.Event()
+threading.Thread(target=_queue_worker, daemon=True,
+                 name="collect-queue").start()
+
+
 @app.post("/api/mmb/collect-now")
 def api_mmb_collect_now(payload: dict = Body(...)) -> dict:
-    """立即采集指定锚（2026-10-19 新增 SKU 用户旅程 §5.5 设计文档）。
+    """立即采集指定锚（10-24 改采集队列语义：撞锁入队，不再 409 让人等）。
 
-    urls 须已在注册表（404 兜底）；拉起 scripts/collect_now.py 后台子进程
-    ——同一 channel-gate 锁+节奏，增量缓存+断点续采，重复点击幂等；
-    采完自动 trend_calc 刷新快照。进度看「任务流水」面板，重复点击 409。"""
-    import subprocess
-
-    from tools import taskboard
+    urls 须已在注册表（404 兜底）；恒入队 reports/collect_queue.json，
+    worker 串行拉起 collect_now.py --wait-lock-min 90——锁被占（如一键补锚）
+    时在任务流水实时显示"排队等锁"，锁一释放自动开跑；采完自动 trend_calc。
+    同 URL 队列内去重（409）。"""
     urls = [str(u).strip() for u in (payload.get("urls") or [])
             if str(u).strip()]
     if not urls:
         raise HTTPException(422, "urls 必填")
-    running = [t for t in taskboard.snapshot()
-               if t.get("status") == "running"
-               and str(t.get("name", "")).startswith("立即采集")]
-    if running:
-        raise HTTPException(409, "已有「立即采集」在跑，看任务流水进度")
-    # 慢买单写者锁预检（10-20：补锚批休持锁 10 分钟，期间点⚡只得到
-    # rc=1 失败流水看不出原因）→ 点击即报占用方；顺手清死 pid 残锁
-    try:
-        from channel_gate import gate as _gate
-        try:
-            _gate.acquire("mmb", "collect-now 预检")
-            _gate.release("mmb")
-        except _gate.LockHeld as e:
-            h = getattr(e, "holder", {}) or {}
-            raise HTTPException(
-                409, f"慢买通道被「{h.get('purpose') or '其他任务'}」占用"
-                     f"（pid={h.get('pid')}），等它跑完再点⚡")
-    except ImportError:
-        pass
     reg_urls = {it.get("url") for it in _reg_load().get("listings") or []}
     unknown = [u for u in urls if u not in reg_urls]
     if unknown:
         raise HTTPException(404, "以下 URL 不在注册表："
                             + "、".join(unknown[:3])
                             + ("…" if len(unknown) > 3 else ""))
-    script = ROOT / "scripts" / "collect_now.py"
-    logf = (ROOT / "reports" / "collect_now.log").open("ab")
-    proc = subprocess.Popen(
-        [sys.executable, "-X", "utf8", "-u", str(script),
-         "--urls", ",".join(urls)],
-        cwd=str(ROOT), stdout=logf, stderr=subprocess.STDOUT,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    # 拿到 task_id（taskboard 起了两条同名 running 时取最新那一条）
-    new_task = next((t for t in taskboard.snapshot()
-                     if t.get("status") == "running"
-                     and str(t.get("name", "")).startswith("立即采集")),
-                    None)
-    task_id = new_task["id"] if new_task else None
-    if task_id:
-        PROCS[task_id] = {"proc": proc, "script": "collect_now",
-                           "started_at": time.time()}
-    return {"ok": True, "urls": urls, "task_id": task_id,
-            "msg": "已启动采集：完成后看板自动刷新（任务流水可看进度）"}
+    item, pos = _queue_enqueue(urls, "manual")
+    msg = (f"已加入采集队列（第 {pos} 位）——通道空闲自动开跑，"
+           if pos > 1 or _is_busy() else "已开始排队采集，")
+    msg += "进度看「任务流水」"
+    return {"ok": True, "queued": True, "position": pos,
+            "item_id": item["id"], "urls": urls, "msg": msg}
+
+
+def _is_busy() -> bool:
+    """慢买通道当前是否被占（显示用）。"""
+    try:
+        from channel_gate import gate as _gate
+        _gate.acquire("mmb", "collect-now 探锁")
+        _gate.release("mmb")
+        return False
+    except Exception:
+        return True
+
+
+@app.get("/api/mmb/collect-queue")
+def api_mmb_collect_queue() -> dict:
+    """采集队列当前状态（队列页/任务流水用，10-24）。"""
+    q = _qload()
+    return {"ok": True,
+            "queued": sum(1 for x in q if x.get("status") == "queued"),
+            "running": sum(1 for x in q if x.get("status") == "running"),
+            "items": q[-30:]}
 
 
 @app.get("/api/tasklog")
