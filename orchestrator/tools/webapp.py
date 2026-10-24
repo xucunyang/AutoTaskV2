@@ -235,6 +235,84 @@ def index() -> FileResponse:
                         headers={"Cache-Control": "no-cache"})
 
 
+# ---------------- 报告中心（10-24，"每天的报告挂到网页上"） ----------------
+
+_MD_LABELS = {
+    "report.md": "宏观日报",
+    "finance_report.md": "财经日报",
+    "t2_investment.md": "投资观察",
+    "t4_investment_watch.md": "投资观察",
+    "charts.md": "宏观图表",
+    "t2_xuzhou_nanjing.md": "徐州南京楼市",
+    "t2_xz_nj.md": "徐州南京楼市",
+    "charts_housing.md": "楼市图表",
+    "hardware_report.md": "硬件日报",
+    "policy_report.md": "政策日报",
+    "t_rr_top20.md": "租售比Top20",
+    "t3_hexagon_cities.md": "六边形城市",
+    "t1_tier.md": "房贷贴息分能级",
+    "m_monthly_trend.md": "月度趋势",
+}
+
+
+def _artifacts_root() -> Path:
+    return ROOT / "artifacts"
+
+
+@app.get("/api/reports")
+def api_reports(days: int = 30) -> dict:
+    """报告中心清单：近 N 天 artifacts 下的 .md，日期倒序（10-24）。
+
+    目录扫描即事实源——新链落盘自动出现，零登记。"""
+    root = _artifacts_root()
+    out = []
+    if root.exists():
+        dirs = sorted((p for p in root.iterdir() if p.is_dir()),
+                      key=lambda p: p.name, reverse=True)
+        for d in dirs[:max(1, min(days, 120))]:
+            files = []
+            for f in sorted(d.glob("*.md")):
+                st = f.stat()
+                files.append({
+                    "name": f.name,
+                    "label": _MD_LABELS.get(f.name, f.name),
+                    "size": st.st_size,
+                    "mtime": time.strftime("%H:%M",
+                                           time.localtime(st.st_mtime)),
+                })
+            if files:
+                out.append({"date": d.name, "files": files})
+    return {"ok": True, "days": out}
+
+
+@app.get("/api/reports/content")
+def api_reports_content(date: str, name: str) -> dict:
+    """单篇报告原文（客户端 marked+mermaid 渲染，服务端零渲染依赖）。
+
+    date/name 双白名单正则 + resolve 落点校验（防路径穿越）。"""
+    import re
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date or ""):
+        raise HTTPException(422, "date 须为 YYYY-MM-DD")
+    if not re.fullmatch(r"[\w.\-]+\.md", name or ""):
+        raise HTTPException(422, "name 非法（仅限字母数字._-，且以 .md 结尾）")
+    p = (_artifacts_root() / date / name).resolve()
+    if not str(p).startswith(str(_artifacts_root().resolve())):
+        raise HTTPException(422, "路径非法")
+    if not p.is_file():
+        raise HTTPException(404, "报告不存在")
+    return {"ok": True, "date": date, "name": name,
+            "md": p.read_text(encoding="utf-8", errors="replace")}
+
+
+@app.get("/reports")
+def reports_page() -> FileResponse:
+    """报告中心页面（渲染逻辑全在客户端 reports.html）。"""
+    if not (STATIC / "reports.html").is_file():
+        raise HTTPException(500, "reports.html 缺失（webapp_static/）")
+    return FileResponse(STATIC / "reports.html",
+                        headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/api/board")
 def api_board() -> dict:
     con = ro_connect()

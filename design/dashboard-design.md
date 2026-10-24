@@ -28,7 +28,7 @@
 | 10-18 | 实体 CRUD 补全；弹窗统一层；断点续采+降级续跑；预算 80→验证→移除；品牌/品类贯通 | 可靠性三件套；契约三道防线 |
 | 10-19 | 直加锚 vendor 契约化（第二例崩链）；一键补锚双层根因修复（15 提案）；**新增 SKU 用户旅程立项** | 本文档成文；§5.5 立项 |
 
-## 3. 模块清单与职责（11 模块 × 28 端点）
+## 3. 模块清单与职责（12 模块 × 31 端点）
 
 UI 面板（index.html，`.mmb-panel` 弹窗卡片体系 + header + nav/wall + cmp 对比悬浮窗）：
 
@@ -45,9 +45,16 @@ UI 面板（index.html，`.mmb-panel` 弹窗卡片体系 + header + nav/wall + c
 | 9 | 任务流水（tasklog-panel） | `GET /api/tasklog` | R | reports/taskboard.json |
 | 10 | ⚡一键补锚 | `POST /api/mmb/auto-anchor` | C（子进程） | 提案 yaml（零观测实体批量配对） |
 | 11 | 对比悬浮窗（cmp-panel） | `GET /api/recommend` `GET /api/snapshot` | R | DB/快照 |
+| 12 | 报告中心（reports.html，10-24） | `GET /reports` `GET /api/reports` `GET /api/reports/content` | R | artifacts/{date}/*.md（扫描即真，不建索引文件） |
 | — | 静态资源 | `GET /` `GET /img/{date}/{fname}` | R | webapp_static / artifacts |
 
 **本设计新增（§5.5 旅程落地）**：`POST /api/mmb/collect-now`（立即采集指定锚）+ backfill `run --urls` 参数。
+
+**报告中心（10-24，"每天的报告挂到网页上"）**：数据源就是 `artifacts/{date}/*.md`——目录扫描即事实源，
+不维护任何索引清单（新链落盘自动出现在中心，零登记）。渲染走**客户端** marked+mermaid
+（vendor 本地化 `/static/vendor/`，与 echarts 同原则：离线可用不依赖外网 CDN；服务端零渲染依赖）。
+安全：date 白名单 `^\d{4}-\d{2}-\d{2}$`、name 白名单 `^[\w.\-]+\.md$`（斜杠进不来，路径穿越无立足点）+
+resolve 后必须落在 artifacts 下。文件名→中文标签映射表 `_MD_LABELS`（未知文件名原样显示）。
 
 ## 4. 数据存放点与实体模型（六个事实源）
 

@@ -184,6 +184,8 @@ python -m core.governor --mode auto      # 交回自动
 | `\AutoTaskV2\housing_monthly` | **每月 8 日 06:40** | `--job housing_monthly`（房贷贴息分线能级 + 亮眼榜 → `t1_tier.md` / `t1_spotlight.json` / `m_monthly_trend.md`） |
 | `\AutoTaskV2\housing_rr_fiveday` | **每月 1/6/11/16/21/26 日 11:00（每 5 天）** | `--job housing_rr_fiveday`（南京/徐州/西宁租售比高小区 Top20，每城 20 个 → `t_rr_top20.md` / `t_rr_top20.data.json`） |
 
+> **2026-10-14 定期任务精简（用户拍板，提交 776eca1）**：`hardware_daily`、`housing_daily`、`housing_fortnight` 三条链的计划任务已注销（手动跑 `python scripts/run_daily.py --job <job>` 仍可用）；`policy_daily` 改为每月 1/15 07:20。实际在跑：`daily_report`、`finance_daily`、`finance_postclose`、`housing_monthly`、`housing_rr_fiveday`、`mmb_backfill_daily`。全部报告的统一入口：看板「报告中心」（`:8787/reports`，10-24 新增）。
+
 ### 地产为什么拆成四条链（2026-10-07 / 2026-10-08）
 
 原先 `housing_daily` 一天跑 5 个任务。用户的判断是**其中两条根本不该每天跑**：

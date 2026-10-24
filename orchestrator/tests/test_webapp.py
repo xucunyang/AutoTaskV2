@@ -392,3 +392,34 @@ def test_norm_jd_url_unwraps_manmanbuy_shell():
     assert _norm_jd_url(
         "https://tool.manmanbuy.com/HistoryLowest.aspx?url=https%3A%2F%2Ftaobao.com"
     ) is None
+
+
+def test_reports_hub_list_content_and_guard(tmp_path, monkeypatch):
+    """10-24 报告中心：清单倒序+中文标签、原文返回、路径穿越/乱名全拒。"""
+    d = tmp_path / "2026-10-24"
+    d.mkdir()
+    (d / "report.md").write_text(
+        "# 宏观日报\n```mermaid\nxychart-beta\n```\n", encoding="utf-8")
+    (tmp_path / "2026-10-23").mkdir()
+    (tmp_path / "2026-10-23" / "finance_report.md").write_text(
+        "x", encoding="utf-8")
+    (tmp_path / "2026-10-22").mkdir()          # 空目录（无 .md）不出现
+    monkeypatch.setattr(webapp, "_artifacts_root", lambda: tmp_path)
+
+    lst = webapp.api_reports(days=7)
+    assert [x["date"] for x in lst["days"]] == ["2026-10-24", "2026-10-23"]
+    assert lst["days"][0]["files"][0]["label"] == "宏观日报"
+
+    c = webapp.api_reports_content(date="2026-10-24", name="report.md")
+    assert "xychart" in c["md"] and c["name"] == "report.md"
+
+    import pytest
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException):        # date 格式
+        webapp.api_reports_content(date="../etc", name="report.md")
+    with pytest.raises(HTTPException):        # name 带斜杠（穿越）
+        webapp.api_reports_content(date="2026-10-24", name="../secret.md")
+    with pytest.raises(HTTPException):        # 非 .md
+        webapp.api_reports_content(date="2026-10-24", name="report.html")
+    with pytest.raises(HTTPException):        # 不存在
+        webapp.api_reports_content(date="2026-10-24", name="nope.md")
