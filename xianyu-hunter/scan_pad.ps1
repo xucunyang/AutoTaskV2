@@ -1,6 +1,6 @@
 ﻿param(
-  [string]$Device = "192.168.31.208:5555",
-  [string]$WiFiDevice = "192.168.31.208:5555",
+  [string]$Device = "192.168.31.173:5555",
+  [string]$WiFiDevice = "192.168.31.173:5555",
   [string]$UsbDevice = "AUIFLJTKSGSWU4TK",
   [int]$Round = 1,
   [string]$ActiveStart = "09:00",
@@ -250,3 +250,4 @@ if (Test-Path $leadsMd) {
 } else {
   Log "TRACE: no leads.md, skip"
 }
+
