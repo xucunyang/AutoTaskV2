@@ -3441,3 +3441,40 @@
 - 10-24 20:21:33 AUTO-R107: PARSED total=0 fresh=0
 - 10-24 20:21:33 AUTO-R107: REPORT E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\reports\R107_1024-2019_auto.md
 - 10-24 20:21:34 AUTO-R107: IME restored + sdcard cleaned
+- 10-24 20:21:35 AUTO-R107: DONE round 107
+- 10-24 20:49:02 AUTO-R108: START round 108 (1024-2049)
+- 10-24 20:49:03 AUTO-R108: device pick: pad=AUIFLJTKSGSWU4TK honor=True
+- 10-24 20:49:03 PAD R108: LEASE_OK
+- 10-24 20:49:03 AUTO-R108: PAD: LEASE_OK
+- 10-24 20:49:04 AUTO-R108: PAD: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-24 20:49:04 AUTO-R108: PAD: 件。
+- 10-24 20:49:04 AUTO-R108: PAD: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_pad.ps1:22 字符: 3
+- 10-24 20:49:04 AUTO-R108: PAD: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-24 20:49:04 AUTO-R108: PAD: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-24 20:49:04 AUTO-R108: PAD:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-24 20:49:04 AUTO-R108: PAD:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-24 20:49:04 AUTO-R108: PAD:  
+- 10-24 20:49:12 PAD R108: DEVICE_LOST
+- 10-24 20:49:28 PAD R108: DEVICE_STALE, recovering...
+- 10-24 20:49:36 PAD R108: DEVICE_LOST
+- 10-24 20:49:39 PAD R108: DUMP_MISSING (device dropped?), abort round
+- 10-24 20:49:39 PAD R108: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-24 20:49:40 AUTO-R108: PAD: NOT_AT_HOME (dump missing or no feed), abort round
+- 10-24 20:49:40 PAD R108: DONE pad108_1024_2049 (aborted)
+- 10-24 20:49:40 AUTO-R108: PAD: DONE pad108_1024_2049 (aborted)
+- 10-24 20:49:41 R108: LEASE_OK
+- 10-24 20:49:41 AUTO-R108: HONOR: LEASE_OK
+- 10-24 20:49:41 AUTO-R108: HONOR: Add-Content : 文件“E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan-log.md”正由另一进程使用，因此该进程无法访问此文
+- 10-24 20:49:41 AUTO-R108: HONOR: 件。
+- 10-24 20:49:41 AUTO-R108: HONOR: 所在位置 E:\code\AutoTaskByMuseSpark1.3\xianyu-hunter\scan_round.ps1:20 字符: 3
+- 10-24 20:49:41 AUTO-R108: HONOR: +   Add-Content -Path $logFile -Value $line -Encoding UTF8
+- 10-24 20:49:41 AUTO-R108: HONOR: +   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- 10-24 20:49:41 AUTO-R108: HONOR:     + CategoryInfo          : WriteError: (E:\code\AutoTas...ter\scan-log.md:String) [Add-Content], IOException
+- 10-24 20:49:42 AUTO-R108: HONOR:     + FullyQualifiedErrorId : GetContentWriterIOError,Microsoft.PowerShell.Commands.AddContentCommand
+- 10-24 20:49:42 AUTO-R108: HONOR:  
+- 10-24 20:49:55 R108: DEVICE_LOST
+- 10-24 20:49:55 AUTO-R108: HONOR: adb.exe: device 'True' not found
+- 10-24 20:49:56 AUTO-R108: HONOR: adb.exe: device 'True' not found
+- 10-24 20:50:10 R108: DEVICE_STALE, recovering...
+- 10-24 20:50:24 R108: DEVICE_LOST
+- 10-24 21:48:49 MOTO2: 踏板车 TOP5 + 真伪甄别（android-agent MCP 驱动）；新收藏 4 台(¥3500大理本田NBX100 止梦1111/¥1500昆明雅马哈巧格 墨绿色的两优培粳/¥2680芒市五羊本田WH125 大大大大王/累计6台)；排除引流假价(¥4/¥5/¥9.90)、假降价(已降99%/已降5790.10)、模板未填、厂家图、已消户；残值基准: 五羊本田NBX100 117天折18%、WH125 25天原价成交、雅马哈巧格近7日成交均价¥2800(看涨50%)；报告 reports/MOTO2_1024-1930_踏板车TOP5与真伪甄别.md
